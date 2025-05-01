@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import * as Tone from 'tone';
 
+const SCHEDULE_AHEAD = 0.03;  // 30ms de buffer
+
 // === Controlo de UI (BPM) ===
 const bpmSlider = document.getElementById('bpm');
 const bpmValue  = document.getElementById('bpmValue');
@@ -58,7 +60,7 @@ const baseMarkerMat  = new THREE.MeshBasicMaterial({
 // === Setup Tone.js ===
 const synth = new Tone.Synth().toDestination();
 
-// Desbloquear áudio ao clicar
+// Desbloquear áudio ao clicar no ecrã
 document.body.addEventListener('click', async () => {
   await Tone.start();
 });
@@ -70,58 +72,74 @@ let lastAngle            = 0;
 let lastTriggeredIndices = new Set();
 
 // Usa o AudioContext como relógio
-let lastTime = Tone.now();
+let lastAudioTime = Tone.now();
 
-// === Função de animação ===
+// === Função de animação com interpolação do crossing ===
 function animate() {
   requestAnimationFrame(animate);
 
-  // calcula dt a partir do AudioContext
-  const now = Tone.now();
-  const dt  = now - lastTime;
-  lastTime  = now;
+  // 1) tempos de áudio
+  const tNow     = Tone.now();
 
-  // converter BPM em rotações por segundo
-  const beatsPerSec = bpm / 60;
-  const revsPerSec  = beatsPerSec;            // 1 rotação por beat
+  const dt       = tNow - lastAudioTime;
+
+  const tPrev    = lastAudioTime;
+  lastAudioTime  = tNow;
+
+  // 2) calcular ângulo com base no BPM
+  const beatsPerSec = bpm / 60;         // 1 beat = 1 volta
+  const revsPerSec  = beatsPerSec;
   const deltaAngle  = revsPerSec * 2 * Math.PI * dt;
   const angle       = lastAngle + deltaAngle;
 
-  // aplicar rotação
+  // aplicar rotação ao círculo (para render)
   circle.rotation.z = angle;
 
-  // detectar crossings e criar marcadores
+  // 3) detecção de crossings com interpolação de tempo
   const triggeredNow = new Set();
   for (let i = 0; i < vertexCount; i++) {
     const x = vertices[i * 3];
     const y = vertices[i * 3 + 1];
 
-    // posição no frame anterior
-    const prevX = x * Math.cos(lastAngle) - y * Math.sin(lastAngle);
-    const prevY = x * Math.sin(lastAngle) + y * Math.cos(lastAngle);
+    // posições antes e depois
+    const rotX_prev = x * Math.cos(lastAngle) - y * Math.sin(lastAngle);
+    const rotY_prev = x * Math.sin(lastAngle) + y * Math.cos(lastAngle);
 
-    // posição no frame atual
-    const currX = x * Math.cos(angle) - y * Math.sin(angle);
-    const currY = x * Math.sin(angle) + y * Math.cos(angle);
+    const rotX = x * Math.cos(angle) - y * Math.sin(angle);
+    const rotY = x * Math.sin(angle) + y * Math.cos(angle);
 
-    // trigger quando passa de X>0 para X≤0 na metade superior
-    if (prevX > 0 && currX <= 0 && currY > 0 && !lastTriggeredIndices.has(i)) {
-      // tocar nota
-      const freq = Tone.Midi(60 + (i % 12)).toFrequency();
-      synth.triggerAttackRelease(freq, '16n');
+   // dentro de animate(), após calcular rotX_prev, rotX, rotY…
+if (rotX_prev > 0 && rotX <= 0 && rotY > 0 && !lastTriggeredIndices.has(i)) {
+  // interpolar instante exacto do crossing
+  const denom   = rotX_prev - rotX;
+  const frac    = denom !== 0 ? rotX_prev / denom : 0;
+  console.log(frac);
+  const tCross  = tPrev + frac * dt;
 
-      // criar marcador no vértice
-      const markerMat = baseMarkerMat.clone();
-      const marker = new THREE.Mesh(markerGeom, markerMat);
-      marker.position.set(currX, currY, circle.position.z + 0.02);
-      scene.add(marker);
-      markers.push({ mesh: marker, life: markerLifetime });
+  // calcular tempo de scheduling no futuro
+  let tSchedule = tCross + SCHEDULE_AHEAD;
+  tSchedule     = Math.max(tSchedule, Tone.now() + 0.005);
 
-      triggeredNow.add(i);
+  // tocar nota no instante agendado
+  const freq = Tone.Midi(60 + (i % 12)).toFrequency();
+  synth.triggerAttackRelease(freq, '16n', tSchedule);
+
+  // agendar marcador visual também
+  Tone.Draw.schedule(() => {
+    const markerMat = baseMarkerMat.clone();
+    const marker    = new THREE.Mesh(markerGeom, markerMat);
+    const cx        = x * Math.cos(angle) - y * Math.sin(angle);
+    const cy        = x * Math.sin(angle) + y * Math.cos(angle);
+    marker.position.set(cx, cy, circle.position.z + 0.02);
+    scene.add(marker);
+    markers.push({ mesh: marker, life: markerLifetime });
+  }, tSchedule);
+
+  triggeredNow.add(i);
     }
   }
 
-  // limpar e fazer fade out dos marcadores
+  // 4) limpar e fazer fade out dos marcadores
   for (let j = markers.length - 1; j >= 0; j--) {
     const m = markers[j];
     m.life--;
@@ -132,11 +150,11 @@ function animate() {
     }
   }
 
-  // atualizar estado
+  // 5) atualizar estado
   lastTriggeredIndices = triggeredNow;
   lastAngle            = angle;
 
-  // renderizar cena
+  // 6) renderizar cena
   renderer.render(scene, camera);
 }
 
