@@ -1,59 +1,70 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GeoMusica Web</title>
-    <style>
-      body {
-        margin: 0;
-        overflow: hidden;
-        display: flex;
-        height: 100vh;
-        background: #000;
-        color: #fff;
-        font-family: sans-serif;
-      }
-      #ui {
-        width: 20%;
-        padding: 10px;
-        box-sizing: border-box;
-        background: #111;
-      }
-      #canvas {
-        width: 80%;
-        position: relative;
-      }
-      h2 {
-        margin-top: 0;
-        font-size: 1.2rem;
-        border-bottom: 1px solid #444;
-        padding-bottom: 4px;
-      }
-      .control {
-        margin: 10px 0;
-      }
-      .control label {
-        display: block;
-        margin-bottom: 4px;
-      }
-      .control input[type="range"] {
-        width: 100%;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="ui">
-      <section>
-        <h2>TIME</h2>
-        <div class="control">
-          <label for="bpm">BPM: <span id="bpmValue">120</span></label>
-          <input type="range" id="bpm" min="0" max="999" step="1" value="120">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" href="/vite.svg" type="image/svg+xml"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GeoMusica Web</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="ui">
+    <section>
+      <h2>TIME</h2>
+      <div class="control">
+        <label for="bpmRange">BPM:</label>
+        <input type="range" id="bpmRange" min="0" max="240" step="1" value="120">
+        <div style="display:flex; gap:8px;">
+          <span id="bpmValue">120</span>
+          <input type="number" id="bpmNumber" min="30" max="240" step="1" value="120">
         </div>
-      </section>
-    </div>
-    <div id="canvas"></div>
-    <script type="module" src="/src/main.js"></script>
-  </body>
+      </div>
+    </section>
+    <section>
+      <h2>SHAPE</h2>
+      <div class="control">
+        <label for="radiusRange">Radius:</label>
+        <input type="range" id="radiusRange" min="20" max="2048" step="1" value="432">
+        <div style="display:flex; gap:8px;">
+          <span id="radiusValue">432</span>
+          <input type="number" id="radiusNumber" min="20" max="2048" step="1" value="432">
+        </div>
+      </div>
+      <div class="control">
+        <label for="copiesRange">Copies:</label>
+        <input type="range" id="copiesRange" min="0" max="32" step="1" value="1">
+        <div style="display:flex; gap:8px;">
+          <span id="copiesValue">1</span>
+          <input type="number" id="copiesNumber" min="0" max="32" step="1" value="1">
+        </div>
+      </div>
+      <div class="control">
+        <label for="stepScaleRange">Step Scale:</label>
+        <input type="range" id="stepScaleRange" min="0.1" max="2" step="0.01" value="1">
+        <div style="display:flex; gap:8px;">
+          <span id="stepScaleValue">1.0</span>
+          <input type="number" id="stepScaleNumber" min="0.1" max="2" step="0.1" value="1.0">
+        </div>
+        <div class="control">
+          <label for="angleRange">Angle Offset (°):</label>
+          <input type="range" id="angleRange" min="-180" max="180" step="0.1" value="0">
+          <div style="display:flex; gap:8px;">
+            <span id="angleValue">0</span>
+            <input type="number" id="angleNumber" min="-180" max="180" step="1" value="0">
+          </div>
+        </div>
+        <div class="control">
+  <label for="numberRange">Number:</label>
+  <input type="range" id="numberRange" min="2" max="12" step="1" value="4">
+  <div style="display:flex; gap:8px;">
+    <span id="numberValue">4</span>
+    <input type="number" id="numberNumber" min="2" max="12" step="1" value="4">
+  </div>
+</div>
+      </div>
+    </section>
+  </div>
+  <div id="canvas"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
 </html>

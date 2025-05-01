@@ -12,6 +12,9 @@
     "vite": "^6.3.1"
   },
   "dependencies": {
+    "jquery": "^3.7.1",
+    "jquery-ui-dist": "^1.13.3",
+    "stats.js": "^0.17.0",
     "three": "^0.176.0",
     "tone": "^15.1.22"
   }

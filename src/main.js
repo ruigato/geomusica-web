@@ -1,161 +1,206 @@
 import * as THREE from 'three';
 import * as Tone from 'tone';
+import Stats from 'stats.js';
 
-// === Controlo de UI (BPM) ===
-const bpmSlider = document.getElementById('bpm');
-const bpmValue  = document.getElementById('bpmValue');
-let bpm = parseInt(bpmSlider.value, 10);
-bpmSlider.oninput = e => {
-  bpm = parseInt(e.target.value, 10);
-  bpmValue.textContent = bpm;
-};
+const stats = new Stats();
+stats.showPanel(0);            // 0: FPS, 1: ms, 2: memory
+document.body.appendChild(stats.dom);
 
-// === Setup Three.js ===
-const scene    = new THREE.Scene();
-const camera   = new THREE.PerspectiveCamera(
-  75,
-  (window.innerWidth * 0.8) / window.innerHeight,
-  0.1,
-  10000
-);
-camera.position.set(0, 0, 2000);
-camera.lookAt(0, 0, 0);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth * 0.8, window.innerHeight);
-document.getElementById('canvas').appendChild(renderer.domElement);
+function init() {
+  // — UI elements
+  const bpmRange       = document.getElementById('bpmRange');
+  const bpmNumber      = document.getElementById('bpmNumber');
+  const bpmValue       = document.getElementById('bpmValue');
 
-// === Geometria do “círculo” (quadrado com raio 432) ===
-const radius   = 432;
-const segments = 4;
-const geometry = new THREE.CircleGeometry(radius, segments);
-const material = new THREE.MeshBasicMaterial({
-  color: 0x00ffcc,
-  wireframe: true
-});
-const circle = new THREE.Mesh(geometry, material);
-circle.position.z = 0.01;
-scene.add(circle);
+  const radiusRange    = document.getElementById('radiusRange');
+  const radiusNumber   = document.getElementById('radiusNumber');
+  const radiusValue    = document.getElementById('radiusValue');
 
-// === Eixo vertical de 2048 de altura ===
-const eixoMat = new THREE.LineBasicMaterial({ color: 0xffffff });
-const eixoPts = [
-  new THREE.Vector3(0, 0, 0),
-  new THREE.Vector3(0, 2048, 0)
-];
-const eixoGeo = new THREE.BufferGeometry().setFromPoints(eixoPts);
-scene.add(new THREE.Line(eixoGeo, eixoMat));
+  const copiesRange    = document.getElementById('copiesRange');
+  const copiesNumber   = document.getElementById('copiesNumber');
+  const copiesValue    = document.getElementById('copiesValue');
 
-// === Marcadores de trigger com fade out e blend aditivo ===
-const markers        = [];
-const markerLifetime = 30; // frames
-const markerGeom     = new THREE.SphereGeometry(8, 8, 8);
-const baseMarkerMat  = new THREE.MeshBasicMaterial({
-  color: 0xffffff,
-  transparent: true,
-  opacity: 1,
-  depthTest: false,
-  blending: THREE.AdditiveBlending
-});
+  const stepScaleRange  = document.getElementById('stepScaleRange');
+  const stepScaleNumber = document.getElementById('stepScaleNumber');
+  const stepScaleValue  = document.getElementById('stepScaleValue');
 
-// === Setup Tone.js ===
-const synth = new Tone.Synth().toDestination();
+  const angleRange     = document.getElementById('angleRange');
+  const angleNumber    = document.getElementById('angleNumber');
+  const angleValue     = document.getElementById('angleValue');
 
-// Desbloquear áudio ao clicar
-document.body.addEventListener('click', async () => {
-  await Tone.start();
-});
+  const numberRange    = document.getElementById('numberRange');
+  const numberNumber   = document.getElementById('numberNumber');
+  const numberValue    = document.getElementById('numberValue');
 
-// === Dados para deteção de triggers ===
-const vertices           = geometry.attributes.position.array;
-const vertexCount        = geometry.attributes.position.count;
-let lastAngle            = 0;
-let lastTriggeredIndices = new Set();
-let lastAudioTime        = Tone.now();
-const SCHEDULE_AHEAD     = 0.1; // 30ms buffer
+  // — reactive vars
+  let bpm       = +bpmRange.value;
+  let radius    = +radiusRange.value;
+  let segments  = +numberRange.value;
+  let copies    = +copiesRange.value;
+  let stepScale = +stepScaleRange.value;
+  let angleOff  = +angleRange.value * Math.PI / 180; // radians
 
-// === Função de animação com correção de lag e markers ajustados ===
-function animate() {
-  requestAnimationFrame(animate);
+  // — initialize displays
+  bpmValue.textContent       = bpm;
+  bpmNumber.value            = bpm;
+  radiusValue.textContent    = radius;
+  radiusNumber.value         = radius;
+  numberValue.textContent    = segments;
+  numberNumber.value         = segments;
+  copiesValue.textContent    = copies;
+  copiesNumber.value         = copies;
+  stepScaleValue.textContent = stepScale.toFixed(1);
+  stepScaleNumber.value      = stepScale.toFixed(1);
+  angleValue.textContent     = angleRange.value;
+  angleNumber.value          = angleRange.value;
 
-  // 1) ler tempo do AudioContext
-  const tNow     = Tone.now();
-  const dt       = tNow - lastAudioTime;
-  const tPrev    = lastAudioTime;
-  lastAudioTime  = tNow;
+  // — sync helper
+  function syncPair(rangeEl, numEl, spanEl, setter, min, max, parser = v => parseFloat(v)) {
+    rangeEl.addEventListener('input', e => {
+      let v = parser(e.target.value);
+      v = Math.min(Math.max(v, min), max);
+      setter(v);
+      spanEl.textContent = parser === parseFloat ? v.toFixed(1) : v;
+      numEl.value = v;
+    });
+    numEl.addEventListener('input', e => {
+      let v = parser(e.target.value);
+      v = Math.min(Math.max(v || min, min), max);
+      setter(v);
+      spanEl.textContent = parser === parseFloat ? v.toFixed(1) : v;
+      rangeEl.value = v;
+    });
+  }
 
-  // 2) calcular a rotação (1 volta por beat)
-  const beatsPerSec = bpm / 60;
-  const revsPerSec  = beatsPerSec;
-  const deltaAngle  = revsPerSec * 2 * Math.PI * dt;
-  const angle       = lastAngle + deltaAngle;
+  syncPair(bpmRange, bpmNumber, bpmValue, v => bpm = v, 0, 240, v => parseInt(v, 10));
+  syncPair(radiusRange, radiusNumber, radiusValue, v => radius = v, 20, 2048);
+  syncPair(numberRange, numberNumber, numberValue, v => segments = v, 2, 12, v => parseInt(v, 10));
+  syncPair(copiesRange, copiesNumber, copiesValue, v => copies = v, 0, 32, v => parseInt(v, 10));
+  syncPair(stepScaleRange, stepScaleNumber, stepScaleValue, v => stepScale = v, 0.1, 2);
+  syncPair(angleRange, angleNumber, angleValue, v => angleOff = v * Math.PI / 180, -180, 180);
 
-  // aplicar rotação ao visual
-  circle.rotation.z = angle;
+  // — THREE.js setup
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(
+    75, (window.innerWidth * 0.8) / window.innerHeight, 0.1, 10000
+  );
+  cam.position.set(0, 0, 2000);
+  cam.lookAt(0, 0, 0);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth * 0.8, window.innerHeight);
+  document.getElementById('canvas').appendChild(renderer.domElement);
 
-  // 3) detecção de crossings com interpolação de tempo e agendamento correto
-  const triggeredNow = new Set();
-  for (let i = 0; i < vertexCount; i++) {
-    const x = vertices[i * 3], y = vertices[i * 3 + 1];
+  // — base circle geometry
+  let baseGeo = new THREE.CircleGeometry(radius, segments);
+  const mat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true });
+  const group = new THREE.Group();
+  scene.add(group);
 
-    // calcular X antes e depois do crossing
-    const prevX = x * Math.cos(lastAngle) - y * Math.sin(lastAngle);
-    const prevY = x * Math.sin(lastAngle) + y * Math.cos(lastAngle);
-    const currX = x * Math.cos(angle)     - y * Math.sin(angle);
-    const currY = x * Math.sin(angle)     + y * Math.cos(angle);
+  // — axis
+  const axisGeo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0, 2048, 0),
+  ]);
+  scene.add(new THREE.Line(axisGeo, new THREE.LineBasicMaterial({ color: 0xffffff })));
 
-    // se cruzou de X>0 para X≤0 e está acima
-    if (prevX > 0 && currX <= 0 && currY > 0 && !lastTriggeredIndices.has(i)) {
-      // interpolar instante exato do crossing
-      const denom  = prevX - currX;
-      const frac   = denom !== 0 ? prevX / denom : 0;
-      const tCross = tPrev + frac * dt;
+  // — audio setup
+  const synth = new Tone.Synth().toDestination();
+  document.body.addEventListener('click', async () => {
+    await Tone.start();
+    Tone.getTransport().start();
+  }, { once: true });
 
-      // garantir scheduling no futuro
-      let tSched = tCross + SCHEDULE_AHEAD;
-      tSched     = Math.max(tSched, Tone.now() + 0.025);
+  // — state for animation
+  let lastAngle = 0, lastTime = Tone.now(), lastTrig = new Set();
+  const markers = [], markerGeom = new THREE.SphereGeometry(8, 8, 8);
+  const baseMarkMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff, transparent: true, opacity: 1,
+    depthTest: false, blending: THREE.AdditiveBlending,
+  });
+  const MARK_LIFE = 30;
 
-      // frequência = distância do vértice ao centro (raio em Hz)
-      const dist = Math.sqrt(x * x + y * y);
-      const freq = dist; 
-
-      // disparar som no instante ajustado
-      synth.triggerAttackRelease(freq, '16n', tSched);
-
-      // agendar marcador ajustado ao lag
-      Tone.Draw.schedule(() => {
-        const markerMat = baseMarkerMat.clone();
-        const marker    = new THREE.Mesh(markerGeom, markerMat);
-        // calcular posição exata usando frac
-        const crossAngle = lastAngle + frac * (angle - lastAngle);
-        const cx         = x * Math.cos(crossAngle) - y * Math.sin(crossAngle);
-        const cy         = x * Math.sin(crossAngle) + y * Math.cos(crossAngle);
-        marker.position.set(cx, cy, circle.position.z + 2);
-        scene.add(marker);
-        markers.push({ mesh: marker, life: markerLifetime });
-      }, tSched);
-
-      triggeredNow.add(i);
+  // — rebuild group instances
+  function updateGroup() {
+    group.clear();
+    for (let i = 0; i < copies; i++) {
+      const scale = Math.pow(stepScale, i);
+      const rotOff = angleOff * i;
+      const mesh = new THREE.Mesh(baseGeo, mat);
+      mesh.scale.set(scale, scale, 1);
+      mesh.rotation.z = rotOff;
+      group.add(mesh);
     }
   }
 
-  // 4) fade out e remoção de markers
-  for (let j = markers.length - 1; j >= 0; j--) {
-    const m = markers[j];
-    m.life--;
-    m.mesh.material.opacity = m.life / markerLifetime;
-    if (m.life <= 0) {
-      scene.remove(m.mesh);
-      markers.splice(j, 1);
+  // — animation loop
+  function animate() {
+    requestAnimationFrame(animate);
+
+     // rebuild base geometry if radius or segments changed
+     if (baseGeo.parameters.radius !== radius || baseGeo.parameters.segments !== segments) {
+      baseGeo.dispose();
+      baseGeo = new THREE.CircleGeometry(radius, segments);
     }
+
+    updateGroup();
+
+    // compute global rotation
+    const tNow = Tone.now();
+    const dt = tNow - lastTime; lastTime = tNow;
+    const dAng = (bpm / 60) * 2 * Math.PI * dt;
+    const ang = lastAngle + dAng;
+    group.rotation.z = ang;
+
+    // detect crossings per copy
+    const triggeredNow = new Set();
+    const verts = baseGeo.attributes.position.array;
+    const count = baseGeo.attributes.position.count;
+    for (let ci = 0; ci < copies; ci++) {
+      const mesh = group.children[ci];
+      const worldRot = ang + mesh.rotation.z;
+      const worldScale = mesh.scale.x;
+      for (let vi = 0; vi < count; vi++) {
+        const x0 = verts[3 * vi], y0 = verts[3 * vi + 1];
+        const x1 = x0 * worldScale, y1 = y0 * worldScale;
+        const prevX = x1 * Math.cos(lastAngle + mesh.rotation.z) - y1 * Math.sin(lastAngle + mesh.rotation.z);
+        const currX = x1 * Math.cos(worldRot) - y1 * Math.sin(worldRot);
+        const currY = x1 * Math.sin(worldRot) + y1 * Math.cos(worldRot);
+        const key = `${ci}-${vi}`;
+        if (prevX > 0 && currX <= 0 && currY > 0 && !lastTrig.has(key)) {
+          // trigger sound
+          const freq = Math.hypot(x1, y1);
+          synth.triggerAttackRelease(freq, '16n', tNow);
+          // marker
+          const mmat = baseMarkMat.clone();
+          const m = new THREE.Mesh(markerGeom, mmat);
+          m.position.set(currX, currY, 2);
+          scene.add(m);
+          markers.push({ mesh: m, life: MARK_LIFE });
+          triggeredNow.add(key);
+        }
+      }
+    }
+
+    // fade & remove markers
+    for (let j = markers.length - 1; j >= 0; j--) {
+      const o = markers[j];
+      o.life--;
+      o.mesh.material.opacity = o.life / MARK_LIFE;
+      if (o.life <= 0) {
+        scene.remove(o.mesh);
+        markers.splice(j, 1);
+      }
+    }
+
+    lastTrig = triggeredNow;
+    lastAngle = ang;
+    stats.begin();
+    renderer.render(scene, cam);
+    stats.end();
   }
 
-  // 5) atualizar estado
-  lastTriggeredIndices = triggeredNow;
-  lastAngle            = angle;
-
-  // 6) renderizar
-  renderer.render(scene, camera);
+  animate();
 }
 
-animate();
+init();
