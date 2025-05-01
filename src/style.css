@@ -39,3 +39,15 @@ body {
 .control input[type="number"] {
   width: 100%;
 }
+
+/* Aumenta a largura dos sliders */
+input[type="range"] {
+  width: 200%; /* Dobra a largura padrão */
+  max-width: 100%; /* Garante que não ultrapasse a largura da tela */
+  margin: 10px 0; /* Adiciona espaçamento superior e inferior */
+}
+#ui {
+  width: 100%; /* Garante que o contêiner ocupe toda a largura da tela */
+  padding: 20px; /* Adiciona preenchimento interno */
+  box-sizing: border-box; /* Inclui o preenchimento no cálculo da largura */
+}

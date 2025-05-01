@@ -105,7 +105,21 @@ function init() {
   scene.add(new THREE.Line(axisGeo, new THREE.LineBasicMaterial({ color: 0xffffff })));
 
   // — audio setup
-  const synth = new Tone.Synth().toDestination();
+  const synth = new Tone.Synth({
+    oscillator: {
+      type: "sine"  // Choose a square wave
+    },
+    envelope: {
+      attack: 0.01,
+      decay: 0.5,
+      sustain: 1.0,
+      release: 1.2
+    }
+  }).toDestination();
+
+
+
+
   document.body.addEventListener('click', async () => {
     await Tone.start();
     Tone.getTransport().start();
@@ -170,7 +184,7 @@ function init() {
         if (prevX > 0 && currX <= 0 && currY > 0 && !lastTrig.has(key)) {
           // trigger sound
           const freq = Math.hypot(x1, y1);
-          synth.triggerAttackRelease(freq, '16n', tNow);
+          synth.triggerAttackRelease(freq, '64n', tNow);
           // marker
           const mmat = baseMarkMat.clone();
           const m = new THREE.Mesh(markerGeom, mmat);
