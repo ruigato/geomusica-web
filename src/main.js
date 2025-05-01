@@ -8,7 +8,6 @@ let bpm = parseInt(bpmSlider.value, 10);
 bpmSlider.oninput = (e) => {
   bpm = parseInt(e.target.value, 10);
   bpmValue.textContent = bpm;
-  transport.bpm.value = bpm;
 };
 
 // === Setup Three.js ===
@@ -23,32 +22,45 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth * 0.8, window.innerHeight);
 document.getElementById('canvas').appendChild(renderer.domElement);
 
-// === Geometria do “círculo” (pentágono) ===
-const geometry = new THREE.CircleGeometry(1, 5);
-const material = new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true });
-const circle   = new THREE.Mesh(geometry, material);
+// === Geometria do “círculo” (quadrado) ===
+const geometry = new THREE.CircleGeometry(1, 4);
+const material = new THREE.MeshBasicMaterial({
+  color: 0x00ffcc,
+  wireframe: true
+});
+const circle = new THREE.Mesh(geometry, material);
 circle.position.z = 0.01;
 scene.add(circle);
 
 // === Eixo vertical (linha branca) ===
-const eixoMat  = new THREE.LineBasicMaterial({ color: 0xffffff });
-const linePts  = [ new THREE.Vector3(0,0,0), new THREE.Vector3(0,5,0) ];
-const eixoGeo  = new THREE.BufferGeometry().setFromPoints(linePts);
+const eixoMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+const linePts = [
+  new THREE.Vector3(0, 0, 0),
+  new THREE.Vector3(0, 5, 0)
+];
+const eixoGeo = new THREE.BufferGeometry().setFromPoints(linePts);
 scene.add(new THREE.Line(eixoGeo, eixoMat));
 
 camera.position.z = 5;
 
-// === Setup Tone.js ===
-const synth     = new Tone.PolySynth(Tone.Synth, 8).toDestination();
-const transport = Tone.getTransport();
-transport.PPQ       = 480; // 480 ticks por semínima (beat)
-transport.bpm.value = bpm;
+// === Marcadores de trigger com fade out e blending aditivo ===
+const markers        = [];
+const markerLifetime = 30; // frames
+const markerGeom     = new THREE.SphereGeometry(0.05, 8, 8);
+const baseMarkerMat  = new THREE.MeshBasicMaterial({
+  color: 0xffffff,
+  transparent: true,
+  opacity: 1,
+  depthTest: false,
+  blending: THREE.AdditiveBlending
+});
 
-// Desbloquear áudio e arrancar o Transport
+// === Setup Tone.js ===
+const synth = new Tone.Synth().toDestination();
+
+// Desbloquear áudio ao clicar
 document.body.addEventListener('click', async () => {
   await Tone.start();
-  transport.start();
-  console.log('AudioContext e Transport iniciados com', bpm, 'BPM');
 });
 
 // === Dados para deteção de triggers ===
@@ -57,55 +69,75 @@ const vertexCount        = geometry.attributes.position.count;
 let lastAngle            = 0;
 let lastTriggeredIndices = new Set();
 
-// === Parâmetros de tempo para rotação por compasso ===
-const beatsPerBar = 4;
-const ticksPerBar = transport.PPQ * beatsPerBar; // 480 * 4 = 1920
+// Usa o AudioContext como relógio
+let lastTime = Tone.now();
 
-// === Loop de triggers e desenho sincronizado ===
-transport.scheduleRepeat((time) => {
-  const ticks     = transport.ticks;
-  const prevTicks = ticks - 1;
-  
-  // cálculo preciso do ângulo antes e depois do tick
-  const angle     = (ticks     % ticksPerBar) / ticksPerBar * Math.PI * 2;
-  const prevAngle = (prevTicks % ticksPerBar) / ticksPerBar * Math.PI * 2;
-  
-  circle.rotation.z = angle; // já podemos girar aqui, se não quisermos usar Tone.Draw
-  
+// === Função de animação ===
+function animate() {
+  requestAnimationFrame(animate);
+
+  // calcula dt a partir do AudioContext
+  const now = Tone.now();
+  const dt  = now - lastTime;
+  lastTime  = now;
+
+  // converter BPM em rotações por segundo
+  const beatsPerSec = bpm / 60;
+  const revsPerSec  = beatsPerSec;            // 1 rotação por beat
+  const deltaAngle  = revsPerSec * 2 * Math.PI * dt;
+  const angle       = lastAngle + deltaAngle;
+
+  // aplicar rotação
+  circle.rotation.z = angle;
+
+  // detectar crossings e criar marcadores
   const triggeredNow = new Set();
-  
   for (let i = 0; i < vertexCount; i++) {
-    const x = vertices[i*3], y = vertices[i*3+1];
-  
-    // usa prevAngle em vez de lastAngle
-    const rotX_prev = x * Math.cos(prevAngle) - y * Math.sin(prevAngle);
-    const rotY_prev = x * Math.sin(prevAngle) + y * Math.cos(prevAngle);
-  
-    const rotX = x * Math.cos(angle) - y * Math.sin(angle);
-    const rotY = x * Math.sin(angle) + y * Math.cos(angle);
-  
-    // cruzamento do eixo na metade superior
-    if (rotX_prev < 0 && rotX >= 0 && rotY > 0) {
-      triggeredNow.add(i);
+    const x = vertices[i * 3];
+    const y = vertices[i * 3 + 1];
 
+    // posição no frame anterior
+    const prevX = x * Math.cos(lastAngle) - y * Math.sin(lastAngle);
+    const prevY = x * Math.sin(lastAngle) + y * Math.cos(lastAngle);
+
+    // posição no frame atual
+    const currX = x * Math.cos(angle) - y * Math.sin(angle);
+    const currY = x * Math.sin(angle) + y * Math.cos(angle);
+
+    // trigger quando passa de X>0 para X≤0 na metade superior
+    if (prevX > 0 && currX <= 0 && currY > 0 && !lastTriggeredIndices.has(i)) {
+      // tocar nota
+      const freq = Tone.Midi(60 + (i % 12)).toFrequency();
+      synth.triggerAttackRelease(freq, '16n');
+
+      // criar marcador no vértice
+      const markerMat = baseMarkerMat.clone();
+      const marker = new THREE.Mesh(markerGeom, markerMat);
+      marker.position.set(currX, currY, circle.position.z + 0.02);
+      scene.add(marker);
+      markers.push({ mesh: marker, life: markerLifetime });
+
+      triggeredNow.add(i);
     }
   }
 
-  // dispara notas para todos os vértices que cruzaram
-  if (triggeredNow.size > 0) {
-    const freqs = Array.from(triggeredNow)
-      .map(i => Tone.Midi(60 + (i % 12)).toFrequency());
-    synth.triggerAttackRelease(freqs, '8n', time);
+  // limpar e fazer fade out dos marcadores
+  for (let j = markers.length - 1; j >= 0; j--) {
+    const m = markers[j];
+    m.life--;
+    m.mesh.material.opacity = m.life / markerLifetime;
+    if (m.life <= 0) {
+      scene.remove(m.mesh);
+      markers.splice(j, 1);
+    }
   }
 
-  // actualiza estado para o próximo tick
+  // atualizar estado
   lastTriggeredIndices = triggeredNow;
+  lastAngle            = angle;
 
+  // renderizar cena
+  renderer.render(scene, camera);
+}
 
-  // desenho sincronizado ao áudio
-  Tone.Draw.schedule(() => {
-    circle.rotation.z = angle;
-    renderer.render(scene, camera);
-  }, time);
-
-}, '1i');
+animate();
