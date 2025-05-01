@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GeoMusica Web</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        display: flex;
+        height: 100vh;
+        background: #000;
+        color: #fff;
+        font-family: sans-serif;
+      }
+      #ui {
+        width: 20%;
+        padding: 10px;
+        box-sizing: border-box;
+        background: #111;
+      }
+      #canvas {
+        width: 80%;
+        position: relative;
+      }
+      h2 {
+        margin-top: 0;
+        font-size: 1.2rem;
+        border-bottom: 1px solid #444;
+        padding-bottom: 4px;
+      }
+      .control {
+        margin: 10px 0;
+      }
+      .control label {
+        display: block;
+        margin-bottom: 4px;
+      }
+      .control input[type="range"] {
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      <section>
+        <h2>TIME</h2>
+        <div class="control">
+          <label for="speed">SPEED: <span id="speedValue">0.05</span></label>
+          <input type="range" id="speed" min="0.01" max="1" step="0.001" value="0.005">
+        </div>
+      </section>
+    </div>
+    <div id="canvas"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
