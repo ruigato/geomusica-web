@@ -1,0 +1,216 @@
+From 1234567890abcdef1234567890abcdef12345678 Mon Sep 17 00:00:00 2001
+From: Your Name <your.email@example.com>
+Date: Thu, 1 May 2025 20:17:28 +0100
+Subject: [PATCH] Add 'Number' control to adjust circle segmentation (2–12)
+
+---
+ index.html |  6 ++++++
+ main.js    | 24 +++++++++++++++++++++++---
+ 2 files changed, 27 insertions(+), 3 deletions(-)
+
+diff --git a/index.html b/index.html
+index abcdef1..2345678 100644
+--- a/index.html
++++ b/index.html
+@@ -30,6 +30,12 @@
+         <div class="control">
+           <label for="radiusRange">Radius:</label>
+           <input type="range" id="radiusRange" min="20" max="2048" step="1" value="432">
+           <div style="display:flex; gap:8px;">
+             <span id="radiusValue">432</span>
+             <input type="number" id="radiusNumber" min="20" max="2048" step="1" value="432">
+           </div>
+         </div>
+       </section>
++      <section>
++        <h2>SEGMENTATION</h2>
++        <div class="control">
++          <label for="numberRange">Number:</label>
++          <input type="range" id="numberRange" min="2" max="12" step="1" value="4">
++          <div style="display:flex; gap:8px;">
++            <span id="numberValue">4</span>
++            <input type="number" id="numberNumber" min="2" max="12" step="1" value="4">
++          </div>
++        </div>
++      </section>
+     </div>
+     <div id="canvas"></div>
+     <script type="module" src="/src/main.js"></script>
+   </body>
+ </html>
+diff --git a/main.js b/main.js
+index 1234567..2345678 100644
+--- a/main.js
++++ b/main.js
+@@ -13,6 +13,7 @@
+   const radiusRange    = document.getElementById('radiusRange');
+   const radiusNumber   = document.getElementById('radiusNumber');
+   const radiusValue    = document.getElementById('radiusValue');
++  const numberRange    = document.getElementById('numberRange');
++  const numberNumber   = document.getElementById('numberNumber');
++  const numberValue    = document.getElementById('numberValue');
+ 
+   // reactive vars
+   let bpm       = +bpmRange.value;
+   let radius    = +radiusRange.value;
++  let segments  = +numberRange.value;
+   let copies    = +copiesRange.value;
+   let stepScale = +stepScaleRange.value;
+   let angleOff  = +angleRange.value * Math.PI / 180; // radians
+ 
+   // initialize displays
+   bpmValue.textContent       = bpm;
+   bpmNumber.value            = bpm;
+   radiusValue.textContent    = radius;
+   radiusNumber.value         = radius;
++  numberValue.textContent    = segments;
++  numberNumber.value         = segments;
+   copiesValue.textContent    = copies;
+   copiesNumber.value         = copies;
+   stepScaleValue.textContent = stepScale.toFixed(1);
+   stepScaleNumber.value      = stepScale.toFixed(1);
+   angleValue.textContent     = angleRange.value;
+   angleNumber.value          = angleRange.value;
+ 
+   // sync helper
+   function syncPair(rangeEl, numEl, spanEl, setter, min, max, parser = v => parseFloat(v)) {
+     rangeEl.addEventListener('input', e => {
+       let v = parser(e.target.value);
+       v = Math.min(Math.max(v, min), max);
+       setter(v);
+       spanEl.textContent = parser === parseFloat ? v.toFixed(1) : v;
+       numEl.value = v;
+     });
+     numEl.addEventListener('input', e => {
+       let v = parser(e.target.value);
+       v = Math.min(Math.max(v || min, min), max);
+       setter(v);
+       spanEl.textContent = parser === parseFloat ? v.toFixed(1) : v;
+       rangeEl.value = v;
+     });
+   }
+ 
+   syncPair(bpmRange, bpmNumber, bpmValue, v => bpm = v, 0, 240, v => parseInt(v, 10));
+   syncPair(radiusRange, radiusNumber, radiusValue, v => radius = v, 20, 2048);
+   syncPair(numberRange, numberNumber, numberValue, v => segments = v, 2, 12, v => parseInt(v, 10));
+   syncPair(copiesRange, copiesNumber, copiesValue, v => copies = v, 0, 32, v => parseInt(v, 10));
+   syncPair(stepScaleRange, stepScaleNumber, stepScaleValue, v => stepScale = v, 0.1, 2);
+   syncPair(angleRange, angleNumber, angleValue, v => angleOff = v * Math.PI / 180, -180, 180);
+ 
+   // THREE.js setup
+   const scene = new THREE.Scene();
+   const cam = new THREE.PerspectiveCamera(
+     75, (window.innerWidth * 0.8) / window.innerHeight, 0.1, 10000
+   );
+   cam.position.set(0, 0, 2000);
+   cam.lookAt(0, 0, 0);
+   const renderer = new THREE.WebGLRenderer({ antialias: true });
+   renderer.setSize(window.innerWidth * 0.8, window.innerHeight);
+   document.getElementById('canvas').appendChild(renderer.domElement);
+ 
+   // base circle geometry
+   let baseGeo = new THREE.CircleGeometry(radius, segments);
+   const mat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true });
+   const group = new THREE.Group();
+   scene.add(group);
+ 
+   // axis
+   const axisGeo = new THREE.BufferGeometry().setFromPoints([
+     new THREE.Vector3(0, 0, 0),
+     new THREE.Vector3(0, 2048, 0),
+   ]);
+   scene.add(new THREE.Line(axisGeo, new THREE.LineBasicMaterial({ color: 0xffffff })));
+ 
+   // audio setup
+   const synth = new Tone.Synth().toDestination();
+   document.body.addEventListener('click', async () => {
+     await Tone.start();
+     Tone.getTransport().start();
+   }, { once: true });
+ 
+   // state for animation
+   let lastAngle = 0, lastTime = Tone.now(), lastTrig = new Set();
+   const markers = [], markerGeom = new THREE.SphereGeometry(8, 8, 8);
+   const baseMarkMat = new THREE.MeshBasicMaterial({
+     color: 0xffffff, transparent: true, opacity: 1,
+     depthTest: false, blending: THREE.AdditiveBlending,
+   });
+   const MARK_LIFE = 30;
+ 
+   // rebuild group instances
+   function updateGroup() {
+     group.clear();
+     for (let i = 0; i < copies; i++) {
+       const scale = Math.pow(stepScale, i);
+       const rotOff = angleOff * i;
+       const mesh = new THREE.Mesh(baseGeo, mat);
+       mesh.scale.set(scale, scale, 1);
+       mesh.rotation.z = rotOff;
+       group.add(mesh);
+     }
+   }
+ 
+   // animation loop
+   function animate() {
+     requestAnimationFrame(animate);
+ 
+     // rebuild base geometry if radius or segments changed
+     if (baseGeo.parameters.radius !== radius || baseGeo.parameters.segments !== segments) {
+       baseGeo.dispose();
+       baseGeo = new THREE.CircleGeometry(radius, segments);
+     }
+ 
+     updateGroup();
+ 
+     // compute global rotation
+     const tNow = Tone.now();
+     const dt = tNow - lastTime; lastTime = tNow;
+     const dAng = (bpm / 60) * 2 * Math.PI * dt;
+     const ang = lastAngle + dAng;
+     group.rotation.z = ang;
+ 
+     // detect crossings per copy
+     const triggeredNow = new Set();
+     const verts = baseGeo.attributes.position.array;
+     const count = baseGeo.attributes.position.count;
+     for (let ci = 0; ci < copies; ci++) {
+       const mesh = group.children[ci];
+       const worldRot = ang + mesh.rotation.z;
+       const worldScale = mesh.scale.x;
+       for (let vi = 0; vi < count; vi++) {
+         const x0 = verts[3 * vi], y0 = verts[3 * vi + 1];
+         const x1 = x0 * worldScale, y1 = y0 * worldScale;
+         const prevX = x1 * Math.cos(lastAngle + mesh.rotation.z) - y1 * Math.sin(lastAngle + mesh.rotation.z);
+         const currX = x1 * Math.cos(worldRot) - y1 * Math.sin(worldRot);
+         const currY = x1 * Math.sin(worldRot) + y1 * Math.cos(worldRot);
+         const key = `${ci}-${vi}`;
+         if (prevX > 0 && currX <= 0 && currY > 0 && !lastTrig.has(key)) {
+           // trigger sound
+           const freq = Math.hypot(x1, y1);
+           synth.triggerAttackRelease(freq, '16n', tNow);
+           // marker
+           const mmat = baseMarkMat.clone();
+           const m = new THREE.Mesh(markerGeom, mmat);
+           m.position.set(currX, currY, 2);
+           scene.add(m);
+           markers.push({ mesh: m, life: MARK_LIFE });
+           triggeredNow.add(key);
+         }
+       }
+     }
+ 
+     // fade & remove markers
+     for (let j = markers.length - 1; j >= 0; j--) {
+       const o = markers[j];
+       o.life--;
+       o.mesh.material.opacity = o.life / MARK_LIFE;
+       if (o.life <= 0) {
+         scene.remove(o.mesh);
+         markers.splice(j, 1);
+       }
+     }
+ 
+     lastTrig = triggeredNow;
+     lastAngle
+::contentReference[oaicite:0]{index=0}
+ 
