@@ -1,16 +1,14 @@
 import * as THREE from 'three';
 import * as Tone from 'tone';
 
-// === Controlo de UI ===
-const speedSlider = document.getElementById('speed');
-const speedValue  = document.getElementById('speedValue');
-// Valor inicial de speed
-let speed = parseFloat(speedSlider.value);
-speedSlider.oninput = (e) => {
-  speed = parseFloat(e.target.value);
-  speedValue.textContent = speed.toFixed(3);
-  // Atualiza o BPM do transporte (0.01–0.333 → 24–80 BPM)
-  transport.bpm.value = speed * 240;
+// === Controlo de UI (BPM) ===
+const bpmSlider = document.getElementById('bpm');
+const bpmValue  = document.getElementById('bpmValue');
+let bpm = parseInt(bpmSlider.value, 10);
+bpmSlider.oninput = (e) => {
+  bpm = parseInt(e.target.value, 10);
+  bpmValue.textContent = bpm;
+  transport.bpm.value = bpm;
 };
 
 // === Setup Three.js ===
@@ -27,89 +25,87 @@ document.getElementById('canvas').appendChild(renderer.domElement);
 
 // === Geometria do “círculo” (pentágono) ===
 const geometry = new THREE.CircleGeometry(1, 5);
-const material = new THREE.MeshBasicMaterial({
-  color: 0x00ffcc,
-  wireframe: true
-});
-const circle = new THREE.Mesh(geometry, material);
-// Coloca ligeiramente à frente para não tapar o eixo
+const material = new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true });
+const circle   = new THREE.Mesh(geometry, material);
 circle.position.z = 0.01;
 scene.add(circle);
 
 // === Eixo vertical (linha branca) ===
 const eixoMat  = new THREE.LineBasicMaterial({ color: 0xffffff });
-const linePts  = [
-  new THREE.Vector3(0, 0, 0),  // centro
-  new THREE.Vector3(0, 5, 0)   // topo
-];
+const linePts  = [ new THREE.Vector3(0,0,0), new THREE.Vector3(0,5,0) ];
 const eixoGeo  = new THREE.BufferGeometry().setFromPoints(linePts);
 scene.add(new THREE.Line(eixoGeo, eixoMat));
 
-// Ajusta a câmara
 camera.position.z = 5;
 
 // === Setup Tone.js ===
-// PolySynth para múltiplas vozes sem conflito de agendamento
-const synth     = new Tone.PolySynth(Tone.Synth, 5).toDestination();
-// Pega na instância de Transport via getTransport()
+const synth     = new Tone.PolySynth(Tone.Synth, 8).toDestination();
 const transport = Tone.getTransport();
-// Define a resolução e o BPM inicial
-transport.PPQ       = 480;            // 480 pulses per quarter note
-transport.bpm.value = speed * 240;    // inicial mapeado do slider
+transport.PPQ       = 480; // 480 ticks por semínima (beat)
+transport.bpm.value = bpm;
 
-// Desbloquear áudio e arrancar o Transport ao clique
+// Desbloquear áudio e arrancar o Transport
 document.body.addEventListener('click', async () => {
   await Tone.start();
   transport.start();
-  console.log('AudioContext e Transport iniciados');
+  console.log('AudioContext e Transport iniciados com', bpm, 'BPM');
 });
 
-// === Dados para triggers ===
-const vertices       = geometry.attributes.position.array;
-const vertexCount    = geometry.attributes.position.count;
-let lastTriggered    = new Set();
+// === Dados para deteção de triggers ===
+const vertices           = geometry.attributes.position.array;
+const vertexCount        = geometry.attributes.position.count;
+let lastAngle            = 0;
+let lastTriggeredIndices = new Set();
 
-// === Loop de renderização visual ===
-function render() {
-  requestAnimationFrame(render);
-  renderer.render(scene, camera);
-}
-render();
+// === Parâmetros de tempo para rotação por compasso ===
+const beatsPerBar = 4;
+const ticksPerBar = transport.PPQ * beatsPerBar; // 480 * 4 = 1920
 
-// === Loop de triggers agendado por tick ("1i") ===
+// === Loop de triggers e desenho sincronizado ===
 transport.scheduleRepeat((time) => {
   const ticks     = transport.ticks;
   const prevTicks = ticks - 1;
-
-  // ângulo atual e anterior (480 ticks = 1 rotação completa)
-  const angle     = (ticks     % 480) / 480 * Math.PI * 2;
-  const prevAngle = (prevTicks % 480) / 480 * Math.PI * 2;
-
-  // Aplica rotação visual
-  circle.rotation.z = angle;
-
+  
+  // cálculo preciso do ângulo antes e depois do tick
+  const angle     = (ticks     % ticksPerBar) / ticksPerBar * Math.PI * 2;
+  const prevAngle = (prevTicks % ticksPerBar) / ticksPerBar * Math.PI * 2;
+  
+  circle.rotation.z = angle; // já podemos girar aqui, se não quisermos usar Tone.Draw
+  
   const triggeredNow = new Set();
+  
   for (let i = 0; i < vertexCount; i++) {
-    const x = vertices[i*3];
-    const y = vertices[i*3+1];
-
-    // calcula posições antes e depois
-    const prevX = x * Math.cos(prevAngle) - y * Math.sin(prevAngle);
-    const currX = x * Math.cos(angle)     - y * Math.sin(angle);
-    const currY = x * Math.sin(angle)     + y * Math.cos(angle);
-
-    // zero-crossing na metade superior
-    if (prevX * currX < 0 && currY > 0) {
+    const x = vertices[i*3], y = vertices[i*3+1];
+  
+    // usa prevAngle em vez de lastAngle
+    const rotX_prev = x * Math.cos(prevAngle) - y * Math.sin(prevAngle);
+    const rotY_prev = x * Math.sin(prevAngle) + y * Math.cos(prevAngle);
+  
+    const rotX = x * Math.cos(angle) - y * Math.sin(angle);
+    const rotY = x * Math.sin(angle) + y * Math.cos(angle);
+  
+    // cruzamento do eixo na metade superior
+    if (rotX_prev < 0 && rotX >= 0 && rotY > 0) {
       triggeredNow.add(i);
+
     }
   }
 
-  // dispara todas as notas simultâneas como acorde
+  // dispara notas para todos os vértices que cruzaram
   if (triggeredNow.size > 0) {
     const freqs = Array.from(triggeredNow)
       .map(i => Tone.Midi(60 + (i % 12)).toFrequency());
-    synth.triggerAttackRelease(freqs, '16n', time);
+    synth.triggerAttackRelease(freqs, '8n', time);
   }
 
-  lastTriggered = triggeredNow;
+  // actualiza estado para o próximo tick
+  lastTriggeredIndices = triggeredNow;
+
+
+  // desenho sincronizado ao áudio
+  Tone.Draw.schedule(() => {
+    circle.rotation.z = angle;
+    renderer.render(scene, camera);
+  }, time);
+
 }, '1i');
