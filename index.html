@@ -45,22 +45,39 @@
           <span id="stepScaleValue">1.0</span>
           <input type="number" id="stepScaleNumber" min="0.1" max="2" step="0.1" value="1.0">
         </div>
-        <div class="control">
-          <label for="angleRange">Angle Offset (°):</label>
-          <input type="range" id="angleRange" min="-180" max="180" step="0.1" value="0">
-          <div style="display:flex; gap:8px;">
-            <span id="angleValue">0</span>
-            <input type="number" id="angleNumber" min="-180" max="180" step="1" value="0">
-          </div>
+      </div>
+      <div class="control">
+        <label for="angleRange">Angle (°):</label>
+        <input type="range" id="angleRange" min="-180" max="180" step="0.1" value="0">
+        <div style="display:flex; gap:8px;">
+          <span id="angleValue">0</span>
+          <input type="number" id="angleNumber" min="-180" max="180" step="1" value="0">
         </div>
-        <div class="control">
-  <label for="numberRange">Number:</label>
-  <input type="range" id="numberRange" min="2" max="12" step="1" value="4">
-  <div style="display:flex; gap:8px;">
-    <span id="numberValue">4</span>
-    <input type="number" id="numberNumber" min="2" max="12" step="1" value="4">
-  </div>
-</div>
+      </div>
+      <div class="control">
+        <label for="numberRange">Number:</label>
+        <input type="range" id="numberRange" min="2" max="12" step="1" value="4">
+        <div style="display:flex; gap:8px;">
+          <span id="numberValue">4</span>
+          <input type="number" id="numberNumber" min="2" max="12" step="1" value="4">
+        </div>
+      </div>
+    </section>
+    
+    <section>
+      <h2>ANIMATION</h2>
+      <div class="control">
+        <label for="useLerpCheckbox">Lag:</label>
+        <input type="checkbox" id="useLerpCheckbox">
+        <span class="help-text">Applies smooth transitions to Radius, Step Scale and Angle changes</span>
+      </div>
+      <div class="control">
+        <label for="lerpTimeRange">Lag Time (s):</label>
+        <input type="range" id="lerpTimeRange" min="0.1" max="5.0" step="0.1" value="1.0">
+        <div style="display:flex; gap:8px;">
+          <span id="lerpTimeValue">1.0</span>
+          <input type="number" id="lerpTimeNumber" min="0.1" max="5.0" step="0.1" value="1.0">
+        </div>
       </div>
     </section>
   </div>
