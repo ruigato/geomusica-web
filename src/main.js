@@ -5,7 +5,7 @@ import Stats from 'stats.js';
 // Import modules
 import { setupUI } from './ui/ui.js';
 import { setupAudio, triggerAudio } from './audio/audio.js';
-import { createCircleGeometry, createAxis } from './geometry/geometry.js';
+import { createPolygonGeometry, createAxis } from './geometry/geometry.js';
 import { animate } from './animation/animation.js';
 import { createAppState } from './state/state.js';
 import { MARK_LIFE } from './config/constants.js';
@@ -21,57 +21,123 @@ const appState = createAppState();
 // Setup UI and bind it to state
 setupUI(appState);
 
-// Setup audio
-const synth = setupAudio();
+// Setup audio - now with WebAudio
+setupAudio().then(audioInstance => {
+  if (!audioInstance) {
+    console.error('Failed to initialize audio. Visualization will run without audio.');
+  } else {
+    console.log('Audio initialized successfully. Click anywhere to start audio.');
+  }
 
-// Function to handle audio triggers with access to synth
-const handleAudioTrigger = (x, y, lastAngle, angle, tNow) => {
-  triggerAudio(synth, x, y, lastAngle, angle, tNow);
-};
+  // Function to handle audio triggers
+  const handleAudioTrigger = (x, y, lastAngle, angle, tNow) => {
+    triggerAudio(audioInstance, x, y, lastAngle, angle, tNow);
+  };
 
-// Three.js setup
-const scene = new THREE.Scene();
-const cam = new THREE.PerspectiveCamera(
-  75, 
-  (window.innerWidth * 0.8) / window.innerHeight, 
-  0.1, 
-  10000
-);
-cam.position.set(0, 0, 2000);
-cam.lookAt(0, 0, 0);
+  // Three.js setup
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(
+    75, 
+    (window.innerWidth * 0.8) / window.innerHeight, 
+    0.1, 
+    10000
+  );
+  cam.position.set(0, 0, 2000);
+  cam.lookAt(0, 0, 0);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth * 0.8, window.innerHeight);
-document.getElementById('canvas').appendChild(renderer.domElement);
-
-// Initialize geometry
-const baseGeo = createCircleGeometry(appState.radius, appState.segments);
-appState.baseGeo = baseGeo; // Store reference in state
-const mat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true });
-const group = new THREE.Group();
-scene.add(group);
-createAxis(scene);
-
-// Setup marker geometry
-const markerGeom = new THREE.SphereGeometry(8, 8, 8);
-
-// Handle window resize
-window.addEventListener('resize', () => {
-  cam.aspect = (window.innerWidth * 0.8) / window.innerHeight;
-  cam.updateProjectionMatrix();
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth * 0.8, window.innerHeight);
-});
+  document.getElementById('canvas').appendChild(renderer.domElement);
 
-// Start animation loop
-animate({
-  scene,
-  group,
-  baseGeo: baseGeo, // Pass the direct reference, not through state
-  mat,
-  stats,
-  synth,
-  renderer,
-  cam,
-  state: appState,
-  triggerAudioCallback: handleAudioTrigger
+  // Initialize geometry - use our new polygon outline geometry
+  const baseGeo = createPolygonGeometry(appState.radius, appState.segments);
+  appState.baseGeo = baseGeo; // Store reference in state
+  
+  // Use LineBasicMaterial instead of MeshBasicMaterial for lines
+  const mat = new THREE.LineBasicMaterial({ color: 0x00ffcc });
+  
+  const group = new THREE.Group();
+  scene.add(group);
+  createAxis(scene);
+
+  // Setup marker geometry
+  const markerGeom = new THREE.SphereGeometry(8, 8, 8);
+
+  // Handle window resize
+  window.addEventListener('resize', () => {
+    cam.aspect = (window.innerWidth * 0.8) / window.innerHeight;
+    cam.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth * 0.8, window.innerHeight);
+  });
+
+  // Add an info message
+  const infoEl = document.createElement('div');
+  infoEl.style.position = 'absolute';
+  infoEl.style.bottom = '10px';
+  infoEl.style.left = '10px';
+  infoEl.style.color = 'white';
+  infoEl.style.background = 'rgba(0,0,0,0.5)';
+  infoEl.style.padding = '5px';
+  infoEl.style.borderRadius = '5px';
+  infoEl.textContent = 'GeoMusica - Click anywhere to start audio';
+  document.body.appendChild(infoEl);
+
+  // Start animation loop
+  animate({
+    scene,
+    group,
+    baseGeo,
+    mat,
+    stats,
+    csound: audioInstance,
+    renderer,
+    cam,
+    state: appState,
+    triggerAudioCallback: handleAudioTrigger
+  });
+}).catch(error => {
+  console.error('Error setting up audio:', error);
+  
+  // Setup Three.js anyway without audio
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(
+    75, 
+    (window.innerWidth * 0.8) / window.innerHeight, 
+    0.1, 
+    10000
+  );
+  cam.position.set(0, 0, 2000);
+  cam.lookAt(0, 0, 0);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth * 0.8, window.innerHeight);
+  document.getElementById('canvas').appendChild(renderer.domElement);
+
+  // Initialize polygon geometry without audio
+  const baseGeo = createPolygonGeometry(appState.radius, appState.segments);
+  appState.baseGeo = baseGeo;
+  
+  // Use LineBasicMaterial for lines
+  const mat = new THREE.LineBasicMaterial({ color: 0x00ffcc });
+  
+  const group = new THREE.Group();
+  scene.add(group);
+  createAxis(scene);
+
+  // Silent audio trigger function - does nothing but required for animation
+  const silentAudioTrigger = () => {};
+
+  // Start animation loop without audio
+  animate({
+    scene,
+    group,
+    baseGeo,
+    mat,
+    stats,
+    csound: null,
+    renderer,
+    cam,
+    state: appState,
+    triggerAudioCallback: silentAudioTrigger
+  });
 });

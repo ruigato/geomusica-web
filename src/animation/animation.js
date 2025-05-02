@@ -1,7 +1,7 @@
 // src/animation/animation.js
 import * as THREE from 'three';
-import { Tone } from '../audio/audio.js';
-import { updateGroup, detectCrossings } from '../geometry/geometry.js';
+import { getCurrentTime } from '../audio/audio.js';
+import { updateGroup, detectCrossings, createPolygonGeometry } from '../geometry/geometry.js';
 import { MARK_LIFE } from '../config/constants.js';
 
 // Function to animate and update group rotation
@@ -12,7 +12,7 @@ export function animate(params) {
     baseGeo, 
     mat, 
     stats, 
-    synth, 
+    csound, // Csound instance
     renderer, 
     cam, 
     state,
@@ -38,27 +38,43 @@ export function animate(params) {
     baseGeo: params.baseGeo, // Important: use the params reference, not the local variable
     mat,
     stats,
-    synth,
+    csound,
     renderer,
     cam,
     state,
     triggerAudioCallback
   }));
 
-  // Calculate time and update lerping
-  const tNow = Tone.now(); 
+  // Use simple timing - no more Csound time dependency
+  const tNow = getCurrentTime(); // Now returns performance.now() / 1000
   const dt = tNow - lastTime;
   state.lastTime = tNow;
   
   // Update lerped values based on time elapsed
   state.updateLerp(dt);
 
-  // Rebuild geometry if radius or segments change
-  if (baseGeo.parameters.radius !== radius || baseGeo.parameters.segments !== segments) {
+  // For BufferGeometry, we need to check if the radius or segments have changed
+  // by comparing with the state values rather than geometry parameters
+  let needsNewGeometry = false;
+  
+  // Extract the current number of points from the buffer geometry
+  const currentSegments = baseGeo.getAttribute('position').count;
+  
+  // Check if radius or segments have changed
+  if (currentSegments !== segments) {
+    needsNewGeometry = true;
+  }
+  
+  // If we need a new geometry, create it
+  if (needsNewGeometry) {
+    // Dispose of the old geometry to free memory
     baseGeo.dispose();
-    const newGeo = new THREE.CircleGeometry(radius, segments);
+    
+    // Create new polygon geometry
+    const newGeo = createPolygonGeometry(radius, segments);
+    
+    // Update references
     state.baseGeo = newGeo;
-    // This is critical: we need to update the baseGeo reference in our params as well
     params.baseGeo = newGeo;
   }
 
@@ -69,7 +85,6 @@ export function animate(params) {
   const ang = lastAngle + dAng;
 
   // Apply rotation to the group
-  // We don't apply the UI angle here, since it's applied per-copy in updateGroup
   group.rotation.z = ang;
 
   // Detection of vertex crossings and audio calculations
