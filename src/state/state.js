@@ -23,7 +23,13 @@ export function createAppState() {
     lastAngle: 0,
     lastTrig: new Set(),
     markers: [],
+// Add these properties to track intersection calculation state
+    justCalculatedIntersections: false,
     
+    // Additional state to track parameter changes
+    lastStepScale: DEFAULT_VALUES.STEP_SCALE,
+    lastAngle: DEFAULT_VALUES.ANGLE,
+
     // User configurable parameters
     bpm: DEFAULT_VALUES.BPM,
     radius: DEFAULT_VALUES.RADIUS,
@@ -194,6 +200,8 @@ export function createAppState() {
       // Note: BPM, copies, and segments (Number) are not lerped
     },
     
+
+
     // Helper function for linear interpolation
     lerp(start, end, t) {
       return start + (end - start) * t;

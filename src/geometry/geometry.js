@@ -63,12 +63,15 @@ function createIntersectionPointGeometry() {
 }
 
 // Function to update the group of copies
-export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, angle = 0, state = null) {
+export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, angle = 0, state = null, isLerping = false, justCalculatedIntersections = false) {
   group.clear();
   
   // Cache the base radius once to use for all modulus calculations
   const baseRadius = state ? state.radius : 0;
   
+  // Only create markers if we have multiple copies
+  const hasEnoughCopiesForIntersections = copies > 1;
+
   // Create vertex circle geometry (reuse for all vertices)
   const vertexCircleGeometry = createVertexCircleGeometry();
   
@@ -209,13 +212,48 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   if (tempGroup) {
     tempGroup.traverse(child => {
       if (child.geometry && child !== baseGeo) child.geometry.dispose();
-      if (child.material) child.material.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
     });
     tempGroup = null;
   }
   
   // Finally, add the intersection point markers to the group (so they rotate with everything)
-  if (state && state.useIntersections && state.intersectionPoints && state.intersectionPoints.length > 0) {
+  // Only create/update markers if:
+  // 1. We're using intersections AND
+  // 2. We have intersection points AND
+  // 3. We're not currently lerping AND
+  // 4. Either we just calculated new intersections OR we don't have markers yet
+  const needToCreateMarkers = state && 
+                             state.useIntersections && 
+                             hasEnoughCopiesForIntersections && // Only if we have enough copies
+                             state.intersectionPoints && 
+                             state.intersectionPoints.length > 0 && 
+                             !isLerping &&
+                             (justCalculatedIntersections || !group.userData.intersectionMarkerGroup);
+                             
+  if (needToCreateMarkers) {
+    // Clean up any existing marker group on this group
+    if (group.userData && group.userData.intersectionMarkerGroup) {
+      group.remove(group.userData.intersectionMarkerGroup);
+      group.userData.intersectionMarkerGroup.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(m => m.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      });
+      group.userData.intersectionMarkerGroup = null;
+    }
+    
     // Create a group to hold the intersection markers
     const intersectionMarkerGroup = new THREE.Group();
     
@@ -282,6 +320,9 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
   
   // First detect crossings for regular vertices
   for (let ci = 0; ci < copies; ci++) {
+    // Check that we have enough children in the group
+    if (ci >= group.children.length) continue;
+    
     // Each copy is a Group containing the LineLoop and vertex circles
     const copyGroup = group.children[ci];
     
@@ -289,6 +330,9 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
     if (copyGroup.userData && copyGroup.userData.isIntersectionGroup) {
       continue;
     }
+    
+    // Make sure the copy group has children
+    if (!copyGroup.children || copyGroup.children.length === 0) continue;
     
     // The first child is the LineLoop
     const mesh = copyGroup.children[0];
@@ -341,7 +385,7 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
     child.userData && child.userData.isIntersectionGroup
   );
   
-  if (intersectionGroup) {
+  if (intersectionGroup && intersectionGroup.children && intersectionGroup.children.length > 0) {
     // Process each intersection point for possible triggers
     for (let i = 0; i < intersectionGroup.children.length; i++) {
       const pointMesh = intersectionGroup.children[i];

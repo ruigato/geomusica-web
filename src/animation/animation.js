@@ -5,9 +5,9 @@ import { updateGroup, detectCrossings, createPolygonGeometry } from '../geometry
 import { processIntersections, createIntersectionMarkers } from '../geometry/intersections.js';
 import { MARK_LIFE } from '../config/constants.js';
 
-// Function to clean up intersection point markers
+// Function to clean up intersection point markers - improved version
 function cleanupIntersectionMarkers(scene) {
-  // Clean up marker group if it exists
+  // First clean up the marker group in the scene
   if (scene && scene.userData.intersectionMarkerGroup) {
     // If the marker group is a child of another object, remove it there
     const parent = scene.userData.intersectionMarkerGroup.parent;
@@ -17,13 +17,42 @@ function cleanupIntersectionMarkers(scene) {
       scene.remove(scene.userData.intersectionMarkerGroup);
     }
     
-    // Clear all children of the marker group
+    // Clear all children of the marker group and dispose resources
     scene.userData.intersectionMarkerGroup.traverse(child => {
       if (child.geometry) child.geometry.dispose();
-      if (child.material) child.material.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
     });
     
     scene.userData.intersectionMarkerGroup = null;
+  }
+  
+  // Now clean up any marker groups that might be in child objects (like the main group)
+  if (scene.children) {
+    scene.children.forEach(child => {
+      if (child.userData && child.userData.intersectionMarkerGroup) {
+        const markerGroup = child.userData.intersectionMarkerGroup;
+        child.remove(markerGroup);
+        
+        markerGroup.traverse(obj => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach(m => m.dispose());
+            } else {
+              obj.material.dispose();
+            }
+          }
+        });
+        
+        child.userData.intersectionMarkerGroup = null;
+      }
+    });
   }
   
   // Also clean up individual markers for backward compatibility
@@ -35,7 +64,13 @@ function cleanupIntersectionMarkers(scene) {
         scene.remove(marker);
       }
       if (marker.geometry) marker.geometry.dispose();
-      if (marker.material) child.material.dispose();
+      if (marker.material) {
+        if (Array.isArray(marker.material)) {
+          marker.material.forEach(m => m.dispose());
+        } else {
+          marker.material.dispose();
+        }
+      }
     }
     scene.userData.intersectionMarkers = [];
   }
@@ -131,85 +166,148 @@ export function animate(params) {
     }
   }
   
-  // Check if we're still lerping and update intersections if needed
+  // Track parameter changes that affect geometry or intersections
+  const paramsChanged = 
+    needsNewGeometry || 
+    Math.abs(state.lastStepScale - stepScale) > 0.001 ||
+    Math.abs(state.lastAngle - angle) > 0.1;
+
+  // If parameters changed, we need to update
+  if (paramsChanged) {
+    // Store current values for comparison in next frame
+    state.lastStepScale = stepScale;
+    state.lastAngle = angle;
+    
+    // Always clean up existing intersection markers before updating
+    cleanupIntersectionMarkers(scene);
+    
+    // Force intersection update
+    if (useIntersections) {
+      state.needsIntersectionUpdate = true;
+    }
+  }
+  
+  // Check if we're still lerping
   const isLerping = state.useLerp && (
     Math.abs(state.radius - state.targetRadius) > 0.1 ||
     Math.abs(state.stepScale - state.targetStepScale) > 0.001 ||
     Math.abs(state.angle - state.targetAngle) > 0.1
   );
   
-  // If we're lerping, we should not update intersections until lerping is complete
-  // to avoid the "blue dots" issue
-  if (isLerping && useIntersections) {
-    // If actively lerping, hide the intersection markers temporarily
-    if (group.userData && group.userData.intersectionMarkerGroup) {
-      group.userData.intersectionMarkerGroup.visible = false;
-    }
-  } else {
-    // If not lerping and we have an intersection marker group, make it visible
-    if (group.userData && group.userData.intersectionMarkerGroup) {
-      group.userData.intersectionMarkerGroup.visible = true;
-    }
+  // Check if we actually have enough copies for intersections to be possible
+  const hasEnoughCopiesForIntersections = copies > 1;
+
+  // If we don't have enough copies, clean up any existing intersection points
+  if (state.useIntersections && !hasEnoughCopiesForIntersections) {
+    // Clear any existing intersection points
+    state.intersectionPoints = [];
     
-    // If intersection toggle changed, need to update
-    if (state.lastUseIntersections !== useIntersections) {
-      state.lastUseIntersections = useIntersections;
-      state.needsIntersectionUpdate = true;
-      
-      // Clean up intersection markers if no longer needed
-      if (!useIntersections) {
-        cleanupIntersectionMarkers(scene);
-      }
-    }
+    // Clean up any existing intersection markers
+    cleanupIntersectionMarkers(scene);
     
-    // Process intersections if needed
-    if (useIntersections && needsIntersectionUpdate && copies > 1) {
-      // Clean up any existing intersection markers
-      cleanupIntersectionMarkers(scene);
-      
-      // First create a temp group with the polygon copies (without visuals)
-      const tempGroup = new THREE.Group();
-      tempGroup.position.copy(group.position);
-      
-      // Add copies to the temp group
-      for (let i = 0; i < copies; i++) {
-        const finalScale = state.useModulus 
-          ? state.getScaleFactorForCopy(i) 
-          : Math.pow(stepScale, i);
-          
-        const cumulativeAngleRadians = (i * angle * Math.PI) / 180;
-        
-        const copyGroup = new THREE.Group();
-        const lines = new THREE.LineLoop(params.baseGeo, mat.clone());
-        lines.scale.set(finalScale, finalScale, 1);
-        copyGroup.add(lines);
-        copyGroup.rotation.z = cumulativeAngleRadians;
-        
-        tempGroup.add(copyGroup);
-      }
-      
-      // Process intersections with the temporary group
-      const newGeometry = processIntersections(state, params.baseGeo, tempGroup);
-      
-      // If we got a new geometry with intersections added
-      if (newGeometry !== params.baseGeo) {
-        params.baseGeo = newGeometry;
-        state.baseGeo = newGeometry;
-      }
-      
-      // Clean up temporary group
-      tempGroup.traverse(obj => {
-        if (obj.geometry && obj !== params.baseGeo) obj.geometry.dispose();
-        if (obj.material) obj.material.dispose();
+    // If we have a marker group on the main group, remove it
+    if (group.userData && group.userData.intersectionMarkerGroup) {
+      group.remove(group.userData.intersectionMarkerGroup);
+      group.userData.intersectionMarkerGroup.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(m => m.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
       });
-      
-      // Reset the flag since we've updated the intersections
-      state.needsIntersectionUpdate = false;
+      group.userData.intersectionMarkerGroup = null;
     }
   }
+  
+  // If intersection toggle changed, need to update
+  if (state.lastUseIntersections !== useIntersections) {
+    state.lastUseIntersections = useIntersections;
+    state.needsIntersectionUpdate = true;
+    
+    // Clean up intersection markers if no longer needed
+    if (!useIntersections) {
+      cleanupIntersectionMarkers(scene);
+    }
+  }
+  
+  // Only process intersections if parameters have changed, we have enough copies, and we're not lerping
+  const needsIntersectionRecalculation = 
+    useIntersections && 
+    hasEnoughCopiesForIntersections && 
+    (needsIntersectionUpdate || paramsChanged);
+    
+  // Process intersections if needed - but ONLY when parameters have changed
+  if (needsIntersectionRecalculation) {
+    // Clean up any existing intersection markers
+    cleanupIntersectionMarkers(scene);
+    
+    // Reset intersection points array to empty before calculating new ones
+    state.intersectionPoints = [];
+    
+    // First create a temp group with the polygon copies (without visuals)
+    const tempGroup = new THREE.Group();
+    tempGroup.position.copy(group.position);
+    
+    // Add copies to the temp group
+    for (let i = 0; i < copies; i++) {
+      const finalScale = state.useModulus 
+        ? state.getScaleFactorForCopy(i) 
+        : Math.pow(stepScale, i);
+        
+      const cumulativeAngleRadians = (i * angle * Math.PI) / 180;
+      
+      const copyGroup = new THREE.Group();
+      const lines = new THREE.LineLoop(params.baseGeo, mat.clone());
+      lines.scale.set(finalScale, finalScale, 1);
+      copyGroup.add(lines);
+      copyGroup.rotation.z = cumulativeAngleRadians;
+      
+      tempGroup.add(copyGroup);
+    }
+    
+    // Process intersections with the temporary group
+    const newGeometry = processIntersections(state, params.baseGeo, tempGroup);
+    
+    // If we got a new geometry with intersections added
+    if (newGeometry !== params.baseGeo) {
+      params.baseGeo = newGeometry;
+      state.baseGeo = newGeometry;
+    }
+    
+    // Clean up temporary group
+    tempGroup.traverse(obj => {
+      if (obj.geometry && obj !== params.baseGeo) obj.geometry.dispose();
+      if (obj.material) obj.material.dispose();
+    });
+    
+    // If no intersections were found, ensure the marker group is cleared
+    if (!state.intersectionPoints || state.intersectionPoints.length === 0) {
+      // Make sure to clean up both in the scene and in the group
+      cleanupIntersectionMarkers(scene);
+      
+      if (group.userData && group.userData.intersectionMarkerGroup) {
+        group.remove(group.userData.intersectionMarkerGroup);
+        group.userData.intersectionMarkerGroup = null;
+      }
+      
+      // Also clear out the state's intersection points array explicitly
+      state.intersectionPoints = [];
+    }
+    
+    // Reset the flag since we've updated the intersections
+    state.needsIntersectionUpdate = false;
+    
+    // Flag to updateGroup that intersections were just calculated
+    state.justCalculatedIntersections = true;
+  } else {
+    state.justCalculatedIntersections = false;
+  }
 
-  // Update the group with current parameters
-  updateGroup(group, copies, stepScale, params.baseGeo, mat, segments, angle, state);
+  // Update the group with current parameters and pass the justCalculatedIntersections flag
+  updateGroup(group, copies, stepScale, params.baseGeo, mat, segments, angle, state, isLerping, state.justCalculatedIntersections);
 
   // Calculate animation angle based on BPM
   const dAng = (bpm / 60) * 2 * Math.PI * dt;

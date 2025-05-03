@@ -281,25 +281,25 @@ export function createIntersectionMarkers(scene, intersectionPoints, group) {
 
 // Process intersections and update the base geometry
 export function processIntersections(state, baseGeo, group) {
-  if (!state || !state.useIntersections || !state.needsIntersectionUpdate || !baseGeo || !group) {
-    return baseGeo;
-  }
-  
-  // Find all intersections between polygons
-  const intersectionPoints = findAllIntersections(group);
-  
-  if (intersectionPoints.length === 0) {
+    if (!state || !state.useIntersections || !state.needsIntersectionUpdate || !baseGeo || !group) {
+      return baseGeo;
+    }
+    
+    // Find all intersections between polygons
+    const intersectionPoints = findAllIntersections(group);
+    
+    if (intersectionPoints.length === 0) {
+      state.needsIntersectionUpdate = false;
+      return baseGeo;
+    }
+    
+    // Update state with intersection points
+    state.intersectionPoints = intersectionPoints;
     state.needsIntersectionUpdate = false;
+    
+    // NOTE: We've removed the call to applyIntersectionsToGeometry
+    // so we no longer add intersection points to the base geometry
+    
+    // Return the original geometry unchanged
     return baseGeo;
   }
-  
-  // Apply the intersections to create a new geometry
-  const newGeometry = applyIntersectionsToGeometry(baseGeo.clone(), intersectionPoints);
-  
-  // Update state
-  state.intersectionPoints = intersectionPoints;
-  state.needsIntersectionUpdate = false;
-  
-  // Return the new geometry with intersections added
-  return newGeometry;
-}
