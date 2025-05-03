@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { INTERSECTION_MERGE_THRESHOLD, INTERSECTION_POINT_COLOR, INTERSECTION_POINT_OPACITY, INTERSECTION_POINT_SIZE } from '../config/constants.js';
 
-// A more precise line-line intersection function
+// Line segment intersection calculation
 export function findIntersection(p1, p2, p3, p4) {
   // Extract coordinates
   const x1 = p1.x, y1 = p1.y;
@@ -10,7 +10,7 @@ export function findIntersection(p1, p2, p3, p4) {
   const x3 = p3.x, y3 = p3.y;
   const x4 = p4.x, y4 = p4.y;
   
-  // Calculate determinants
+  // Calculate denominators
   const denominator = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
   
   // If denominator is 0, lines are parallel or collinear
@@ -51,95 +51,109 @@ function isPointTooClose(point, existingPoints, threshold = INTERSECTION_MERGE_T
 // Find all intersections between polygon copies
 export function findAllIntersections(group) {
   const intersectionPoints = [];
-  const children = group.children;
   
-  // Skip if there are fewer than 2 copies (no intersections possible)
-  if (children.length < 2) {
+  // Get state object from group's userData
+  const state = group.userData.state;
+  
+  if (!state) {
+    console.warn("No state found in group userData, cannot calculate intersections");
     return intersectionPoints;
   }
   
-  // Create a temporary group to calculate intersections in an unrotated state
-  const tempGroup = new THREE.Group();
+  // Extract necessary parameters from state
+  const useModulus = state.useModulus;
+  const modulusValue = state.modulusValue;
+  const stepScale = state.stepScale;
+  const angle = state.angle;
+  const radius = state.radius;
+  const segments = state.segments;
+  const copies = group.children.length;
   
-  // Clone each polygon to the temp group, preserving its individual rotation and scale
-  for (let i = 0; i < children.length; i++) {
-    const originalCopy = children[i];
-    const clonedCopy = originalCopy.clone();
-    
-    // Apply only the rotation of each copy, not the group's rotation
-    clonedCopy.rotation.copy(originalCopy.rotation);
-    
-    // Add to temp group
-    tempGroup.add(clonedCopy);
+  // Create a geometry that will be used for all calculations
+  const geo = new THREE.BufferGeometry();
+  
+  // Generate vertices for the polygon outline
+  const vertices = [];
+  const step = (Math.PI * 2) / segments;
+  
+  for (let i = 0; i < segments; i++) {
+    const ang = i * step;
+    const x = radius * Math.cos(ang);
+    const y = radius * Math.sin(ang);
+    vertices.push(new THREE.Vector3(x, y, 0));
   }
   
-  // For each pair of polygons
-  for (let i = 0; i < tempGroup.children.length; i++) {
-    const copyA = tempGroup.children[i];
+  // Create line segments for each copy directly using the state parameters
+  const polygons = [];
+  
+  for (let i = 0; i < copies; i++) {
+    // Skip intersection marker groups
+    if (i < group.children.length && 
+        group.children[i].userData && 
+        group.children[i].userData.isIntersectionGroup) {
+      continue;
+    }
     
-    // Get the line segments
-    // LineLoop is typically the first child
-    const linesA = copyA.children[0];
+    // Calculate scale factor based on modulus and step scale
+    let scaleFactor;
+    if (useModulus) {
+      // Get modulus scale factor using the same formula as in state.getScaleFactorForCopy
+      const modStep = 1.0 / modulusValue;
+      const modIndex = i % modulusValue;
+      const modulusScale = (modIndex + 1) * modStep;
+      
+      // Also apply step scale
+      const stepFactor = Math.pow(stepScale, i);
+      
+      // Combine both scale factors
+      scaleFactor = modulusScale * stepFactor;
+    } else {
+      // Just use step scale
+      scaleFactor = Math.pow(stepScale, i);
+    }
     
-    if (!linesA || !linesA.geometry) continue;
+    // Calculate rotation for this copy in radians
+    const rotationRad = (i * angle * Math.PI) / 180;
     
-    const positionsA = linesA.geometry.getAttribute('position');
-    const countA = positionsA.count;
+    // Create scaled and rotated vertices for this polygon
+    const polyVertices = [];
+    for (let j = 0; j < vertices.length; j++) {
+      // Clone the original vertex
+      const originalVertex = vertices[j].clone();
+      
+      // Apply scaling
+      originalVertex.multiplyScalar(scaleFactor);
+      
+      // Apply rotation
+      const x = originalVertex.x;
+      const y = originalVertex.y;
+      const rotX = x * Math.cos(rotationRad) - y * Math.sin(rotationRad);
+      const rotY = x * Math.sin(rotationRad) + y * Math.cos(rotationRad);
+      
+      polyVertices.push(new THREE.Vector3(rotX, rotY, 0));
+    }
     
-    for (let j = i + 1; j < tempGroup.children.length; j++) {
-      const copyB = tempGroup.children[j];
+    // Add to polygons list
+    polygons.push(polyVertices);
+  }
+  
+  // Check all polygon pairs for intersections
+  for (let i = 0; i < polygons.length; i++) {
+    const polyA = polygons[i];
+    
+    for (let j = i + 1; j < polygons.length; j++) {
+      const polyB = polygons[j];
       
-      // Get the line segments
-      const linesB = copyB.children[0];
-      
-      if (!linesB || !linesB.geometry) continue;
-      
-      const positionsB = linesB.geometry.getAttribute('position');
-      const countB = positionsB.count;
-      
-      // Check each line segment pair for intersections
-      for (let a = 0; a < countA; a++) {
-        // Get vertices for the line segment from A
-        const a1 = a;
-        const a2 = (a + 1) % countA;
+      // Check each edge pair for intersections
+      for (let a = 0; a < polyA.length; a++) {
+        const a1 = polyA[a];
+        const a2 = polyA[(a + 1) % polyA.length];
         
-        // Get vertex coordinates in world space
-        const v1A = new THREE.Vector3();
-        const v2A = new THREE.Vector3();
-        
-        v1A.fromBufferAttribute(positionsA, a1);
-        v2A.fromBufferAttribute(positionsA, a2);
-        
-        // Apply scaling
-        v1A.multiply(linesA.scale);
-        v2A.multiply(linesA.scale);
-        
-        // Apply rotation
-        v1A.applyQuaternion(copyA.quaternion);
-        v2A.applyQuaternion(copyA.quaternion);
-        
-        for (let b = 0; b < countB; b++) {
-          // Get vertices for the line segment from B
-          const b1 = b;
-          const b2 = (b + 1) % countB;
+        for (let b = 0; b < polyB.length; b++) {
+          const b1 = polyB[b];
+          const b2 = polyB[(b + 1) % polyB.length];
           
-          // Get vertex coordinates in world space
-          const v1B = new THREE.Vector3();
-          const v2B = new THREE.Vector3();
-          
-          v1B.fromBufferAttribute(positionsB, b1);
-          v2B.fromBufferAttribute(positionsB, b2);
-          
-          // Apply scaling
-          v1B.multiply(linesB.scale);
-          v2B.multiply(linesB.scale);
-          
-          // Apply rotation
-          v1B.applyQuaternion(copyB.quaternion);
-          v2B.applyQuaternion(copyB.quaternion);
-          
-          // Find intersection between these two line segments
-          const intersection = findIntersection(v1A, v2A, v1B, v2B);
+          const intersection = findIntersection(a1, a2, b1, b2);
           
           if (intersection && !isPointTooClose(intersection, intersectionPoints)) {
             intersectionPoints.push(intersection);
@@ -149,62 +163,14 @@ export function findAllIntersections(group) {
     }
   }
   
-  // Clean up temporary objects
-  tempGroup.traverse(child => {
-    if (child.geometry && child !== tempGroup) child.geometry.dispose();
-    if (child.material) child.material.dispose();
-  });
-  
   return intersectionPoints;
 }
 
 // Apply intersection points to the geometry
 export function applyIntersectionsToGeometry(baseGeo, intersectionPoints) {
-  if (!baseGeo || !intersectionPoints || intersectionPoints.length === 0) {
-    return baseGeo;
-  }
-  
-  // Get the current positions and indices
-  const positions = baseGeo.getAttribute('position').array;
-  const count = baseGeo.getAttribute('position').count;
-  const originalIndices = baseGeo.index.array;
-  
-  // Create a new array to hold all vertices (existing + intersections)
-  const newPositions = [];
-  
-  // Add existing vertices first
-  for (let i = 0; i < count; i++) {
-    newPositions.push(
-      positions[i * 3],     // x
-      positions[i * 3 + 1], // y
-      positions[i * 3 + 2]  // z
-    );
-  }
-  
-  // Then add intersection points
-  for (const point of intersectionPoints) {
-    newPositions.push(
-      point.x,
-      point.y,
-      point.z || 0
-    );
-  }
-  
-  // Create a new BufferGeometry
-  const newGeometry = new THREE.BufferGeometry();
-  
-  // Set positions attribute
-  newGeometry.setAttribute('position', new THREE.Float32BufferAttribute(newPositions, 3));
-  
-  // Copy original indices to maintain the original shape
-  // Important: we're not adding new lines for the intersection points
-  // they will just be added as vertices in the geometry
-  newGeometry.setIndex([...originalIndices]);
-  
-  // Dispose of the old geometry to free memory
-  baseGeo.dispose();
-  
-  return newGeometry;
+  // We no longer add intersection points to the geometry
+  // Just return the original geometry unchanged
+  return baseGeo;
 }
 
 // Create visualization markers for intersection points
@@ -222,19 +188,15 @@ export function createIntersectionMarkers(scene, intersectionPoints, group) {
         scene.remove(marker);
       }
       if (marker.geometry) marker.geometry.dispose();
-      if (marker.material) marker.material.dispose();
+      if (marker.material) {
+        if (Array.isArray(marker.material)) {
+          marker.material.forEach(m => m.dispose());
+        } else {
+          marker.material.dispose();
+        }
+      }
     }
     scene.userData.intersectionMarkers = [];
-  }
-  
-  // Clean up marker group if it exists
-  if (scene.userData.intersectionMarkerGroup) {
-    if (scene.userData.intersectionMarkerGroup.parent) {
-      scene.userData.intersectionMarkerGroup.parent.remove(scene.userData.intersectionMarkerGroup);
-    } else {
-      scene.remove(scene.userData.intersectionMarkerGroup);
-    }
-    scene.userData.intersectionMarkerGroup = null;
   }
   
   // Store markers in userData for cleanup later
@@ -255,15 +217,16 @@ export function createIntersectionMarkers(scene, intersectionPoints, group) {
   
   // Create a group specifically for intersection markers
   const markersGroup = new THREE.Group();
+  markersGroup.userData.isIntersectionGroup = true;
   
-  // Add the markers group to the main rotation group (for proper rotation)
+  // Add the markers group to the main rotation group if provided (for proper rotation)
   if (group) {
     group.add(markersGroup);
   } else {
     scene.add(markersGroup);
   }
   
-  // Store for later cleanup
+  // Add this group to the scene's userData for later cleanup
   scene.userData.intersectionMarkerGroup = markersGroup;
   
   // Create and add a marker for each intersection point
@@ -271,7 +234,7 @@ export function createIntersectionMarkers(scene, intersectionPoints, group) {
     const marker = new THREE.Mesh(circleGeometry, intersectionMaterial.clone());
     marker.position.copy(point);
     
-    // Add to the markers group
+    // Add to the markers group rather than directly to the scene
     markersGroup.add(marker);
     
     // Also store references for later cleanup
@@ -281,25 +244,26 @@ export function createIntersectionMarkers(scene, intersectionPoints, group) {
 
 // Process intersections and update the base geometry
 export function processIntersections(state, baseGeo, group) {
-    if (!state || !state.useIntersections || !state.needsIntersectionUpdate || !baseGeo || !group) {
-      return baseGeo;
-    }
-    
-    // Find all intersections between polygons
-    const intersectionPoints = findAllIntersections(group);
-    
-    if (intersectionPoints.length === 0) {
-      state.needsIntersectionUpdate = false;
-      return baseGeo;
-    }
-    
-    // Update state with intersection points
-    state.intersectionPoints = intersectionPoints;
-    state.needsIntersectionUpdate = false;
-    
-    // NOTE: We've removed the call to applyIntersectionsToGeometry
-    // so we no longer add intersection points to the base geometry
-    
-    // Return the original geometry unchanged
+  if (!state || !state.useIntersections || !state.needsIntersectionUpdate || !baseGeo || !group) {
     return baseGeo;
   }
+  
+  // Make sure the group has access to the state
+  group.userData.state = state;
+  
+  // Find all intersections between polygons
+  const intersectionPoints = findAllIntersections(group);
+  
+  if (intersectionPoints.length === 0) {
+    state.needsIntersectionUpdate = false;
+    state.intersectionPoints = [];
+    return baseGeo;
+  }
+  
+  // Update state with intersection points
+  state.intersectionPoints = intersectionPoints;
+  state.needsIntersectionUpdate = false;
+  
+  // Return the original geometry unchanged
+  return baseGeo;
+}

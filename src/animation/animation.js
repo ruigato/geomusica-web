@@ -251,6 +251,9 @@ export function animate(params) {
     const tempGroup = new THREE.Group();
     tempGroup.position.copy(group.position);
     
+    // Make sure state is accessible to the intersection functions
+    tempGroup.userData.state = state;
+    
     // Add copies to the temp group
     for (let i = 0; i < copies; i++) {
       const finalScale = state.useModulus 
@@ -290,6 +293,16 @@ export function animate(params) {
       
       if (group.userData && group.userData.intersectionMarkerGroup) {
         group.remove(group.userData.intersectionMarkerGroup);
+        group.userData.intersectionMarkerGroup.traverse(child => {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) {
+            if (Array.isArray(child.material)) {
+              child.material.forEach(m => m.dispose());
+            } else {
+              child.material.dispose();
+          }
+          }
+        });
         group.userData.intersectionMarkerGroup = null;
       }
       
