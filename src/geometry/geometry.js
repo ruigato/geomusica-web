@@ -4,8 +4,12 @@ import {
   OVERLAP_THRESHOLD, 
   VERTEX_CIRCLE_SIZE, 
   VERTEX_CIRCLE_OPACITY, 
-  VERTEX_CIRCLE_COLOR 
+  VERTEX_CIRCLE_COLOR,
+  INTERSECTION_POINT_SIZE,
+  INTERSECTION_POINT_COLOR,
+  INTERSECTION_POINT_OPACITY
 } from '../config/constants.js';
+import { findAllIntersections } from './intersections.js';
 
 // Function to create a regular polygon outline
 export function createPolygonGeometry(radius, segments) {
@@ -52,6 +56,12 @@ function createVertexCircleGeometry() {
   return new THREE.CircleGeometry(VERTEX_CIRCLE_SIZE, 16);
 }
 
+// Create a circle geometry for intersection points
+function createIntersectionPointGeometry() {
+  // Use a circle geometry for intersection points with a different size
+  return new THREE.CircleGeometry(INTERSECTION_POINT_SIZE, 16);
+}
+
 // Function to update the group of copies
 export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, angle = 0, state = null) {
   group.clear();
@@ -69,6 +79,22 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     opacity: VERTEX_CIRCLE_OPACITY,
     depthTest: false
   });
+  
+  // For intersection detection, we'll need to create a temporary group to calculate intersections
+  // before they're added to the actual group
+  let tempGroup = null;
+  let intersectionPoints = [];
+  
+  // Check if we need to find intersections and have multiple copies
+  if (state && state.useIntersections && copies > 1) {
+    tempGroup = new THREE.Group();
+    tempGroup.position.copy(group.position);
+    tempGroup.rotation.copy(group.rotation);
+    tempGroup.scale.copy(group.scale);
+  }
+  
+  // First create all the polygon copies (either in the main group or temp group)
+  const targetGroup = tempGroup || group;
   
   for (let i = 0; i < copies; i++) {
     let modulusScale = 1.0;
@@ -95,13 +121,89 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     // Create a group for this copy to hold both the lines and vertex circles
     const copyGroup = new THREE.Group();
     
-    // Create line for the polygon outline
-    const lines = new THREE.LineLoop(baseGeo, mat);
+    // Create line for the polygon outline - use the original geometry here
+    const lines = new THREE.LineLoop(baseGeo, mat.clone());
     lines.scale.set(finalScale, finalScale, 1);
     copyGroup.add(lines);
     
     // Apply rotation to the copy group
     copyGroup.rotation.z = cumulativeAngleRadians;
+    
+    // Add the whole copy group to the target group
+    targetGroup.add(copyGroup);
+  }
+  
+  // If we're using intersections and need an update, find and apply intersections
+  if (state && state.useIntersections && state.needsIntersectionUpdate && copies > 1) {
+    // Find all intersection points between the copies in the temp group
+    intersectionPoints = findAllIntersections(tempGroup);
+    
+    // Update the geometry with intersections before creating the real group
+    if (intersectionPoints.length > 0) {
+      // Store intersection points in state
+      state.intersectionPoints = intersectionPoints;
+      
+      // Create a material for intersection points (visual marker)
+      const intersectionMaterial = new THREE.MeshBasicMaterial({
+        color: INTERSECTION_POINT_COLOR,
+        transparent: true,
+        opacity: INTERSECTION_POINT_OPACITY,
+        depthTest: false
+      });
+      
+      // Create a geometry for intersection points
+      const intersectionGeometry = createIntersectionPointGeometry();
+      
+      // Add visual representation for each intersection point
+      for (const point of intersectionPoints) {
+        const pointMesh = new THREE.Mesh(intersectionGeometry, intersectionMaterial.clone());
+        pointMesh.position.copy(point);
+        
+        // Add directly to the scene to avoid rotation with the group
+        group.parent.add(pointMesh);
+        
+        // Store reference to remove later
+        if (!group.parent.userData.intersectionMarkers) {
+          group.parent.userData.intersectionMarkers = [];
+        }
+        group.parent.userData.intersectionMarkers.push(pointMesh);
+      }
+      
+      // Reset the flag since we've updated the intersections
+      state.needsIntersectionUpdate = false;
+    }
+  }
+  
+  // Now create the actual group based on the updated geometry
+  for (let i = 0; i < copies; i++) {
+    let modulusScale = 1.0;
+    let stepScaleFactor = Math.pow(stepScale, i);
+    
+    // Determine scale based on modulus or standard step scale
+    if (state && state.useModulus) {
+      // Get the sequence value (increasing from 1/modulus to 1.0)
+      modulusScale = state.getScaleFactorForCopy(i);
+    }
+    
+    // Apply both modulus scale and step scale if modulus is enabled
+    // Otherwise just use step scale
+    const finalScale = state && state.useModulus 
+      ? modulusScale * stepScaleFactor 
+      : stepScaleFactor;
+    
+    // Each copy gets a cumulative angle (i * angle) in degrees
+    const cumulativeAngleDegrees = i * angle;
+    
+    // Convert to radians only when setting the actual Three.js rotation
+    const cumulativeAngleRadians = (cumulativeAngleDegrees * Math.PI) / 180;
+    
+    // Create a group for this copy to hold both the lines and vertex circles
+    const copyGroup = new THREE.Group();
+    
+    // Use the current geometry (may have been updated with intersections)
+    const lines = new THREE.LineLoop(baseGeo, mat.clone());
+    lines.scale.set(finalScale, finalScale, 1);
+    copyGroup.add(lines);
     
     // Get the positions from the geometry
     const positions = baseGeo.getAttribute('position').array;
@@ -122,8 +224,20 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       copyGroup.add(vertexCircle);
     }
     
+    // Apply rotation to the copy group
+    copyGroup.rotation.z = cumulativeAngleRadians;
+    
     // Add the whole copy group to the main group
     group.add(copyGroup);
+  }
+  
+  // Clean up temporary group if it exists
+  if (tempGroup) {
+    tempGroup.children.forEach(child => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    });
+    tempGroup = null;
   }
 }
 

@@ -2,7 +2,20 @@
 import * as THREE from 'three';
 import { getCurrentTime } from '../audio/audio.js';
 import { updateGroup, detectCrossings, createPolygonGeometry } from '../geometry/geometry.js';
+import { processIntersections, createIntersectionMarkers } from '../geometry/intersections.js';
 import { MARK_LIFE } from '../config/constants.js';
+
+// Function to clean up intersection point markers
+function cleanupIntersectionMarkers(scene) {
+  if (scene && scene.userData.intersectionMarkers) {
+    for (const marker of scene.userData.intersectionMarkers) {
+      scene.remove(marker);
+      if (marker.geometry) marker.geometry.dispose();
+      if (marker.material) marker.material.dispose();
+    }
+    scene.userData.intersectionMarkers = [];
+  }
+}
 
 // Function to animate and update group rotation
 export function animate(params) {
@@ -30,6 +43,8 @@ export function animate(params) {
   const lastAngle = state.lastAngle;
   const lastTrig = state.lastTrig;
   const markers = state.markers;
+  const useIntersections = state.useIntersections;
+  const needsIntersectionUpdate = state.needsIntersectionUpdate;
 
   // Schedule next frame
   requestAnimationFrame(() => animate({
@@ -84,10 +99,75 @@ export function animate(params) {
     
     // Store the current radius value used to create this geometry
     state.currentGeometryRadius = radius;
+    
+    // If intersections are enabled, flag for update
+    if (useIntersections) {
+      state.needsIntersectionUpdate = true;
+      cleanupIntersectionMarkers(scene);
+    }
+  }
+  
+  // If intersection toggle changed, need to update
+  if (state.lastUseIntersections !== useIntersections) {
+    state.lastUseIntersections = useIntersections;
+    state.needsIntersectionUpdate = true;
+    
+    // Clean up intersection markers if no longer needed
+    if (!useIntersections) {
+      cleanupIntersectionMarkers(scene);
+    }
+  }
+  
+  // Process intersections if needed
+  if (useIntersections && needsIntersectionUpdate && copies > 1) {
+    // Clean up any existing intersection markers
+    cleanupIntersectionMarkers(scene);
+    
+    // First create a temp group with the polygon copies (without visuals)
+    const tempGroup = new THREE.Group();
+    tempGroup.position.copy(group.position);
+    
+    // Add copies to the temp group
+    for (let i = 0; i < copies; i++) {
+      const finalScale = state.useModulus 
+        ? state.getScaleFactorForCopy(i) 
+        : Math.pow(stepScale, i);
+        
+      const cumulativeAngleRadians = (i * angle * Math.PI) / 180;
+      
+      const copyGroup = new THREE.Group();
+      const lines = new THREE.LineLoop(params.baseGeo, mat.clone());
+      lines.scale.set(finalScale, finalScale, 1);
+      copyGroup.add(lines);
+      copyGroup.rotation.z = cumulativeAngleRadians;
+      
+      tempGroup.add(copyGroup);
+    }
+    
+    // Process intersections with the temporary group
+    const newGeometry = processIntersections(state, params.baseGeo, tempGroup);
+    
+    // If we got a new geometry with intersections added
+    if (newGeometry !== params.baseGeo) {
+      params.baseGeo = newGeometry;
+      state.baseGeo = newGeometry;
+      
+      // Create visual markers for the intersection points
+      createIntersectionMarkers(scene, state.intersectionPoints);
+    }
+    
+    // Clean up temporary group
+    tempGroup.traverse(obj => {
+      if (obj.geometry && obj !== params.baseGeo) obj.geometry.dispose();
+      if (obj.material) obj.material.dispose();
+    });
+    
+    // Reset the flag since we've updated the intersections
+    state.needsIntersectionUpdate = false;
   }
 
-  // Pass the state to updateGroup to enable modulus-based scaling
-  updateGroup(group, copies, stepScale, baseGeo, mat, segments, angle, state);
+  // Update the group with current parameters
+  updateGroup(group, copies, stepScale, params.baseGeo, mat, segments, angle, state);
 
   // Calculate animation angle based on BPM
   const dAng = (bpm / 60) * 2 * Math.PI * dt;
@@ -98,7 +178,7 @@ export function animate(params) {
 
   // Detection of vertex crossings and audio calculations
   const triggeredNow = detectCrossings(
-    baseGeo, 
+    params.baseGeo, 
     lastAngle, 
     ang, 
     copies, 

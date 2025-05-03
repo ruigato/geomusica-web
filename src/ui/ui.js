@@ -37,6 +37,9 @@ export function setupUI(state) {
   const useModulusCheckbox = document.getElementById('useModulusCheckbox');
   const modulusRadioGroup = document.getElementById('modulusRadioGroup');
   
+  // Intersections control
+  const useIntersectionsCheckbox = document.getElementById('useIntersectionsCheckbox');
+  
   // Initialize modulus radio buttons
   setupModulusRadioButtons(modulusRadioGroup, state);
   
@@ -44,6 +47,12 @@ export function setupUI(state) {
   useModulusCheckbox.checked = state.useModulus;
   useModulusCheckbox.addEventListener('change', e => {
     state.setUseModulus(e.target.checked);
+  });
+  
+  // Setup intersections checkbox
+  useIntersectionsCheckbox.checked = state.useIntersections;
+  useIntersectionsCheckbox.addEventListener('change', e => {
+    state.setUseIntersections(e.target.checked);
   });
 
   // Sync control values with the UI
@@ -120,7 +129,8 @@ export function setupUI(state) {
     angleRange, angleNumber, angleValue,
     numberRange, numberNumber, numberValue,
     useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
-    useModulusCheckbox, modulusRadioGroup
+    useModulusCheckbox, modulusRadioGroup,
+    useIntersectionsCheckbox
   };
 }
 

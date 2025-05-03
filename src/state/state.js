@@ -36,6 +36,12 @@ export function createAppState() {
     modulusValue: DEFAULT_VALUES.MODULUS_VALUE,
     useModulus: DEFAULT_VALUES.USE_MODULUS,
     
+    // Intersection related parameters
+    useIntersections: DEFAULT_VALUES.USE_INTERSECTIONS,
+    lastUseIntersections: DEFAULT_VALUES.USE_INTERSECTIONS, // Track last state to detect changes
+    intersectionPoints: [], // Store detected intersection points
+    needsIntersectionUpdate: true, // Flag to track when intersections need to be recalculated
+    
     // Lerp/Lag related parameters
     useLerp: false,
     lerpTime: 1.0, // Time in seconds for lerp transitions
@@ -67,17 +73,23 @@ export function createAppState() {
         if (!this.useLerp) {
           this.radius = this.targetRadius;
         }
+        // Flag for intersection recalculation
+        this.needsIntersectionUpdate = true;
       }
     },
     
     setCopies(value) {
       // Copies is exempt from lerping - always set immediately
       this.copies = Number(value);
+      // Flag for intersection recalculation
+      this.needsIntersectionUpdate = true;
     },
     
     setSegments(value) {
       // Segments (Number) is exempt from lerping - always set immediately
       this.segments = Number(value);
+      // Flag for intersection recalculation
+      this.needsIntersectionUpdate = true;
     },
     
     setStepScale(value) {
@@ -85,6 +97,8 @@ export function createAppState() {
       if (!this.useLerp) {
         this.stepScale = this.targetStepScale;
       }
+      // Flag for intersection recalculation
+      this.needsIntersectionUpdate = true;
     },
     
     setAngle(value) {
@@ -92,14 +106,28 @@ export function createAppState() {
       if (!this.useLerp) {
         this.angle = this.targetAngle;
       }
+      // Flag for intersection recalculation
+      this.needsIntersectionUpdate = true;
     },
     
     setModulusValue(value) {
       this.modulusValue = Number(value);
+      // Flag for intersection recalculation if modulus is used
+      if (this.useModulus) {
+        this.needsIntersectionUpdate = true;
+      }
     },
     
     setUseModulus(value) {
       this.useModulus = Boolean(value);
+      // Flag for intersection recalculation
+      this.needsIntersectionUpdate = true;
+    },
+    
+    setUseIntersections(value) {
+      this.useIntersections = Boolean(value);
+      // Flag for intersection recalculation if being enabled
+      this.needsIntersectionUpdate = true;
     },
     
     setUseLerp(value) {
@@ -110,6 +138,8 @@ export function createAppState() {
         this.radius = this.targetRadius;
         this.stepScale = this.targetStepScale;
         this.angle = this.targetAngle;
+        // Flag for intersection recalculation
+        this.needsIntersectionUpdate = true;
       }
     },
     
@@ -142,6 +172,10 @@ export function createAppState() {
     updateLerp(dt) {
       if (!this.useLerp) return;
       
+      const oldRadius = this.radius;
+      const oldStepScale = this.stepScale;
+      const oldAngle = this.angle;
+      
       // Calculate lerp factor based on time and lerp duration
       const lerpFactor = Math.min(dt / this.lerpTime, 1.0);
       
@@ -149,6 +183,13 @@ export function createAppState() {
       this.radius = this.lerp(this.radius, this.targetRadius, lerpFactor);
       this.stepScale = this.lerp(this.stepScale, this.targetStepScale, lerpFactor);
       this.angle = this.lerp(this.angle, this.targetAngle, lerpFactor);
+      
+      // Check if any lerped value changed significantly enough to update intersections
+      if (Math.abs(oldRadius - this.radius) > 0.1 || 
+          Math.abs(oldStepScale - this.stepScale) > 0.001 || 
+          Math.abs(oldAngle - this.angle) > 0.1) {
+        this.needsIntersectionUpdate = true;
+      }
       
       // Note: BPM, copies, and segments (Number) are not lerped
     },
