@@ -143,32 +143,6 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       // Store intersection points in state
       state.intersectionPoints = intersectionPoints;
       
-      // Create a material for intersection points (visual marker)
-      const intersectionMaterial = new THREE.MeshBasicMaterial({
-        color: INTERSECTION_POINT_COLOR,
-        transparent: true,
-        opacity: INTERSECTION_POINT_OPACITY,
-        depthTest: false
-      });
-      
-      // Create a geometry for intersection points
-      const intersectionGeometry = createIntersectionPointGeometry();
-      
-      // Add visual representation for each intersection point
-      for (const point of intersectionPoints) {
-        const pointMesh = new THREE.Mesh(intersectionGeometry, intersectionMaterial.clone());
-        pointMesh.position.copy(point);
-        
-        // Add directly to the scene to avoid rotation with the group
-        group.parent.add(pointMesh);
-        
-        // Store reference to remove later
-        if (!group.parent.userData.intersectionMarkers) {
-          group.parent.userData.intersectionMarkers = [];
-        }
-        group.parent.userData.intersectionMarkers.push(pointMesh);
-      }
-      
       // Reset the flag since we've updated the intersections
       state.needsIntersectionUpdate = false;
     }
@@ -238,6 +212,38 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       if (child.material) child.material.dispose();
     });
     tempGroup = null;
+  }
+  
+  // Finally, add the intersection point markers to the group (so they rotate with everything)
+  if (state && state.useIntersections && state.intersectionPoints && state.intersectionPoints.length > 0) {
+    // Create a group to hold the intersection markers
+    const intersectionMarkerGroup = new THREE.Group();
+    
+    // Create a material for intersection points
+    const intersectionMaterial = new THREE.MeshBasicMaterial({
+      color: INTERSECTION_POINT_COLOR,
+      transparent: true,
+      opacity: INTERSECTION_POINT_OPACITY,
+      depthTest: false
+    });
+    
+    // Create a geometry for intersection points
+    const intersectionGeometry = createIntersectionPointGeometry();
+    
+    // Add visual representation for each intersection point
+    for (const point of state.intersectionPoints) {
+      const pointMesh = new THREE.Mesh(intersectionGeometry, intersectionMaterial.clone());
+      pointMesh.position.copy(point);
+      
+      // Add to the intersection marker group
+      intersectionMarkerGroup.add(pointMesh);
+    }
+    
+    // Add the whole marker group to the main group
+    group.add(intersectionMarkerGroup);
+    
+    // Store reference to the intersection marker group
+    group.userData.intersectionMarkerGroup = intersectionMarkerGroup;
   }
 }
 

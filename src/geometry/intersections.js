@@ -2,24 +2,15 @@
 import * as THREE from 'three';
 import { INTERSECTION_MERGE_THRESHOLD, INTERSECTION_POINT_COLOR, INTERSECTION_POINT_OPACITY, INTERSECTION_POINT_SIZE } from '../config/constants.js';
 
-// Line segment intersection calculation
-// Based on the algorithm from: https://en.wikipedia.org/wiki/Line–line_intersection
+// A more precise line-line intersection function
 export function findIntersection(p1, p2, p3, p4) {
-  // Ensure all points are Vector3 objects
-  const v1 = p1 instanceof THREE.Vector3 ? p1 : new THREE.Vector3(p1.x, p1.y, p1.z || 0);
-  const v2 = p2 instanceof THREE.Vector3 ? p2 : new THREE.Vector3(p2.x, p2.y, p2.z || 0);
-  const v3 = p3 instanceof THREE.Vector3 ? p3 : new THREE.Vector3(p3.x, p3.y, p3.z || 0);
-  const v4 = p4 instanceof THREE.Vector3 ? p4 : new THREE.Vector3(p4.x, p4.y, p4.z || 0);
+  // Extract coordinates
+  const x1 = p1.x, y1 = p1.y;
+  const x2 = p2.x, y2 = p2.y;
+  const x3 = p3.x, y3 = p3.y;
+  const x4 = p4.x, y4 = p4.y;
   
-  // Line 1 represented as: v1 + t * (v2 - v1)
-  // Line 2 represented as: v3 + s * (v4 - v3)
-  
-  const x1 = v1.x, y1 = v1.y;
-  const x2 = v2.x, y2 = v2.y;
-  const x3 = v3.x, y3 = v3.y;
-  const x4 = v4.x, y4 = v4.y;
-  
-  // Calculate denominators
+  // Calculate determinants
   const denominator = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
   
   // If denominator is 0, lines are parallel or collinear
@@ -67,90 +58,85 @@ export function findAllIntersections(group) {
     return intersectionPoints;
   }
   
-  // Temporary matrix to store world transformations
-  const tempMatrix = new THREE.Matrix4();
+  // Create a temporary group to calculate intersections in an unrotated state
+  const tempGroup = new THREE.Group();
   
-  // Loop through all pairs of polygon copies
+  // Clone each polygon to the temp group, preserving its individual rotation and scale
   for (let i = 0; i < children.length; i++) {
-    const copyA = children[i];
+    const originalCopy = children[i];
+    const clonedCopy = originalCopy.clone();
     
-    // Get the line segments from the first child (LineLoop) of each copy
+    // Apply only the rotation of each copy, not the group's rotation
+    clonedCopy.rotation.copy(originalCopy.rotation);
+    
+    // Add to temp group
+    tempGroup.add(clonedCopy);
+  }
+  
+  // For each pair of polygons
+  for (let i = 0; i < tempGroup.children.length; i++) {
+    const copyA = tempGroup.children[i];
+    
+    // Get the line segments
+    // LineLoop is typically the first child
     const linesA = copyA.children[0];
+    
+    if (!linesA || !linesA.geometry) continue;
+    
     const positionsA = linesA.geometry.getAttribute('position');
-    const indexA = linesA.geometry.index;
+    const countA = positionsA.count;
     
-    // Skip if no valid geometry
-    if (!positionsA || !indexA) continue;
-    
-    // Calculate the world matrix for this copy
-    tempMatrix.identity();
-    copyA.updateMatrixWorld(true);
-    linesA.updateMatrixWorld(true);
-    tempMatrix.multiplyMatrices(copyA.matrixWorld, linesA.matrixWorld);
-    
-    for (let j = i + 1; j < children.length; j++) {
-      const copyB = children[j];
+    for (let j = i + 1; j < tempGroup.children.length; j++) {
+      const copyB = tempGroup.children[j];
       
-      // Get the line segments from the first child of the second copy
+      // Get the line segments
       const linesB = copyB.children[0];
+      
+      if (!linesB || !linesB.geometry) continue;
+      
       const positionsB = linesB.geometry.getAttribute('position');
-      const indexB = linesB.geometry.index;
-      
-      // Skip if no valid geometry
-      if (!positionsB || !indexB) continue;
-      
-      // Calculate the world matrix for this copy
-      const matrixB = new THREE.Matrix4();
-      copyB.updateMatrixWorld(true);
-      linesB.updateMatrixWorld(true);
-      matrixB.multiplyMatrices(copyB.matrixWorld, linesB.matrixWorld);
+      const countB = positionsB.count;
       
       // Check each line segment pair for intersections
-      for (let segA = 0; segA < indexA.count; segA += 2) {
-        // Get vertex indices for the line segment
-        let idx1A = indexA.getX(segA);
-        let idx2A = indexA.getX(segA + 1);
+      for (let a = 0; a < countA; a++) {
+        // Get vertices for the line segment from A
+        const a1 = a;
+        const a2 = (a + 1) % countA;
         
-        // If second index is missing, connect back to the first vertex in the loop
-        if (idx2A === undefined) {
-          idx2A = indexA.getX(0);
-        }
+        // Get vertex coordinates in world space
+        const v1A = new THREE.Vector3();
+        const v2A = new THREE.Vector3();
         
-        // Extract vertices
-        const v1A = new THREE.Vector3(
-          positionsA.getX(idx1A), 
-          positionsA.getY(idx1A), 
-          positionsA.getZ(idx1A) || 0
-        ).applyMatrix4(tempMatrix);
+        v1A.fromBufferAttribute(positionsA, a1);
+        v2A.fromBufferAttribute(positionsA, a2);
         
-        const v2A = new THREE.Vector3(
-          positionsA.getX(idx2A), 
-          positionsA.getY(idx2A), 
-          positionsA.getZ(idx2A) || 0
-        ).applyMatrix4(tempMatrix);
+        // Apply scaling
+        v1A.multiply(linesA.scale);
+        v2A.multiply(linesA.scale);
         
-        for (let segB = 0; segB < indexB.count; segB += 2) {
-          // Get vertex indices for the line segment
-          let idx1B = indexB.getX(segB);
-          let idx2B = indexB.getX(segB + 1);
+        // Apply rotation
+        v1A.applyQuaternion(copyA.quaternion);
+        v2A.applyQuaternion(copyA.quaternion);
+        
+        for (let b = 0; b < countB; b++) {
+          // Get vertices for the line segment from B
+          const b1 = b;
+          const b2 = (b + 1) % countB;
           
-          // If second index is missing, connect back to the first vertex in the loop
-          if (idx2B === undefined) {
-            idx2B = indexB.getX(0);
-          }
+          // Get vertex coordinates in world space
+          const v1B = new THREE.Vector3();
+          const v2B = new THREE.Vector3();
           
-          // Extract vertices
-          const v1B = new THREE.Vector3(
-            positionsB.getX(idx1B), 
-            positionsB.getY(idx1B), 
-            positionsB.getZ(idx1B) || 0
-          ).applyMatrix4(matrixB);
+          v1B.fromBufferAttribute(positionsB, b1);
+          v2B.fromBufferAttribute(positionsB, b2);
           
-          const v2B = new THREE.Vector3(
-            positionsB.getX(idx2B), 
-            positionsB.getY(idx2B), 
-            positionsB.getZ(idx2B) || 0
-          ).applyMatrix4(matrixB);
+          // Apply scaling
+          v1B.multiply(linesB.scale);
+          v2B.multiply(linesB.scale);
+          
+          // Apply rotation
+          v1B.applyQuaternion(copyB.quaternion);
+          v2B.applyQuaternion(copyB.quaternion);
           
           // Find intersection between these two line segments
           const intersection = findIntersection(v1A, v2A, v1B, v2B);
@@ -162,6 +148,12 @@ export function findAllIntersections(group) {
       }
     }
   }
+  
+  // Clean up temporary objects
+  tempGroup.traverse(child => {
+    if (child.geometry && child !== tempGroup) child.geometry.dispose();
+    if (child.material) child.material.dispose();
+  });
   
   return intersectionPoints;
 }
@@ -216,7 +208,7 @@ export function applyIntersectionsToGeometry(baseGeo, intersectionPoints) {
 }
 
 // Create visualization markers for intersection points
-export function createIntersectionMarkers(scene, intersectionPoints) {
+export function createIntersectionMarkers(scene, intersectionPoints, group) {
   if (!scene || !intersectionPoints || intersectionPoints.length === 0) {
     return;
   }
@@ -224,10 +216,29 @@ export function createIntersectionMarkers(scene, intersectionPoints) {
   // Clean up any existing markers first
   if (scene.userData.intersectionMarkers) {
     for (const marker of scene.userData.intersectionMarkers) {
-      scene.remove(marker);
+      if (marker.parent) {
+        marker.parent.remove(marker);
+      } else {
+        scene.remove(marker);
+      }
       if (marker.geometry) marker.geometry.dispose();
       if (marker.material) marker.material.dispose();
     }
+    scene.userData.intersectionMarkers = [];
+  }
+  
+  // Clean up marker group if it exists
+  if (scene.userData.intersectionMarkerGroup) {
+    if (scene.userData.intersectionMarkerGroup.parent) {
+      scene.userData.intersectionMarkerGroup.parent.remove(scene.userData.intersectionMarkerGroup);
+    } else {
+      scene.remove(scene.userData.intersectionMarkerGroup);
+    }
+    scene.userData.intersectionMarkerGroup = null;
+  }
+  
+  // Store markers in userData for cleanup later
+  if (!scene.userData.intersectionMarkers) {
     scene.userData.intersectionMarkers = [];
   }
   
@@ -242,17 +253,28 @@ export function createIntersectionMarkers(scene, intersectionPoints) {
   // Create a geometry for intersection points
   const circleGeometry = new THREE.CircleGeometry(INTERSECTION_POINT_SIZE, 16);
   
+  // Create a group specifically for intersection markers
+  const markersGroup = new THREE.Group();
+  
+  // Add the markers group to the main rotation group (for proper rotation)
+  if (group) {
+    group.add(markersGroup);
+  } else {
+    scene.add(markersGroup);
+  }
+  
+  // Store for later cleanup
+  scene.userData.intersectionMarkerGroup = markersGroup;
+  
   // Create and add a marker for each intersection point
   for (const point of intersectionPoints) {
     const marker = new THREE.Mesh(circleGeometry, intersectionMaterial.clone());
     marker.position.copy(point);
     
-    scene.add(marker);
+    // Add to the markers group
+    markersGroup.add(marker);
     
-    // Store reference for later cleanup
-    if (!scene.userData.intersectionMarkers) {
-      scene.userData.intersectionMarkers = [];
-    }
+    // Also store references for later cleanup
     scene.userData.intersectionMarkers.push(marker);
   }
 }

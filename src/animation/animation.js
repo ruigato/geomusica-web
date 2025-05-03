@@ -7,9 +7,33 @@ import { MARK_LIFE } from '../config/constants.js';
 
 // Function to clean up intersection point markers
 function cleanupIntersectionMarkers(scene) {
+  // Clean up marker group if it exists
+  if (scene && scene.userData.intersectionMarkerGroup) {
+    // If the marker group is a child of another object, remove it there
+    const parent = scene.userData.intersectionMarkerGroup.parent;
+    if (parent) {
+      parent.remove(scene.userData.intersectionMarkerGroup);
+    } else {
+      scene.remove(scene.userData.intersectionMarkerGroup);
+    }
+    
+    // Clear all children of the marker group
+    scene.userData.intersectionMarkerGroup.traverse(child => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    });
+    
+    scene.userData.intersectionMarkerGroup = null;
+  }
+  
+  // Also clean up individual markers for backward compatibility
   if (scene && scene.userData.intersectionMarkers) {
     for (const marker of scene.userData.intersectionMarkers) {
-      scene.remove(marker);
+      if (marker.parent) {
+        marker.parent.remove(marker);
+      } else {
+        scene.remove(marker);
+      }
       if (marker.geometry) marker.geometry.dispose();
       if (marker.material) marker.material.dispose();
     }
@@ -54,8 +78,8 @@ export function animate(params) {
     mat,
     stats,
     csound,
-    renderer,
-    cam,
+    renderer, 
+    cam, 
     state,
     triggerAudioCallback
   }));
@@ -151,9 +175,6 @@ export function animate(params) {
     if (newGeometry !== params.baseGeo) {
       params.baseGeo = newGeometry;
       state.baseGeo = newGeometry;
-      
-      // Create visual markers for the intersection points
-      createIntersectionMarkers(scene, state.intersectionPoints);
     }
     
     // Clean up temporary group
