@@ -35,7 +35,7 @@ function cleanupIntersectionMarkers(scene) {
         scene.remove(marker);
       }
       if (marker.geometry) marker.geometry.dispose();
-      if (marker.material) marker.material.dispose();
+      if (marker.material) child.material.dispose();
     }
     scene.userData.intersectionMarkers = [];
   }
@@ -105,7 +105,7 @@ export function animate(params) {
   }
   
   // Check if radius or segments have changed
-  if (currentSegments !== segments || state.currentGeometryRadius !== state.radius) {
+  if (currentSegments !== segments || Math.abs(state.currentGeometryRadius - state.radius) > 0.1) {
     needsNewGeometry = true;
   }
   
@@ -131,60 +131,81 @@ export function animate(params) {
     }
   }
   
-  // If intersection toggle changed, need to update
-  if (state.lastUseIntersections !== useIntersections) {
-    state.lastUseIntersections = useIntersections;
-    state.needsIntersectionUpdate = true;
-    
-    // Clean up intersection markers if no longer needed
-    if (!useIntersections) {
-      cleanupIntersectionMarkers(scene);
-    }
-  }
+  // Check if we're still lerping and update intersections if needed
+  const isLerping = state.useLerp && (
+    Math.abs(state.radius - state.targetRadius) > 0.1 ||
+    Math.abs(state.stepScale - state.targetStepScale) > 0.001 ||
+    Math.abs(state.angle - state.targetAngle) > 0.1
+  );
   
-  // Process intersections if needed
-  if (useIntersections && needsIntersectionUpdate && copies > 1) {
-    // Clean up any existing intersection markers
-    cleanupIntersectionMarkers(scene);
+  // If we're lerping, we should not update intersections until lerping is complete
+  // to avoid the "blue dots" issue
+  if (isLerping && useIntersections) {
+    // If actively lerping, hide the intersection markers temporarily
+    if (group.userData && group.userData.intersectionMarkerGroup) {
+      group.userData.intersectionMarkerGroup.visible = false;
+    }
+  } else {
+    // If not lerping and we have an intersection marker group, make it visible
+    if (group.userData && group.userData.intersectionMarkerGroup) {
+      group.userData.intersectionMarkerGroup.visible = true;
+    }
     
-    // First create a temp group with the polygon copies (without visuals)
-    const tempGroup = new THREE.Group();
-    tempGroup.position.copy(group.position);
+    // If intersection toggle changed, need to update
+    if (state.lastUseIntersections !== useIntersections) {
+      state.lastUseIntersections = useIntersections;
+      state.needsIntersectionUpdate = true;
+      
+      // Clean up intersection markers if no longer needed
+      if (!useIntersections) {
+        cleanupIntersectionMarkers(scene);
+      }
+    }
     
-    // Add copies to the temp group
-    for (let i = 0; i < copies; i++) {
-      const finalScale = state.useModulus 
-        ? state.getScaleFactorForCopy(i) 
-        : Math.pow(stepScale, i);
+    // Process intersections if needed
+    if (useIntersections && needsIntersectionUpdate && copies > 1) {
+      // Clean up any existing intersection markers
+      cleanupIntersectionMarkers(scene);
+      
+      // First create a temp group with the polygon copies (without visuals)
+      const tempGroup = new THREE.Group();
+      tempGroup.position.copy(group.position);
+      
+      // Add copies to the temp group
+      for (let i = 0; i < copies; i++) {
+        const finalScale = state.useModulus 
+          ? state.getScaleFactorForCopy(i) 
+          : Math.pow(stepScale, i);
+          
+        const cumulativeAngleRadians = (i * angle * Math.PI) / 180;
         
-      const cumulativeAngleRadians = (i * angle * Math.PI) / 180;
+        const copyGroup = new THREE.Group();
+        const lines = new THREE.LineLoop(params.baseGeo, mat.clone());
+        lines.scale.set(finalScale, finalScale, 1);
+        copyGroup.add(lines);
+        copyGroup.rotation.z = cumulativeAngleRadians;
+        
+        tempGroup.add(copyGroup);
+      }
       
-      const copyGroup = new THREE.Group();
-      const lines = new THREE.LineLoop(params.baseGeo, mat.clone());
-      lines.scale.set(finalScale, finalScale, 1);
-      copyGroup.add(lines);
-      copyGroup.rotation.z = cumulativeAngleRadians;
+      // Process intersections with the temporary group
+      const newGeometry = processIntersections(state, params.baseGeo, tempGroup);
       
-      tempGroup.add(copyGroup);
+      // If we got a new geometry with intersections added
+      if (newGeometry !== params.baseGeo) {
+        params.baseGeo = newGeometry;
+        state.baseGeo = newGeometry;
+      }
+      
+      // Clean up temporary group
+      tempGroup.traverse(obj => {
+        if (obj.geometry && obj !== params.baseGeo) obj.geometry.dispose();
+        if (obj.material) obj.material.dispose();
+      });
+      
+      // Reset the flag since we've updated the intersections
+      state.needsIntersectionUpdate = false;
     }
-    
-    // Process intersections with the temporary group
-    const newGeometry = processIntersections(state, params.baseGeo, tempGroup);
-    
-    // If we got a new geometry with intersections added
-    if (newGeometry !== params.baseGeo) {
-      params.baseGeo = newGeometry;
-      state.baseGeo = newGeometry;
-    }
-    
-    // Clean up temporary group
-    tempGroup.traverse(obj => {
-      if (obj.geometry && obj !== params.baseGeo) obj.geometry.dispose();
-      if (obj.material) obj.material.dispose();
-    });
-    
-    // Reset the flag since we've updated the intersections
-    state.needsIntersectionUpdate = false;
   }
 
   // Update the group with current parameters

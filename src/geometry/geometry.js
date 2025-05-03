@@ -207,8 +207,8 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   
   // Clean up temporary group if it exists
   if (tempGroup) {
-    tempGroup.children.forEach(child => {
-      if (child.geometry) child.geometry.dispose();
+    tempGroup.traverse(child => {
+      if (child.geometry && child !== baseGeo) child.geometry.dispose();
       if (child.material) child.material.dispose();
     });
     tempGroup = null;
@@ -218,6 +218,9 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   if (state && state.useIntersections && state.intersectionPoints && state.intersectionPoints.length > 0) {
     // Create a group to hold the intersection markers
     const intersectionMarkerGroup = new THREE.Group();
+    
+    // Tag this group for identification during audio triggers
+    intersectionMarkerGroup.userData.isIntersectionGroup = true;
     
     // Create a material for intersection points
     const intersectionMaterial = new THREE.MeshBasicMaterial({
@@ -277,9 +280,15 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
   const positions = baseGeo.getAttribute('position').array;
   const count = baseGeo.getAttribute('position').count;
   
+  // First detect crossings for regular vertices
   for (let ci = 0; ci < copies; ci++) {
     // Each copy is a Group containing the LineLoop and vertex circles
     const copyGroup = group.children[ci];
+    
+    // Skip the intersection marker group if we encounter it
+    if (copyGroup.userData && copyGroup.userData.isIntersectionGroup) {
+      continue;
+    }
     
     // The first child is the LineLoop
     const mesh = copyGroup.children[0];
@@ -322,6 +331,50 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
           
           // Still create visual marker to maintain visual consistency
           createMarker(worldRot, x1, y1, group.parent);
+        }
+      }
+    }
+  }
+  
+  // Now check intersection points if they exist
+  const intersectionGroup = group.children.find(child => 
+    child.userData && child.userData.isIntersectionGroup
+  );
+  
+  if (intersectionGroup) {
+    // Process each intersection point for possible triggers
+    for (let i = 0; i < intersectionGroup.children.length; i++) {
+      const pointMesh = intersectionGroup.children[i];
+      const localPos = pointMesh.position.clone();
+      
+      // Calculate previous and current positions
+      const prevX = localPos.x * Math.cos(lastAngle) - localPos.y * Math.sin(lastAngle);
+      const currX = localPos.x * Math.cos(angle) - localPos.y * Math.sin(angle);
+      const currY = localPos.x * Math.sin(angle) + localPos.y * Math.cos(angle);
+      
+      // Calculate world position
+      const worldX = localPos.x * Math.cos(angle) - localPos.y * Math.sin(angle);
+      const worldY = localPos.x * Math.sin(angle) + localPos.y * Math.cos(angle);
+      
+      // Create a unique key for this intersection point
+      const key = `intersection-${i}`;
+      
+      // Check if this point crossed the Y axis from right to left
+      if (prevX > 0 && currX <= 0 && currY > 0 && !lastTrig.has(key)) {
+        // Check for overlap with already triggered points
+        if (!isPointOverlapping(worldX, worldY, triggeredPoints)) {
+          // No overlap, trigger audio and create marker
+          audioCallback(localPos.x, localPos.y, lastAngle, angle, tNow);
+          triggeredNow.add(key);
+          
+          // Add to triggered points
+          triggeredPoints.push({ x: worldX, y: worldY });
+          
+          // Create visual marker
+          createMarker(angle, localPos.x, localPos.y, group.parent);
+        } else {
+          // Point is overlapping, just add to triggered set
+          triggeredNow.add(key);
         }
       }
     }
