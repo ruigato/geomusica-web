@@ -2,6 +2,19 @@
 import { Tone } from '../audio/audio.js';
 import { DEFAULT_VALUES } from '../config/constants.js';
 
+// Function to generate sequence from 1/modulus to 1.0 in even steps
+export function generateSequence(n) {
+  const sequence = [];
+  const step = 1.0 / n;
+  
+  for (let i = 1; i <= n; i++) {
+    // Calculate sequence as i * step
+    sequence.push(i * step);
+  }
+  
+  return sequence;
+}
+
 // Create initial application state
 export function createAppState() {
   return {
@@ -19,6 +32,10 @@ export function createAppState() {
     stepScale: DEFAULT_VALUES.STEP_SCALE,
     angle: DEFAULT_VALUES.ANGLE,
     
+    // MODULUS related parameters
+    modulusValue: DEFAULT_VALUES.MODULUS_VALUE,
+    useModulus: DEFAULT_VALUES.USE_MODULUS,
+    
     // Lerp/Lag related parameters
     useLerp: false,
     lerpTime: 1.0, // Time in seconds for lerp transitions
@@ -30,6 +47,9 @@ export function createAppState() {
     
     // Reference to modifiable baseGeo (will be set in main.js)
     baseGeo: null,
+    
+    // Track the current geometry's radius to detect changes
+    currentGeometryRadius: null,
     
     // State setters
     setBpm(value) {
@@ -74,6 +94,14 @@ export function createAppState() {
       }
     },
     
+    setModulusValue(value) {
+      this.modulusValue = Number(value);
+    },
+    
+    setUseModulus(value) {
+      this.useModulus = Boolean(value);
+    },
+    
     setUseLerp(value) {
       this.useLerp = Boolean(value);
       
@@ -87,6 +115,27 @@ export function createAppState() {
     
     setLerpTime(value) {
       this.lerpTime = Math.max(0.1, Math.min(10.0, Number(value)));
+    },
+    
+    // Get scale factor for a specific copy based on modulus
+    getScaleFactorForCopy(copyIndex) {
+      if (!this.useModulus) {
+        // If modulus is not used, use the normal step scale
+        return Math.pow(this.stepScale, copyIndex);
+      }
+      
+      // If modulus is used, calculate scale based on the sequence
+      const modVal = this.modulusValue;
+      
+      // Generate sequence from 1/modVal to 1.0 in even steps
+      const sequence = generateSequence(modVal);
+      
+      // Use round-robin to select the multiplier from the sequence
+      const sequenceIndex = copyIndex % sequence.length;
+      const multiplier = sequence[sequenceIndex];
+      
+      // Return the multiplier directly
+      return multiplier;
     },
     
     // Update lerp values based on time elapsed

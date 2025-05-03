@@ -32,6 +32,19 @@ export function setupUI(state) {
   const lerpTimeRange = document.getElementById('lerpTimeRange');
   const lerpTimeNumber = document.getElementById('lerpTimeNumber');
   const lerpTimeValue = document.getElementById('lerpTimeValue');
+  
+  // Modulus controls
+  const useModulusCheckbox = document.getElementById('useModulusCheckbox');
+  const modulusRadioGroup = document.getElementById('modulusRadioGroup');
+  
+  // Initialize modulus radio buttons
+  setupModulusRadioButtons(modulusRadioGroup, state);
+  
+  // Setup modulus checkbox
+  useModulusCheckbox.checked = state.useModulus;
+  useModulusCheckbox.addEventListener('change', e => {
+    state.setUseModulus(e.target.checked);
+  });
 
   // Sync control values with the UI
   const syncPair = (rangeEl, numEl, spanEl, setter, min, max, parser = v => parseFloat(v)) => {
@@ -106,6 +119,41 @@ export function setupUI(state) {
     stepScaleRange, stepScaleNumber, stepScaleValue,
     angleRange, angleNumber, angleValue,
     numberRange, numberNumber, numberValue,
-    useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue
+    useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
+    useModulusCheckbox, modulusRadioGroup
   };
+}
+
+// Function to set up modulus radio buttons
+function setupModulusRadioButtons(container, state) {
+  // Clear any existing content
+  container.innerHTML = '';
+  
+  // Create a radio button for each value from 1 to 12
+  for (let i = 1; i <= 12; i++) {
+    const radioItem = document.createElement('div');
+    radioItem.className = 'radio-item';
+    
+    const radioInput = document.createElement('input');
+    radioInput.type = 'radio';
+    radioInput.id = `modulus-${i}`;
+    radioInput.name = 'modulus';
+    radioInput.value = i;
+    radioInput.checked = (i === state.modulusValue);
+    
+    // Add event listener
+    radioInput.addEventListener('change', () => {
+      if (radioInput.checked) {
+        state.setModulusValue(i);
+      }
+    });
+    
+    const radioLabel = document.createElement('label');
+    radioLabel.htmlFor = `modulus-${i}`;
+    radioLabel.textContent = i;
+    
+    radioItem.appendChild(radioInput);
+    radioItem.appendChild(radioLabel);
+    container.appendChild(radioItem);
+  }
 }

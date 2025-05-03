@@ -36,6 +36,10 @@ setupAudio().then(audioInstance => {
 
   // Three.js setup
   const scene = new THREE.Scene();
+  
+  // Store the appState in the scene's userData for access in other modules
+  scene.userData.state = appState;
+  
   const cam = new THREE.PerspectiveCamera(
     75, 
     (window.innerWidth * 0.8) / window.innerHeight, 
@@ -60,8 +64,11 @@ setupAudio().then(audioInstance => {
   scene.add(group);
   createAxis(scene);
 
-  // Setup marker geometry
+  // Setup marker geometry - create a reusable geometry for markers
   const markerGeom = new THREE.SphereGeometry(8, 8, 8);
+  
+  // Store it in scene's userData for reuse
+  scene.userData.markerGeometry = markerGeom;
 
   // Handle window resize
   window.addEventListener('resize', () => {
@@ -100,6 +107,10 @@ setupAudio().then(audioInstance => {
   
   // Setup Three.js anyway without audio
   const scene = new THREE.Scene();
+  
+  // Store the appState in the scene's userData for access in other modules
+  scene.userData.state = appState;
+  
   const cam = new THREE.PerspectiveCamera(
     75, 
     (window.innerWidth * 0.8) / window.innerHeight, 
@@ -123,6 +134,12 @@ setupAudio().then(audioInstance => {
   const group = new THREE.Group();
   scene.add(group);
   createAxis(scene);
+
+  // Setup marker geometry - create a reusable geometry for markers
+  const markerGeom = new THREE.SphereGeometry(8, 8, 8);
+  
+  // Store it in scene's userData for reuse
+  scene.userData.markerGeometry = markerGeom;
 
   // Silent audio trigger function - does nothing but required for animation
   const silentAudioTrigger = () => {};

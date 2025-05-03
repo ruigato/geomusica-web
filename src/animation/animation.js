@@ -60,8 +60,13 @@ export function animate(params) {
   // Extract the current number of points from the buffer geometry
   const currentSegments = baseGeo.getAttribute('position').count;
   
+  // Store current geometry's radius in state if not already stored
+  if (!state.currentGeometryRadius) {
+    state.currentGeometryRadius = state.radius;
+  }
+  
   // Check if radius or segments have changed
-  if (currentSegments !== segments) {
+  if (currentSegments !== segments || state.currentGeometryRadius !== state.radius) {
     needsNewGeometry = true;
   }
   
@@ -76,9 +81,13 @@ export function animate(params) {
     // Update references
     state.baseGeo = newGeo;
     params.baseGeo = newGeo;
+    
+    // Store the current radius value used to create this geometry
+    state.currentGeometryRadius = radius;
   }
 
-  updateGroup(group, copies, stepScale, baseGeo, mat, segments, angle);
+  // Pass the state to updateGroup to enable modulus-based scaling
+  updateGroup(group, copies, stepScale, baseGeo, mat, segments, angle, state);
 
   // Calculate animation angle based on BPM
   const dAng = (bpm / 60) * 2 * Math.PI * dt;
@@ -103,9 +112,21 @@ export function animate(params) {
   for (let j = markers.length - 1; j >= 0; j--) {
     const o = markers[j];
     o.life--;
-    o.mesh.material.opacity = o.life / MARK_LIFE;
+    
+    // Update opacity based on remaining life
+    if (o.mesh && o.mesh.material) {
+      o.mesh.material.opacity = o.life / MARK_LIFE;
+    }
+    
+    // Remove markers with no life left
     if (o.life <= 0) {
-      scene.remove(o.mesh);
+      if (o.mesh) {
+        scene.remove(o.mesh);
+        
+        // Proper cleanup to avoid memory leaks
+        if (o.mesh.geometry) o.mesh.geometry.dispose();
+        if (o.mesh.material) o.mesh.material.dispose();
+      }
       markers.splice(j, 1);
     }
   }

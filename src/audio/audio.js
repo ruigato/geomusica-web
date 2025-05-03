@@ -176,7 +176,7 @@ export async function triggerAudio(audioInstance, x, y, lastAngle, angle, tNow) 
   try {
     const freq = Math.hypot(x, y);
     const amp = 0.3;
-    const duration = 0.3;
+    const duration = 0.1;
     
     const scoreEvent = `i 1 0 ${duration} ${freq} ${amp}`;
     console.log(`Triggering sound: ${scoreEvent}`);
