@@ -7,9 +7,15 @@ import {
   VERTEX_CIRCLE_COLOR,
   INTERSECTION_POINT_SIZE,
   INTERSECTION_POINT_COLOR,
-  INTERSECTION_POINT_OPACITY
+  INTERSECTION_POINT_OPACITY,
+  TEXT_LABEL_SIZE,
+  TEXT_LABEL_COLOR,
+  TEXT_LABEL_OFFSET_Y,
+  TEXT_LABEL_OPACITY,
+  INTERSECTION_MERGE_THRESHOLD
 } from '../config/constants.js';
 import { findAllIntersections } from './intersections.js';
+import { createOrUpdateLabel, createAxisLabel } from '../ui/domLabels.js';
 
 // Function to create a regular polygon outline
 export function createPolygonGeometry(radius, segments) {
@@ -62,8 +68,35 @@ function createIntersectionPointGeometry() {
   return new THREE.CircleGeometry(INTERSECTION_POINT_SIZE, 16);
 }
 
+// Create a frequency label using the DOM approach
+export function createTextLabel(text, position, parent, isAxisLabel = true, camera = null, renderer = null) {
+  // For DOM-based labels, we don't actually create a Three.js object
+  // Instead, we return an info object that can be used to update the DOM label
+  return {
+    text,
+    position: position.clone ? position.clone() : new THREE.Vector3(position.x, position.y, position.z || 0),
+    isAxisLabel,
+    id: `label-${Math.random().toString(36).substr(2, 9)}`,
+    domElement: null,
+    update: function(camera, renderer) {
+      // Create or update the DOM label
+      if (isAxisLabel) {
+        this.domElement = createAxisLabel(this.id, this.position, this.text, camera, renderer);
+      } else {
+        this.domElement = createOrUpdateLabel(this.id, this.position, this.text, camera, renderer);
+      }
+      return this;
+    }
+  };
+}
+
 // Function to update the group of copies
 export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, angle = 0, state = null, isLerping = false, justCalculatedIntersections = false) {
+  // Clean up existing point frequency labels if they exist
+  if (state && state.pointFreqLabels) {
+    state.cleanupPointFreqLabels();
+  }
+  
   group.clear();
   
   // Cache the base radius once to use for all modulus calculations
@@ -151,6 +184,20 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     }
   }
   
+  // Create point frequency labels if enabled
+  const shouldCreatePointLabels = state && 
+                                 state.showPointsFreqLabels && 
+                                 !isLerping;
+  
+  // If we should create point labels, initialize the array
+  if (shouldCreatePointLabels) {
+    state.pointFreqLabels = [];
+  }
+  
+  // Get camera and renderer from scene's userData (assuming they're stored there)
+  const camera = group.parent?.userData?.camera;
+  const renderer = group.parent?.userData?.renderer;
+  
   // Now create the actual group based on the updated geometry
   for (let i = 0; i < copies; i++) {
     let modulusScale = 1.0;
@@ -199,6 +246,43 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       
       // Add to the copy group
       copyGroup.add(vertexCircle);
+      
+      // Add persistent frequency label if enabled
+      if (shouldCreatePointLabels && camera && renderer) {
+        // Calculate frequency for this vertex
+        const freq = Math.hypot(x, y);
+        
+        // Format frequency with 2 decimal places
+        const freqText = `${freq.toFixed(2)}`;
+        
+        // Create a world position for this vertex in the copy
+        const worldPos = new THREE.Vector3(x, y, 0);
+        
+        // Apply the copy's rotation
+        const rotatedPos = worldPos.clone();
+        rotatedPos.applyAxisAngle(new THREE.Vector3(0, 0, 1), cumulativeAngleRadians);
+        
+        // Create a text label for this vertex
+        const textLabel = createTextLabel(
+          freqText, 
+          rotatedPos, 
+          copyGroup, // Parent is not really used for DOM labels
+          false, // Not an axis label
+          camera,
+          renderer
+        );
+        
+        // Update the label immediately
+        textLabel.update(camera, renderer);
+        
+        // Store reference for cleanup
+        state.pointFreqLabels.push({
+          label: textLabel,
+          copyIndex: i,
+          vertexIndex: v,
+          position: rotatedPos.clone()
+        });
+      }
     }
     
     // Apply rotation to the copy group
@@ -278,6 +362,35 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       
       // Add to the intersection marker group
       intersectionMarkerGroup.add(pointMesh);
+      
+      // Add persistent frequency label for intersection point if enabled
+      if (shouldCreatePointLabels && camera && renderer) {
+        // Calculate frequency for this intersection point
+        const freq = Math.hypot(point.x, point.y);
+        
+        // Format frequency with 2 decimal places
+        const freqText = `${freq.toFixed(2)}`;
+        
+        // Create a text label for this intersection point
+        const textLabel = createTextLabel(
+          freqText, 
+          point, 
+          intersectionMarkerGroup, // Parent is not really used for DOM labels
+          false, // Not an axis label
+          camera,
+          renderer
+        );
+        
+        // Update the label immediately
+        textLabel.update(camera, renderer);
+        
+        // Store reference for cleanup
+        state.pointFreqLabels.push({
+          label: textLabel,
+          isIntersection: true,
+          position: point.clone()
+        });
+      }
     }
     
     // Add the whole marker group to the main group
@@ -318,6 +431,10 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
   const positions = baseGeo.getAttribute('position').array;
   const count = baseGeo.getAttribute('position').count;
   
+  // Get camera and renderer for axis labels
+  const camera = group.parent?.userData?.camera;
+  const renderer = group.parent?.userData?.renderer;
+  
   // First detect crossings for regular vertices
   for (let ci = 0; ci < copies; ci++) {
     // Check that we have enough children in the group
@@ -340,6 +457,7 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
     const worldRot = angle + copyGroup.rotation.z;
     const worldScale = mesh.scale.x;
     
+    // Process each vertex in this copy
     for (let vi = 0; vi < count; vi++) {
       const x0 = positions[vi * 3];
       const y0 = positions[vi * 3 + 1];
@@ -358,6 +476,9 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
       const key = `${ci}-${vi}`;
       
       if (prevX > 0 && currX <= 0 && currY > 0 && !lastTrig.has(key)) {
+        // Calculate frequency for this point
+        const freq = Math.hypot(x1, y1);
+        
         // Check if this point overlaps with any previously triggered points
         if (!isPointOverlapping(worldX, worldY, triggeredPoints)) {
           // No overlap, trigger audio and create marker
@@ -368,13 +489,13 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
           triggeredPoints.push({ x: worldX, y: worldY });
           
           // Create a marker at the current vertex position (in world space)
-          createMarker(worldRot, x1, y1, group.parent);
+          createMarker(worldRot, x1, y1, group.parent, freq, camera, renderer);
         } else {
           // Point is overlapping, still add to triggered set but don't trigger audio
           triggeredNow.add(key);
           
           // Still create visual marker to maintain visual consistency
-          createMarker(worldRot, x1, y1, group.parent);
+          createMarker(worldRot, x1, y1, group.parent, freq, camera, renderer);
         }
       }
     }
@@ -389,6 +510,17 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
     // Process each intersection point for possible triggers
     for (let i = 0; i < intersectionGroup.children.length; i++) {
       const pointMesh = intersectionGroup.children[i];
+      
+      // Skip if this is a frequency label or a Group
+      if (pointMesh.userData && pointMesh.userData.isFrequencyLabel) {
+        continue;
+      }
+      
+      // Skip if this is a Group (like a text label group)
+      if (pointMesh.type === 'Group') {
+        continue;
+      }
+      
       const localPos = pointMesh.position.clone();
       
       // Calculate previous and current positions
@@ -405,6 +537,9 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
       
       // Check if this point crossed the Y axis from right to left
       if (prevX > 0 && currX <= 0 && currY > 0 && !lastTrig.has(key)) {
+        // Calculate frequency for this point
+        const freq = Math.hypot(localPos.x, localPos.y);
+        
         // Check for overlap with already triggered points
         if (!isPointOverlapping(worldX, worldY, triggeredPoints)) {
           // No overlap, trigger audio and create marker
@@ -414,8 +549,8 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
           // Add to triggered points
           triggeredPoints.push({ x: worldX, y: worldY });
           
-          // Create visual marker
-          createMarker(angle, localPos.x, localPos.y, group.parent);
+          // Create visual marker with frequency label
+          createMarker(angle, localPos.x, localPos.y, group.parent, freq, camera, renderer);
         } else {
           // Point is overlapping, just add to triggered set
           triggeredNow.add(key);
@@ -427,8 +562,8 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
   return triggeredNow;
 }
 
-// Function to create a marker at the given coordinates
-function createMarker(worldRot, x, y, scene) {
+// Function to create a marker at the given coordinates with frequency label
+function createMarker(worldRot, x, y, scene, frequency = null, camera = null, renderer = null) {
   // Check if the scene's userData contains our markers array
   if (!scene.userData.markers) {
     scene.userData.markers = [];
@@ -456,9 +591,24 @@ function createMarker(worldRot, x, y, scene) {
   
   scene.add(markerMesh);
   
+  // Create text label if frequency is provided and axis labels are enabled
+  let textLabel = null;
+  if (frequency !== null && scene.userData.state && scene.userData.state.showAxisFreqLabels && camera && renderer) {
+    // Format frequency with 2 decimal places
+    const freqText = `${frequency.toFixed(2)}`;
+    
+    // Create a unique ID for this temporary label
+    const labelId = `axis-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Create axis crossing label
+    const worldPosition = new THREE.Vector3(worldX, worldY, 5);
+    textLabel = createAxisLabel(labelId, worldPosition, freqText, camera, renderer);
+  }
+  
   // Add to our markers array with life value
   const marker = {
     mesh: markerMesh,
+    textLabel: textLabel,
     life: 30 // MARK_LIFE value
   };
   

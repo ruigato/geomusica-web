@@ -17,6 +17,12 @@ export const INTERSECTION_POINT_COLOR = 0xff3366;
 export const INTERSECTION_POINT_OPACITY = 0.8;
 export const INTERSECTION_MERGE_THRESHOLD = 5; // Distance threshold for merging intersection points
 
+// Text label constants
+export const TEXT_LABEL_SIZE = 12;
+export const TEXT_LABEL_COLOR = 0xffffff;
+export const TEXT_LABEL_OFFSET_Y = 20; // Offset to position text above marker
+export const TEXT_LABEL_OPACITY = 0.9;
+
 // Default values
 export const DEFAULT_VALUES = {
   BPM: 10,
@@ -28,7 +34,9 @@ export const DEFAULT_VALUES = {
   LERP_TIME: 1.0,
   MODULUS_VALUE: 4,
   USE_MODULUS: false,
-  USE_INTERSECTIONS: false // Default for intersection feature
+  USE_INTERSECTIONS: false, // Default for intersection feature
+  SHOW_AXIS_FREQ_LABELS: true, // Default for axis crossing frequency labels
+  SHOW_POINTS_FREQ_LABELS: false // Default for point frequency labels
 };
 
 // UI ranges

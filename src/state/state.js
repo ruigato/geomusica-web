@@ -1,6 +1,7 @@
 // src/state/state.js
 import { Tone } from '../audio/audio.js';
 import { DEFAULT_VALUES } from '../config/constants.js';
+import { clearLabels } from '../ui/domLabels.js';
 
 // Function to generate sequence from 1/modulus to 1.0 in even steps
 export function generateSequence(n) {
@@ -23,7 +24,7 @@ export function createAppState() {
     lastAngle: 0,
     lastTrig: new Set(),
     markers: [],
-// Add these properties to track intersection calculation state
+    // Add these properties to track intersection calculation state
     justCalculatedIntersections: false,
     
     // Additional state to track parameter changes
@@ -56,6 +57,13 @@ export function createAppState() {
     targetRadius: DEFAULT_VALUES.RADIUS,
     targetStepScale: DEFAULT_VALUES.STEP_SCALE,
     targetAngle: DEFAULT_VALUES.ANGLE,
+    
+    // Frequency label settings
+    showAxisFreqLabels: DEFAULT_VALUES.SHOW_AXIS_FREQ_LABELS,
+    showPointsFreqLabels: DEFAULT_VALUES.SHOW_POINTS_FREQ_LABELS,
+    lastShowPointsFreqLabels: DEFAULT_VALUES.SHOW_POINTS_FREQ_LABELS,
+    pointFreqLabels: [], // Array to store persistent frequency labels
+    needsPointFreqLabelsUpdate: false,
     
     // Reference to modifiable baseGeo (will be set in main.js)
     baseGeo: null,
@@ -153,6 +161,34 @@ export function createAppState() {
       this.lerpTime = Math.max(0.1, Math.min(10.0, Number(value)));
     },
     
+    // Add methods for frequency label toggles
+    setShowAxisFreqLabels(value) {
+      this.showAxisFreqLabels = Boolean(value);
+    },
+    
+    setShowPointsFreqLabels(value) {
+      this.showPointsFreqLabels = Boolean(value);
+      
+      // When toggling off, clean up existing point frequency labels
+      if (!value && this.pointFreqLabels.length > 0) {
+        this.cleanupPointFreqLabels();
+      } else if (value) {
+        // When toggling on, flag that we need to generate labels
+        this.needsPointFreqLabelsUpdate = true;
+      }
+    },
+    
+    // Helper method to clean up point frequency labels
+    cleanupPointFreqLabels() {
+      if (!this.pointFreqLabels || this.pointFreqLabels.length === 0) return;
+      
+      // Clear all DOM-based labels
+      clearLabels();
+      
+      // Clear the array
+      this.pointFreqLabels = [];
+    },
+    
     // Get scale factor for a specific copy based on modulus
     getScaleFactorForCopy(copyIndex) {
       if (!this.useModulus) {
@@ -200,8 +236,6 @@ export function createAppState() {
       // Note: BPM, copies, and segments (Number) are not lerped
     },
     
-
-
     // Helper function for linear interpolation
     lerp(start, end, t) {
       return start + (end - start) * t;

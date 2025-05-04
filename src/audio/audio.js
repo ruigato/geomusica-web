@@ -63,7 +63,7 @@ function playWebAudioTone(frequency, amplitude, duration) {
     oscillator.start(now);
     oscillator.stop(now + duration);
     
-    console.log(`WebAudio tone played: freq=${frequency}, amp=${amplitude}, dur=${duration}`);
+  //  console.log(`WebAudio tone played: freq=${frequency}, amp=${amplitude}, dur=${duration}`);
     
     // Clean up
     oscillator.onended = () => {
@@ -136,7 +136,7 @@ export async function setupAudio() {
         }
       },
       start: async () => {
-        console.log("WebAudio fallback ready");
+     //   console.log("WebAudio fallback ready");
         return 0;
       }
     };
@@ -176,12 +176,16 @@ export async function triggerAudio(audioInstance, x, y, lastAngle, angle, tNow) 
   try {
     const freq = Math.hypot(x, y);
     const amp = 0.3;
-    const duration = 0.1;
+    const duration = 0.2;
     
     const scoreEvent = `i 1 0 ${duration} ${freq} ${amp}`;
-    console.log(`Triggering sound: ${scoreEvent}`);
+   // console.log(`Triggering sound: ${scoreEvent}`);
     
     await audioInstance.readScore(scoreEvent);
+
+        // Return the frequency for use in text labels
+        return freq;
+
   } catch (error) {
     console.error('Error triggering audio:', error);
   }

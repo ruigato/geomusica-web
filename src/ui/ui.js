@@ -39,6 +39,23 @@ export function setupUI(state) {
   
   // Intersections control
   const useIntersectionsCheckbox = document.getElementById('useIntersectionsCheckbox');
+
+    // Get new UI elements
+    const showAxisFreqLabelsCheckbox = document.getElementById('showAxisFreqLabelsCheckbox');
+    const showPointsFreqLabelsCheckbox = document.getElementById('showPointsFreqLabelsCheckbox');
+    
+    // Initialize checkbox states from app state
+    showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;
+    showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
+    
+    // Setup event listeners for new checkboxes
+    showAxisFreqLabelsCheckbox.addEventListener('change', e => {
+      state.setShowAxisFreqLabels(e.target.checked);
+    });
+  
+    showPointsFreqLabelsCheckbox.addEventListener('change', e => {
+      state.setShowPointsFreqLabels(e.target.checked);
+    });
   
   // Initialize modulus radio buttons
   setupModulusRadioButtons(modulusRadioGroup, state);
@@ -130,7 +147,8 @@ export function setupUI(state) {
     numberRange, numberNumber, numberValue,
     useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
     useModulusCheckbox, modulusRadioGroup,
-    useIntersectionsCheckbox
+    useIntersectionsCheckbox,     showAxisFreqLabelsCheckbox,
+    showPointsFreqLabelsCheckbox
   };
 }
 

@@ -4,6 +4,7 @@ import { getCurrentTime } from '../audio/audio.js';
 import { updateGroup, detectCrossings, createPolygonGeometry } from '../geometry/geometry.js';
 import { processIntersections, createIntersectionMarkers } from '../geometry/intersections.js';
 import { MARK_LIFE } from '../config/constants.js';
+import { updateLabelPositions, updateAxisLabels, removeLabel, updateRotatingLabels } from '../ui/domLabels.js';
 
 // Function to clean up intersection point markers - improved version
 function cleanupIntersectionMarkers(scene) {
@@ -91,6 +92,10 @@ export function animate(params) {
     triggerAudioCallback
   } = params;
 
+  // Store camera and renderer in scene's userData for label management
+  scene.userData.camera = cam;
+  scene.userData.renderer = renderer;
+
   // Get the current state values - explicitly reading from state each frame
   const bpm = state.bpm;
   const radius = state.radius;
@@ -171,6 +176,15 @@ export function animate(params) {
     needsNewGeometry || 
     Math.abs(state.lastStepScale - stepScale) > 0.001 ||
     Math.abs(state.lastAngle - angle) > 0.1;
+
+  // Additional flag for updating point frequency labels
+  const pointFreqLabelsToggleChanged = 
+    state.showPointsFreqLabels !== state.lastShowPointsFreqLabels;
+    
+  if (pointFreqLabelsToggleChanged) {
+    state.lastShowPointsFreqLabels = state.showPointsFreqLabels;
+    state.needsPointFreqLabelsUpdate = true;
+  }
 
   // If parameters changed, we need to update
   if (paramsChanged) {
@@ -300,7 +314,7 @@ export function animate(params) {
               child.material.forEach(m => m.dispose());
             } else {
               child.material.dispose();
-          }
+            }
           }
         });
         group.userData.intersectionMarkerGroup = null;
@@ -320,7 +334,23 @@ export function animate(params) {
   }
 
   // Update the group with current parameters and pass the justCalculatedIntersections flag
-  updateGroup(group, copies, stepScale, params.baseGeo, mat, segments, angle, state, isLerping, state.justCalculatedIntersections);
+  updateGroup(
+    group, 
+    copies, 
+    stepScale, 
+    params.baseGeo, 
+    mat, 
+    segments, 
+    angle, 
+    state, 
+    isLerping, 
+    state.justCalculatedIntersections || state.needsPointFreqLabelsUpdate
+  );
+  
+  // Reset the flag after updating
+  if (state.needsPointFreqLabelsUpdate) {
+    state.needsPointFreqLabelsUpdate = false;
+  }
 
   // Calculate animation angle based on BPM
   const dAng = (bpm / 60) * 2 * Math.PI * dt;
@@ -329,6 +359,10 @@ export function animate(params) {
   // Apply rotation to the group
   group.rotation.z = ang;
 
+// Update rotating labels (only the point frequency labels)
+if (state.showPointsFreqLabels) {
+  updateRotatingLabels(group, cam, renderer);
+}
   // Detection of vertex crossings and audio calculations
   const triggeredNow = detectCrossings(
     params.baseGeo, 
@@ -351,8 +385,11 @@ export function animate(params) {
       o.mesh.material.opacity = o.life / MARK_LIFE;
     }
     
+    // DOM-based text labels are handled by updateAxisLabels
+    
     // Remove markers with no life left
     if (o.life <= 0) {
+      // Clean up mesh
       if (o.mesh) {
         scene.remove(o.mesh);
         
@@ -360,6 +397,13 @@ export function animate(params) {
         if (o.mesh.geometry) o.mesh.geometry.dispose();
         if (o.mesh.material) o.mesh.material.dispose();
       }
+      
+      // Clean up text label if it has an ID (DOM-based)
+      if (o.textLabel && o.textLabel.id) {
+        removeLabel(o.textLabel.id);
+      }
+      
+      // Remove from markers array
       markers.splice(j, 1);
     }
   }
@@ -367,6 +411,17 @@ export function animate(params) {
   // Update state
   state.lastTrig = triggeredNow;
   state.lastAngle = ang;
+  
+// First update the point frequency labels (only if enabled)
+if (state.showPointsFreqLabels) {
+  updateRotatingLabels(group, cam, renderer);
+}
+
+// Then separately update the axis labels (these must be handled differently)
+updateAxisLabels();
+
+// Finally update any other non-rotating labels
+updateLabelPositions(cam, renderer);
   
   // Render
   stats.begin();
