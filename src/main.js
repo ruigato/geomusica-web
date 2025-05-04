@@ -1,10 +1,11 @@
-// src/main.js - Fixed version
+// src/main.js - Updated to include synth UI
 import * as THREE from 'three';
 import Stats from 'stats.js';
 
 // Import modules
 import { setupUI } from './ui/ui.js';
-import { setupAudio, triggerAudio } from './audio/audio.js';
+import { setupSynthUI } from './ui/synthUI.js'; // Import the new synthUI module
+import { setupAudio, triggerAudio, setEnvelope, setBrightness, setMasterVolume } from './audio/audio.js';
 import { createPolygonGeometry, createAxis } from './geometry/geometry.js';
 import { animate } from './animation/animation.js';
 import { createAppState } from './state/state.js';
@@ -54,6 +55,14 @@ function initializeApplication() {
       console.error('Failed to initialize audio. Visualization will run without audio.');
     }
 
+    // Set initial ADSR values in the audio engine
+    setEnvelope(appState.attack, appState.decay, appState.sustain, appState.release);
+    setBrightness(appState.brightness);
+    setMasterVolume(appState.volume);
+
+    // Setup synthesizer UI controls after audio is initialized
+    setupSynthUI(appState, audioInstance);
+
     // Function to handle audio triggers
     const handleAudioTrigger = (x, y, lastAngle, angle, tNow, options = {}) => {
       return triggerAudio(audioInstance, x, y, lastAngle, angle, tNow, options);
@@ -67,7 +76,7 @@ function initializeApplication() {
     
     const cam = new THREE.PerspectiveCamera(
       75, 
-      (window.innerWidth * 0.8) / window.innerHeight, 
+      (window.innerWidth * 0.6) / window.innerHeight, // Updated to account for new UI width
       0.1, 
       10000
     );
@@ -75,7 +84,7 @@ function initializeApplication() {
     cam.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth * 0.8, window.innerHeight);
+    renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // Updated to account for new UI width
     document.getElementById('canvas').appendChild(renderer.domElement);
 
     // Store camera and renderer in scene's userData for label management
@@ -101,9 +110,9 @@ function initializeApplication() {
 
     // Handle window resize
     window.addEventListener('resize', () => {
-      cam.aspect = (window.innerWidth * 0.8) / window.innerHeight;
+      cam.aspect = (window.innerWidth * 0.6) / window.innerHeight; // Updated to account for new UI width
       cam.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth * 0.8, window.innerHeight);
+      renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // Updated to account for new UI width
       
       // Update DOM label positions when window resizes
       updateLabelPositions(cam, renderer);
@@ -145,7 +154,7 @@ function initializeApplication() {
     
     const cam = new THREE.PerspectiveCamera(
       75, 
-      (window.innerWidth * 0.8) / window.innerHeight, 
+      (window.innerWidth * 0.6) / window.innerHeight, // Updated to account for new UI width
       0.1, 
       10000
     );
@@ -153,7 +162,7 @@ function initializeApplication() {
     cam.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth * 0.8, window.innerHeight);
+    renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // Updated to account for new UI width
     document.getElementById('canvas').appendChild(renderer.domElement);
 
     // Store camera and renderer in scene's userData for label management
@@ -179,9 +188,9 @@ function initializeApplication() {
 
     // Handle window resize with label updates
     window.addEventListener('resize', () => {
-      cam.aspect = (window.innerWidth * 0.8) / window.innerHeight;
+      cam.aspect = (window.innerWidth * 0.6) / window.innerHeight; // Updated to account for new UI width
       cam.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth * 0.8, window.innerHeight);
+      renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // Updated to account for new UI width
       
       // Update DOM label positions when window resizes
       updateLabelPositions(cam, renderer);
@@ -189,6 +198,9 @@ function initializeApplication() {
 
     // Silent audio trigger function - does nothing but required for animation
     const silentAudioTrigger = () => {};
+
+    // Still setup the synth UI even without audio
+    setupSynthUI(appState, null);
 
     // Start animation loop without audio
     animate({

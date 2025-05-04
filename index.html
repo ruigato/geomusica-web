@@ -6,6 +6,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>GeoMusica Web</title>
   <link rel="stylesheet" href="/src/style.css" />
+  <style>
+    /* Expanded UI area from 20% to 40% */
+    #ui {
+      width: 40%;
+      max-height: 100vh;
+      overflow-y: auto;
+    }
+    #canvas {
+      width: 60%;
+    }
+    /* Added styling for slider containers to make them more compact */
+    .slider-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .slider-container input[type="range"] {
+      flex: 1;
+    }
+    .slider-container input[type="number"] {
+      width: 60px;
+    }
+    .slider-value {
+      min-width: 40px;
+      text-align: right;
+    }
+  </style>
 </head>
 <body>
   <div id="ui">
@@ -13,9 +40,9 @@
       <h2>TIME</h2>
       <div class="control">
         <label for="bpmRange">BPM:</label>
-        <input type="range" id="bpmRange" min="0" max="240" step="1" value="120">
-        <div style="display:flex; gap:8px;">
-          <span id="bpmValue">120</span>
+        <div class="slider-container">
+          <input type="range" id="bpmRange" min="0" max="240" step="1" value="120">
+          <span id="bpmValue" class="slider-value">120</span>
           <input type="number" id="bpmNumber" min="30" max="240" step="1" value="120">
         </div>
       </div>
@@ -24,41 +51,41 @@
       <h2>SHAPE</h2>
       <div class="control">
         <label for="radiusRange">Radius:</label>
-        <input type="range" id="radiusRange" min="20" max="2048" step="1" value="432">
-        <div style="display:flex; gap:8px;">
-          <span id="radiusValue">432</span>
+        <div class="slider-container">
+          <input type="range" id="radiusRange" min="20" max="2048" step="1" value="432">
+          <span id="radiusValue" class="slider-value">432</span>
           <input type="number" id="radiusNumber" min="20" max="2048" step="1" value="432">
         </div>
       </div>
       <div class="control">
         <label for="copiesRange">Copies:</label>
-        <input type="range" id="copiesRange" min="0" max="32" step="1" value="1">
-        <div style="display:flex; gap:8px;">
-          <span id="copiesValue">1</span>
+        <div class="slider-container">
+          <input type="range" id="copiesRange" min="0" max="32" step="1" value="1">
+          <span id="copiesValue" class="slider-value">1</span>
           <input type="number" id="copiesNumber" min="0" max="32" step="1" value="1">
         </div>
       </div>
       <div class="control">
         <label for="stepScaleRange">Step Scale:</label>
-        <input type="range" id="stepScaleRange" min="0.1" max="2" step="0.01" value="1">
-        <div style="display:flex; gap:8px;">
-          <span id="stepScaleValue">1.0</span>
+        <div class="slider-container">
+          <input type="range" id="stepScaleRange" min="0.1" max="2" step="0.01" value="1">
+          <span id="stepScaleValue" class="slider-value">1.0</span>
           <input type="number" id="stepScaleNumber" min="0.1" max="2" step="0.1" value="1.0">
         </div>
       </div>
       <div class="control">
         <label for="angleRange">Angle (°):</label>
-        <input type="range" id="angleRange" min="-180" max="180" step="0.1" value="0">
-        <div style="display:flex; gap:8px;">
-          <span id="angleValue">0</span>
+        <div class="slider-container">
+          <input type="range" id="angleRange" min="-180" max="180" step="0.1" value="0">
+          <span id="angleValue" class="slider-value">0</span>
           <input type="number" id="angleNumber" min="-180" max="180" step="1" value="0">
         </div>
       </div>
       <div class="control">
         <label for="numberRange">Number:</label>
-        <input type="range" id="numberRange" min="2" max="12" step="1" value="4">
-        <div style="display:flex; gap:8px;">
-          <span id="numberValue">4</span>
+        <div class="slider-container">
+          <input type="range" id="numberRange" min="2" max="12" step="1" value="4">
+          <span id="numberValue" class="slider-value">4</span>
           <input type="number" id="numberNumber" min="2" max="12" step="1" value="4">
         </div>
       </div>
@@ -88,6 +115,59 @@
       </div>
     </section>
     
+    <!-- New SYNTH section with ADSR controls -->
+    <section>
+      <h2>SYNTH</h2>
+      <div class="control">
+        <label for="attackRange">Attack (s):</label>
+        <div class="slider-container">
+          <input type="range" id="attackRange" min="0.001" max="2.0" step="0.001" value="0.01">
+          <span id="attackValue" class="slider-value">0.01</span>
+          <input type="number" id="attackNumber" min="0.001" max="2.0" step="0.01" value="0.01">
+        </div>
+      </div>
+      <div class="control">
+        <label for="decayRange">Decay (s):</label>
+        <div class="slider-container">
+          <input type="range" id="decayRange" min="0.01" max="3.0" step="0.01" value="0.3">
+          <span id="decayValue" class="slider-value">0.3</span>
+          <input type="number" id="decayNumber" min="0.01" max="3.0" step="0.01" value="0.3">
+        </div>
+      </div>
+      <div class="control">
+        <label for="sustainRange">Sustain:</label>
+        <div class="slider-container">
+          <input type="range" id="sustainRange" min="0.0" max="1.0" step="0.01" value="0.5">
+          <span id="sustainValue" class="slider-value">0.5</span>
+          <input type="number" id="sustainNumber" min="0.0" max="1.0" step="0.01" value="0.5">
+        </div>
+      </div>
+      <div class="control">
+        <label for="releaseRange">Release (s):</label>
+        <div class="slider-container">
+          <input type="range" id="releaseRange" min="0.01" max="10.0" step="0.01" value="1.0">
+          <span id="releaseValue" class="slider-value">1.0</span>
+          <input type="number" id="releaseNumber" min="0.01" max="10.0" step="0.01" value="1.0">
+        </div>
+      </div>
+      <div class="control">
+        <label for="brightnessRange">Brightness:</label>
+        <div class="slider-container">
+          <input type="range" id="brightnessRange" min="0.0" max="2.0" step="0.01" value="1.0">
+          <span id="brightnessValue" class="slider-value">1.0</span>
+          <input type="number" id="brightnessNumber" min="0.0" max="2.0" step="0.01" value="1.0">
+        </div>
+      </div>
+      <div class="control">
+        <label for="volumeRange">Volume:</label>
+        <div class="slider-container">
+          <input type="range" id="volumeRange" min="0.0" max="1.0" step="0.01" value="0.8">
+          <span id="volumeValue" class="slider-value">0.8</span>
+          <input type="number" id="volumeNumber" min="0.0" max="1.0" step="0.01" value="0.8">
+        </div>
+      </div>
+    </section>
+    
     <section>
       <h2>ANIMATION</h2>
       <div class="control">
@@ -97,9 +177,9 @@
       </div>
       <div class="control">
         <label for="lerpTimeRange">Lag Time (s):</label>
-        <input type="range" id="lerpTimeRange" min="0.1" max="5.0" step="0.1" value="1.0">
-        <div style="display:flex; gap:8px;">
-          <span id="lerpTimeValue">1.0</span>
+        <div class="slider-container">
+          <input type="range" id="lerpTimeRange" min="0.1" max="5.0" step="0.1" value="1.0">
+          <span id="lerpTimeValue" class="slider-value">1.0</span>
           <input type="number" id="lerpTimeNumber" min="0.1" max="5.0" step="0.1" value="1.0">
         </div>
       </div>
@@ -117,7 +197,7 @@
   </div>
   <div id="canvas"></div>
   <!-- Add this right after the canvas container -->
-<div id="labels-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden;"></div>
+  <div id="labels-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden;"></div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

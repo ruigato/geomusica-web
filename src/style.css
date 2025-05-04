@@ -1,42 +1,44 @@
-/* Add this to your existing style.css */
-
+/* src/style.css */
 body {
   margin: 0;
-  font-family: Arial, sans-serif;
-  background: #121212;
-  color: white;
+  padding: 0;
   display: flex;
+  font-family: sans-serif;
+  background-color: #111;
+  color: #eee;
   height: 100vh;
+  overflow: hidden;
 }
 
 #ui {
-  width: 20%;
-  padding: 20px;
-  background: #1e1e1e;
+  width: 40%; /* Expanded from 20% to 40% */
+  max-height: 100vh;
   overflow-y: auto;
-  height: 100vh;
+  background-color: #222;
+  padding: 20px;
   box-sizing: border-box;
+  border-right: 1px solid #333;
 }
 
 #canvas {
-  flex-grow: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 60%; /* Reduced from 80% to 60% */
+  height: 100vh;
+  overflow: hidden;
 }
 
 section {
   margin-bottom: 20px;
   padding: 10px;
+  background-color: #333;
   border-radius: 5px;
-  background: #2a2a2a;
 }
 
 h2 {
   margin-top: 0;
-  margin-bottom: 10px;
   font-size: 1.2em;
-  color: #00ffcc;
+  color: #0cf;
+  border-bottom: 1px solid #444;
+  padding-bottom: 5px;
 }
 
 .control {
@@ -46,6 +48,7 @@ h2 {
 label {
   display: block;
   margin-bottom: 5px;
+  color: #ccc;
 }
 
 input[type="range"] {
@@ -55,16 +58,36 @@ input[type="range"] {
 
 input[type="number"] {
   width: 60px;
-  background: #3a3a3a;
-  color: white;
+  background-color: #444;
+  color: #fff;
   border: 1px solid #555;
+  padding: 3px;
   border-radius: 3px;
-  padding: 4px;
 }
 
+/* Slider container styling */
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.slider-container input[type="range"] {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.slider-value {
+  min-width: 40px;
+  text-align: right;
+  font-family: monospace;
+  color: #0cf;
+}
+
+/* Help text styling */
 .help-text {
   font-size: 0.8em;
-  color: #aaa;
+  color: #999;
   margin-top: 3px;
   display: block;
 }
@@ -103,7 +126,7 @@ input[type="number"] {
 }
 
 .radio-item input[type="radio"]:checked + label {
-  background: #00ffcc;
+  background: #0cf;
   color: #1e1e1e;
   font-weight: bold;
 }
@@ -112,19 +135,67 @@ input[type="number"] {
   background: #4a4a4a;
 }
 
+/* Synth section styling */
+section:nth-child(5) { /* Synth section (adjust the number if needed) */
+  background-color: #263238;
+  border-left: 3px solid #09a;
+}
 
+section:nth-child(5) h2 {
+  color: #09a;
+}
 
-/* Text label styles */
-.text-label {
+/* Add scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #222; 
+}
+ 
+::-webkit-scrollbar-thumb {
+  background: #555; 
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #777; 
+}
+
+/* Axis and point labels */
+#labels-container {
   position: absolute;
-  color: #ffffff;
-  background-color: rgba(0, 0, 0, 0.5);
-  padding: 2px 5px;
-  border-radius: 2px;
-  font-family: Arial, sans-serif;
-  font-size: 30px;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
-  white-space: nowrap;
+  overflow: hidden;
+  z-index: 1000;
+}
+
+.axis-frequency-label {
+  position: absolute;
+  font-family: "Perfect DOS VGA 437", monospace;
+  font-size: 14px;
+  color: #ffffff;
+  text-align: center;
+  background-color: rgba(255, 0, 255, 0.7);
+  padding: 2px 4px;
+  border-radius: 2px;
+  pointer-events: none;
   transform: translate(-50%, -100%);
-  z-index: 10;
+}
+
+.point-frequency-label {
+  position: absolute;
+  font-family: "Perfect DOS VGA 437", monospace;
+  font-size: 14px;
+  color: #ffffff;
+  text-align: center;
+  background-color: transparent;
+  padding: 2px 4px;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
 }

@@ -1,4 +1,4 @@
-// src/state/state.js - Optimized version
+// src/state/state.js - Updated with synth controls
 import { Tone } from '../audio/audio.js';
 import { DEFAULT_VALUES } from '../config/constants.js';
 import { clearLabels } from '../ui/domLabels.js';
@@ -43,6 +43,14 @@ export function createAppState() {
     segments: DEFAULT_VALUES.SEGMENTS,
     stepScale: DEFAULT_VALUES.STEP_SCALE,
     angle: DEFAULT_VALUES.ANGLE,
+    
+    // SYNTH parameters
+    attack: 0.01,
+    decay: 0.3,
+    sustain: 0.5,
+    release: 1.0,
+    brightness: 1.0,
+    volume: 0.8,
     
     // MODULUS related parameters
     modulusValue: DEFAULT_VALUES.MODULUS_VALUE,
@@ -189,6 +197,54 @@ export function createAppState() {
      */
     setLerpTime(value) {
       this.lerpTime = Math.max(0.1, Math.min(10.0, Number(value)));
+    },
+    
+    /**
+     * Set attack time
+     * @param {number} value New attack time in seconds
+     */
+    setAttack(value) {
+      this.attack = Math.max(0.001, Math.min(2.0, Number(value)));
+    },
+    
+    /**
+     * Set decay time
+     * @param {number} value New decay time in seconds
+     */
+    setDecay(value) {
+      this.decay = Math.max(0.01, Math.min(3.0, Number(value)));
+    },
+    
+    /**
+     * Set sustain level
+     * @param {number} value New sustain level (0-1)
+     */
+    setSustain(value) {
+      this.sustain = Math.max(0.0, Math.min(1.0, Number(value)));
+    },
+    
+    /**
+     * Set release time
+     * @param {number} value New release time in seconds
+     */
+    setRelease(value) {
+      this.release = Math.max(0.01, Math.min(10.0, Number(value)));
+    },
+    
+    /**
+     * Set brightness
+     * @param {number} value New brightness value (0-2)
+     */
+    setBrightness(value) {
+      this.brightness = Math.max(0.0, Math.min(2.0, Number(value)));
+    },
+    
+    /**
+     * Set master volume
+     * @param {number} value New volume value (0-1)
+     */
+    setVolume(value) {
+      this.volume = Math.max(0.0, Math.min(1.0, Number(value)));
     },
     
     /**
