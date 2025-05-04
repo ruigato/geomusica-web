@@ -1,87 +1,85 @@
-// src/audio/audio.js
+// src/audio/audio.js - Optimized version with testing code removed
+
 import { Csound } from '@csound/browser';
 
-// Globals
+// Core audio system variables
 let csoundInstance = null;
 let audioContext = null;
-
-// Explicitly define whether Csound has started
 let csoundStarted = false;
+let startTime = 0;
+let sampleRate = 44100; 
+let isUsingCsoundTiming = false;
+let lastCsoundTime = 0;
 
-// Create a channel variable to control frequency in real-time
-let currentFrequency = 440;
 // Path to the orchestra file
 const ORC_FILE_PATH = '/src/audio/GeoMusica.orc';
-// Basic Csound orchestra with ALL logic included
-// This approach puts everything in the orchestra to avoid score syntax errors
-const FULL_ORCHESTRA = `
-sr = 44100
-ksmps = 128
-nchnls = 2
-0dbfs = 1
 
-; Global variables for real-time control
-gkFreq chnexport "frequency", 1
-giAmp chnexport "amplitude", 1
+// Instrument types
+export const InstrumentType = {
+  SIMPLE: 5,
+  FM: 6,
+  ADDITIVE: 7,
+  PLUCKED: 8
+};
 
-; Define function table for sine wave
-giSine ftgen 1, 0, 16384, 10, 1
+// Default instrument type
+let activeInstrument = InstrumentType.SIMPLE;
 
-; Simple always-on instrument that reads from channels
-instr 1
-  ; Read frequency and amplitude from channels
-  kfreq = gkFreq
-  kamp = giAmp
-  
-  ; Simple oscillator
-  asig poscil kamp, kfreq, giSine
-
-
-  
-  ; Direct output
-  outs asig, asig
-endin
-
-; Start instrument 1 and keep it running
-schedule 1, 0, 100000 ; Run for a very long time
-`;
+// Channel for time synchronization with Csound
+const TIME_CHANNEL_NAME = "currentTime";
 
 // Initialize the Audio Context
 function initAudioContext() {
   if (!audioContext) {
     try {
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      console.log("Audio context created:", audioContext.state);
+      sampleRate = audioContext.sampleRate;
     } catch (error) {
       console.error("Failed to create audio context:", error);
     }
   }
-  
   return audioContext;
 }
 
-// Simple time reference
+// Get current time with Csound's internal clock when available
 export function getCurrentTime() {
+  if (csoundInstance && csoundStarted && isUsingCsoundTiming) {
+    try {
+      const csoundTime = csoundInstance.getControlChannel(TIME_CHANNEL_NAME);
+      if (typeof csoundTime === 'number' && !isNaN(csoundTime)) {
+        lastCsoundTime = csoundTime;
+        return csoundTime;
+      }
+    } catch (error) {
+      // Fall back to audio context time on error
+    }
+  }
+  return getAudioContextTime();
+}
+
+// Helper for consistently getting audio context time
+function getAudioContextTime() {
+  if (audioContext) {
+    const currentTime = audioContext.currentTime;
+    if (startTime === 0) {
+      startTime = currentTime;
+    }
+    return currentTime - startTime;
+  }
   return performance.now() / 1000;
 }
 
-// Load the orchestra file
+// Load the external orchestra file
 async function loadOrchestraFile() {
   try {
-    console.log("Attempting to load orchestra file from:", ORC_FILE_PATH);
     const response = await fetch(ORC_FILE_PATH);
-    
     if (!response.ok) {
       throw new Error(`Failed to load orchestra file (HTTP ${response.status})`);
     }
-    
-    const orchestraCode = await response.text();
-    console.log("Orchestra file loaded successfully:", orchestraCode.length, "bytes");
-    return orchestraCode;
+    return await response.text();
   } catch (error) {
     console.error("Error loading orchestra file:", error);
-    console.log("Using fallback orchestra code");
-    return FALLBACK_ORCHESTRA;
+    throw error;
   }
 }
 
@@ -91,15 +89,10 @@ export async function setupAudio() {
     // Initialize audio context
     initAudioContext();
     
-    // Create the Csound instance only if not already created
+    // Create the Csound instance if not already created
     if (!csoundInstance) {
       try {
-        console.log("Creating Csound instance...");
-        csoundInstance = await Csound({
-          // Use minimal settings to avoid complexity
-          audioContext: audioContext
-        });
-        console.log("Csound instance created successfully");
+        csoundInstance = await Csound({ audioContext: audioContext });
       } catch (error) {
         console.error("Failed to create Csound instance:", error);
         return null;
@@ -109,181 +102,52 @@ export async function setupAudio() {
     // Set up first-click handler to initialize audio
     document.body.addEventListener('click', async () => {
       try {
-        // First check audio context state
         if (audioContext.state === 'suspended') {
-          console.log("Resuming audio context...");
           await audioContext.resume();
-          console.log("Audio context resumed");
         }
         
         if (!csoundStarted) {
-          // Compile the orchestra with everything included
           try {
-            console.log("Compiling full orchestra...");
-            await csoundInstance.compileOrc(FULL_ORCHESTRA);
-            console.log("Orchestra compiled successfully");
-            
-            // Set output to audio device explicitly
-            console.log("Setting output to audio device (dac)...");
+            // Load and compile the orchestra
+            const orchestraCode = await loadOrchestraFile();
+            await csoundInstance.compileOrc(orchestraCode);
             await csoundInstance.setOption("-odac");
-            console.log("Output option set");
-            
-            // Start Csound
-            console.log("Starting Csound...");
             await csoundInstance.start();
             csoundStarted = true;
-            console.log("Csound started successfully");
             
-            // Initialize channels with default values
-            console.log("Setting initial channel values...");
-            await csoundInstance.setControlChannel("frequency", 440);
-            await csoundInstance.setControlChannel("amplitude", 0.8);
-            console.log("Channels initialized");
+            // Set default parameters
+            await csoundInstance.setControlChannel("attack", 0.01);
+            await csoundInstance.setControlChannel("decay", 0.1);
+            await csoundInstance.setControlChannel("sustain", 0.7);
+            await csoundInstance.setControlChannel("release", 0.5);
+            await csoundInstance.setControlChannel("masterVolume", 0.8);
             
-            // Play a test tone by changing frequency
-            console.log("Playing test frequency...");
-            await csoundInstance.setControlChannel("frequency", 880);
-            await csoundInstance.setControlChannel("amplitude", 0.9);
-            // Test tone will play because instrument 1 is always on
+            // Play a test note
+            playNote(440, 0.7, 0.5);
             
-            // Return to default after 1 second
+            // Enable Csound timing
             setTimeout(async () => {
-              await csoundInstance.setControlChannel("frequency", 440);
-              await csoundInstance.setControlChannel("amplitude", 0.0);
-              console.log("Test complete");
+              try {
+                await csoundInstance.setControlChannel(TIME_CHANNEL_NAME, 0);
+                const initialTime = await csoundInstance.getControlChannel(TIME_CHANNEL_NAME);
+                
+                if (typeof initialTime === 'number' && !isNaN(initialTime)) {
+                  isUsingCsoundTiming = true;
+                }
+              } catch (e) {
+                console.warn("Using AudioContext timing instead of Csound timing");
+                isUsingCsoundTiming = false;
+              }
             }, 1000);
             
           } catch (error) {
             console.error("Error during Csound setup:", error);
           }
-        } else {
-          console.log("Csound already started");
         }
       } catch (error) {
-        console.error("General error in click handler:", error);
+        console.error("Error in audio initialization:", error);
       }
     }, { once: true });
-    
-    // Set up keyboard listeners for testing
-    document.addEventListener('keydown', async (e) => {
-      // Test tone (C key)
-      if (e.key === 'c' || e.key === 'C') {
-        console.log("C key pressed - testing Csound...");
-        
-        if (!csoundInstance || !csoundStarted) {
-          console.error("Csound not initialized");
-          return;
-        }
-        
-        try {
-          // Play test tone by modifying channel values
-          console.log("Setting test frequency to 880Hz...");
-          await csoundInstance.setControlChannel("frequency", 880);
-          await csoundInstance.setControlChannel("amplitude", 0.9);
-          
-          // Keep it on for 3 seconds
-          console.log("Playing for 3 seconds...");
-          
-          // Turn off after 3 seconds
-          setTimeout(async () => {
-            await csoundInstance.setControlChannel("amplitude", 0.0);
-            console.log("Test tone stopped");
-          }, 3000);
-        } catch (error) {
-          console.error("Error in Csound test:", error);
-        }
-      }
-      
-      // Status check (S key)
-      else if (e.key === 's' || e.key === 'S') {
-        console.log("S key pressed - checking status...");
-        console.log("Audio context:", audioContext ? audioContext.state : "not created");
-        console.log("Csound instance:", csoundInstance ? "exists" : "not created");
-        console.log("csoundStarted flag:", csoundStarted);
-        
-        try {
-          if (csoundInstance) {
-            console.log("Csound properties:");
-            console.log("- started:", csoundInstance.started);
-            console.log("- initialized:", csoundInstance.initialized);
-            
-            // Try to check channel values
-            try {
-              const freqValue = await csoundInstance.getControlChannel("frequency");
-              const ampValue = await csoundInstance.getControlChannel("amplitude");
-              console.log("- current frequency:", freqValue);
-              console.log("- current amplitude:", ampValue);
-            } catch (e) {
-              console.log("- couldn't read channel values");
-            }
-          }
-        } catch (error) {
-          console.error("Error checking Csound properties:", error);
-        }
-      }
-      
-      // Initialize audio (I key)
-      else if (e.key === 'i' || e.key === 'I') {
-        console.log("I key pressed - initializing audio system...");
-        
-        try {
-          // Resume audio context
-          if (audioContext && audioContext.state === 'suspended') {
-            await audioContext.resume();
-            console.log("Audio context resumed");
-          }
-          
-          // Initialize Csound step by step
-          if (csoundInstance && !csoundStarted) {
-            // Compile orchestra
-            console.log("Compiling orchestra...");
-            await csoundInstance.compileOrc(FULL_ORCHESTRA);
-            console.log("Orchestra compilation successful");
-            
-            // Set output to audio device explicitly
-            console.log("Setting output to audio device (dac)...");
-            await csoundInstance.setOption("-odac");
-            console.log("Output options set");
-            
-            // Start Csound
-            console.log("Starting Csound...");
-            await csoundInstance.start();
-            csoundStarted = true;
-            console.log("Csound started successfully");
-            
-            // Initialize channels
-            await csoundInstance.setControlChannel("frequency", 440);
-            await csoundInstance.setControlChannel("amplitude", 0.0);
-          } else {
-            console.log("Csound already initialized or no instance available");
-          }
-        } catch (error) {
-          console.error("Error during initialization:", error);
-        }
-      }
-      
-      // Volume test (V key) - play extremely loud tone
-      else if (e.key === 'v' || e.key === 'V') {
-        if (csoundInstance && csoundStarted) {
-          console.log("Playing LOUD test tone...");
-          try {
-            // Set channels for loud test
-            await csoundInstance.setControlChannel("frequency", 440);
-            await csoundInstance.setControlChannel("amplitude", 0.99);
-            
-            // Turn off after 2 seconds
-            setTimeout(async () => {
-              await csoundInstance.setControlChannel("amplitude", 0.0);
-              console.log("Loud test stopped");
-            }, 2000);
-          } catch (error) {
-            console.error("Error playing loud test:", error);
-          }
-        } else {
-          console.log("Csound not ready for volume test");
-        }
-      }
-    });
     
     return csoundInstance;
   } catch (error) {
@@ -292,59 +156,128 @@ export async function setupAudio() {
   }
 }
 
-// Trigger audio - using channel control
+// Play a note with the active instrument
+export function playNote(frequency, amplitude = 0.7, duration = 0.2, pan = 0.0) {
+  if (!csoundInstance || !csoundStarted) return null;
+  
+  try {
+    // Calculate deterministic pan position if not specified
+    if (pan === 0.0) {
+      const minFreq = 50;
+      const maxFreq = 5000;
+      const normalizedFreq = Math.max(0, Math.min(1, 
+        Math.log(frequency / minFreq) / Math.log(maxFreq / minFreq)
+      ));
+      pan = normalizedFreq * 1.6 - 0.8;
+    }
+    
+    // Limit duration to reasonable values
+    duration = Math.max(0.05, Math.min(10, duration));
+    
+    // Add instrument-specific parameters
+    let extraParams = "";
+    switch (activeInstrument) {
+      case InstrumentType.FM:
+        extraParams = " 2.0 3.0"; // modRatio and modIndex
+        break;
+      case InstrumentType.ADDITIVE:
+        extraParams = " 1.0"; // brightness
+        break;
+    }
+    
+    // Build Csound score event
+    const scoreEvent = `i ${activeInstrument} 0 ${duration} ${frequency} ${amplitude} ${duration} ${pan}${extraParams}`;
+    
+    // Play the note
+    csoundInstance.readScore(scoreEvent);
+    
+    return true;
+  } catch (error) {
+    console.error("Error playing note:", error);
+    return false;
+  }
+}
+
+// Set active instrument by ID
+export function setInstrument(instrumentId) {
+  if (Object.values(InstrumentType).includes(instrumentId)) {
+    activeInstrument = instrumentId;
+    return true;
+  }
+  return false;
+}
+
+// Set master volume (0.0-1.0)
+export async function setMasterVolume(volume) {
+  if (!csoundInstance || !csoundStarted) return false;
+  
+  const safeVolume = Math.max(0, Math.min(1, volume));
+  
+  try {
+    await csoundInstance.setControlChannel("masterVolume", safeVolume);
+    return true;
+  } catch (error) {
+    console.error("Error setting master volume:", error);
+    return false;
+  }
+}
+
+// Trigger audio based on polygon vertex passing the axis
 export async function triggerAudio(audioInstance, x, y, lastAngle, angle, tNow, options = {}) {
-  // Skip if no instance or not started
   if (!audioInstance || !csoundStarted) return Math.hypot(x, y);
   
   try {
     // Calculate frequency from coordinates
     const freq = Math.hypot(x, y);
     
-    // Store for reference
-    currentFrequency = freq;
+    // Calculate pan based on angle
+    const angRad = angle % (2 * Math.PI);
+    const pan = Math.sin(angRad);
     
-    // Set channels without awaiting to avoid performance issues
-    try {
-      audioInstance.setControlChannel("frequency", freq);
-      audioInstance.setControlChannel("amplitude", 0.9);
-      
-      // Automatically decrease amplitude after a short time
-      setTimeout(() => {
-        // Only decrease if we're still on this frequency
-        if (currentFrequency === freq) {
-          audioInstance.setControlChannel("amplitude", 0.0);
-        }
-      }, 200);
-    } catch (error) {
-      // Only log occasionally to avoid console spam
-      if (Math.random() < 0.01) {
-        console.error("Error triggering audio:", error);
-      }
+    // Use provided instrument if specified in options
+    const instrument = options.instrument;
+    if (instrument && Object.values(InstrumentType).includes(instrument)) {
+      const savedInstrument = activeInstrument;
+      setInstrument(instrument);
+      playNote(freq, 0.7, 0.2, pan);
+      setInstrument(savedInstrument);
+    } else {
+      playNote(freq, 0.7, 0.2, pan);
     }
     
     return freq;
   } catch (error) {
+    console.error("Error in triggerAudio:", error);
     return Math.hypot(x, y);
   }
 }
 
-// Clean up
+// Set envelope parameters
+export async function setEnvelope(attack, decay, sustain, release) {
+  if (!csoundInstance || !csoundStarted) return false;
+  
+  try {
+    await csoundInstance.setControlChannel("attack", attack);
+    await csoundInstance.setControlChannel("decay", decay);
+    await csoundInstance.setControlChannel("sustain", sustain);
+    await csoundInstance.setControlChannel("release", release);
+    return true;
+  } catch (error) {
+    console.error("Error setting envelope:", error);
+    return false;
+  }
+}
+
+// Clean up audio system
 export async function cleanupAudio() {
   if (csoundInstance) {
     try {
-      // Turn off sound
-      if (csoundStarted) {
-        await csoundInstance.setControlChannel("amplitude", 0);
-      }
-      
-      // Reset Csound
       if (typeof csoundInstance.reset === 'function') {
         await csoundInstance.reset();
       }
-      
       csoundInstance = null;
       csoundStarted = false;
+      isUsingCsoundTiming = false;
     } catch (error) {
       console.error("Error cleaning up Csound:", error);
     }
@@ -360,7 +293,7 @@ export async function cleanupAudio() {
   }
 }
 
-// Export a stub of Tone to maintain compatibility
+// Export a minimal Tone stub for compatibility
 export const Tone = {
   now: getCurrentTime,
   start: async () => {
@@ -376,27 +309,13 @@ export const Tone = {
     }
   }),
   Synth: class {
-    constructor() {
-      // Stub constructor
-    }
-    
-    toDestination() {
-      return this;
-    }
-    
+    constructor() {}
+    toDestination() { return this; }
     triggerAttackRelease(freq, duration) {
       if (csoundInstance && csoundStarted) {
         try {
           const dur = parseFloat(duration) || 0.3;
-          
-          // Set the channels
-          csoundInstance.setControlChannel("frequency", freq);
-          csoundInstance.setControlChannel("amplitude", 0.9);
-          
-          // Schedule amplitude to return to 0 after duration
-          setTimeout(() => {
-            csoundInstance.setControlChannel("amplitude", 0.0);
-          }, dur * 1000);
+          playNote(freq, 0.7, dur);
         } catch (error) {
           console.error("Error in triggerAttackRelease:", error);
         }

@@ -1,26 +1,27 @@
-// src/animation/animation.js
+// src/animation/animation.js - Optimized version
 import * as THREE from 'three';
 import { getCurrentTime } from '../audio/audio.js';
 import { updateGroup, detectCrossings, createPolygonGeometry } from '../geometry/geometry.js';
-import { processIntersections, createIntersectionMarkers } from '../geometry/intersections.js';
+import { processIntersections } from '../geometry/intersections.js';
 import { MARK_LIFE } from '../config/constants.js';
 import { updateLabelPositions, updateAxisLabels, removeLabel, updateRotatingLabels } from '../ui/domLabels.js';
 import { getInstrumentForFrequency, getInstrumentOptions } from '../audio/instruments.js';
 
-// Function to clean up intersection point markers - improved version
+// Function to clean up intersection point markers
 function cleanupIntersectionMarkers(scene) {
-  // First clean up the marker group in the scene
+  // Clean up the marker group in the scene
   if (scene && scene.userData.intersectionMarkerGroup) {
-    // If the marker group is a child of another object, remove it there
-    const parent = scene.userData.intersectionMarkerGroup.parent;
+    const group = scene.userData.intersectionMarkerGroup;
+    const parent = group.parent;
+    
     if (parent) {
-      parent.remove(scene.userData.intersectionMarkerGroup);
+      parent.remove(group);
     } else {
-      scene.remove(scene.userData.intersectionMarkerGroup);
+      scene.remove(group);
     }
     
-    // Clear all children of the marker group and dispose resources
-    scene.userData.intersectionMarkerGroup.traverse(child => {
+    // Clean up resources
+    group.traverse(child => {
       if (child.geometry) child.geometry.dispose();
       if (child.material) {
         if (Array.isArray(child.material)) {
@@ -34,7 +35,7 @@ function cleanupIntersectionMarkers(scene) {
     scene.userData.intersectionMarkerGroup = null;
   }
   
-  // Now clean up any marker groups that might be in child objects (like the main group)
+  // Clean up any marker groups in child objects
   if (scene.children) {
     scene.children.forEach(child => {
       if (child.userData && child.userData.intersectionMarkerGroup) {
@@ -57,7 +58,7 @@ function cleanupIntersectionMarkers(scene) {
     });
   }
   
-  // Also clean up individual markers for backward compatibility
+  // Clean up individual markers if present
   if (scene && scene.userData.intersectionMarkers) {
     for (const marker of scene.userData.intersectionMarkers) {
       if (marker.parent) {
@@ -78,7 +79,7 @@ function cleanupIntersectionMarkers(scene) {
   }
 }
 
-// Function to animate and update group rotation
+// Main animation function
 export function animate(params) {
   const {
     scene, 
@@ -86,7 +87,7 @@ export function animate(params) {
     baseGeo, 
     mat, 
     stats, 
-    csound, // Csound instance
+    csound,
     renderer, 
     cam, 
     state,
@@ -97,7 +98,7 @@ export function animate(params) {
   scene.userData.camera = cam;
   scene.userData.renderer = renderer;
 
-  // Get the current state values - explicitly reading from state each frame
+  // Get current state values
   const bpm = state.bpm;
   const radius = state.radius;
   const copies = state.copies;
@@ -112,47 +113,33 @@ export function animate(params) {
   const needsIntersectionUpdate = state.needsIntersectionUpdate;
 
   // Schedule next frame
-  requestAnimationFrame(() => animate({
-    scene,
-    group,
-    baseGeo: params.baseGeo, // Important: use the params reference, not the local variable
-    mat,
-    stats,
-    csound,
-    renderer, 
-    cam, 
-    state,
-    triggerAudioCallback
-  }));
+  requestAnimationFrame(() => animate(params));
 
-  // Use simple timing - no more Csound time dependency
-  const tNow = getCurrentTime(); // Now returns performance.now() / 1000
+  // Get accurate time
+  const tNow = getCurrentTime();
   const dt = tNow - lastTime;
   state.lastTime = tNow;
   
-  // Update lerped values based on time elapsed
+  // Update lerped values
   state.updateLerp(dt);
 
-  // For BufferGeometry, we need to check if the radius or segments have changed
-  // by comparing with the state values rather than geometry parameters
+  // Check if geometry needs updating
   let needsNewGeometry = false;
-  
-  // Extract the current number of points from the buffer geometry
   const currentSegments = baseGeo.getAttribute('position').count;
   
-  // Store current geometry's radius in state if not already stored
+  // Initialize current geometry radius if not set
   if (!state.currentGeometryRadius) {
     state.currentGeometryRadius = state.radius;
   }
   
-  // Check if radius or segments have changed
+  // Check if radius or segments have changed significantly
   if (currentSegments !== segments || Math.abs(state.currentGeometryRadius - state.radius) > 0.1) {
     needsNewGeometry = true;
   }
   
-  // If we need a new geometry, create it
+  // Create new geometry if needed
   if (needsNewGeometry) {
-    // Dispose of the old geometry to free memory
+    // Dispose old geometry
     baseGeo.dispose();
     
     // Create new polygon geometry
@@ -162,10 +149,10 @@ export function animate(params) {
     state.baseGeo = newGeo;
     params.baseGeo = newGeo;
     
-    // Store the current radius value used to create this geometry
+    // Store current radius
     state.currentGeometryRadius = radius;
     
-    // If intersections are enabled, flag for update
+    // Flag for intersection update if enabled
     if (useIntersections) {
       state.needsIntersectionUpdate = true;
       cleanupIntersectionMarkers(scene);
@@ -178,49 +165,48 @@ export function animate(params) {
     Math.abs(state.lastStepScale - stepScale) > 0.001 ||
     Math.abs(state.lastAngle - angle) > 0.1;
 
-  // Additional flag for updating point frequency labels
-  const pointFreqLabelsToggleChanged = 
-    state.showPointsFreqLabels !== state.lastShowPointsFreqLabels;
+  // Track point frequency labels toggle changes
+  const pointFreqLabelsToggleChanged = state.showPointsFreqLabels !== state.lastShowPointsFreqLabels;
     
   if (pointFreqLabelsToggleChanged) {
     state.lastShowPointsFreqLabels = state.showPointsFreqLabels;
     state.needsPointFreqLabelsUpdate = true;
   }
 
-  // If parameters changed, we need to update
+  // Handle parameter changes
   if (paramsChanged) {
-    // Store current values for comparison in next frame
+    // Store current values
     state.lastStepScale = stepScale;
     state.lastAngle = angle;
     
-    // Always clean up existing intersection markers before updating
+    // Clean up existing intersection markers
     cleanupIntersectionMarkers(scene);
     
-    // Force intersection update
+    // Force intersection update if enabled
     if (useIntersections) {
       state.needsIntersectionUpdate = true;
     }
   }
   
-  // Check if we're still lerping
+  // Check if currently lerping
   const isLerping = state.useLerp && (
     Math.abs(state.radius - state.targetRadius) > 0.1 ||
     Math.abs(state.stepScale - state.targetStepScale) > 0.001 ||
     Math.abs(state.angle - state.targetAngle) > 0.1
   );
   
-  // Check if we actually have enough copies for intersections to be possible
+  // Check if we have enough copies for intersections
   const hasEnoughCopiesForIntersections = copies > 1;
 
-  // If we don't have enough copies, clean up any existing intersection points
+  // Clean up intersections if not enough copies
   if (state.useIntersections && !hasEnoughCopiesForIntersections) {
-    // Clear any existing intersection points
+    // Clear intersection points
     state.intersectionPoints = [];
     
-    // Clean up any existing intersection markers
+    // Clean up markers
     cleanupIntersectionMarkers(scene);
     
-    // If we have a marker group on the main group, remove it
+    // Remove marker group if present
     if (group.userData && group.userData.intersectionMarkerGroup) {
       group.remove(group.userData.intersectionMarkerGroup);
       group.userData.intersectionMarkerGroup.traverse(child => {
@@ -237,39 +223,37 @@ export function animate(params) {
     }
   }
   
-  // If intersection toggle changed, need to update
+  // Handle intersection toggle changes
   if (state.lastUseIntersections !== useIntersections) {
     state.lastUseIntersections = useIntersections;
     state.needsIntersectionUpdate = true;
     
-    // Clean up intersection markers if no longer needed
+    // Clean up if disabled
     if (!useIntersections) {
       cleanupIntersectionMarkers(scene);
     }
   }
   
-  // Only process intersections if parameters have changed, we have enough copies, and we're not lerping
+  // Determine if intersections need recalculation
   const needsIntersectionRecalculation = 
     useIntersections && 
     hasEnoughCopiesForIntersections && 
     (needsIntersectionUpdate || paramsChanged);
     
-  // Process intersections if needed - but ONLY when parameters have changed
+  // Calculate intersections if needed
   if (needsIntersectionRecalculation) {
-    // Clean up any existing intersection markers
+    // Clean up existing markers
     cleanupIntersectionMarkers(scene);
     
-    // Reset intersection points array to empty before calculating new ones
+    // Reset intersection points
     state.intersectionPoints = [];
     
-    // First create a temp group with the polygon copies (without visuals)
+    // Create temporary group for calculations
     const tempGroup = new THREE.Group();
     tempGroup.position.copy(group.position);
-    
-    // Make sure state is accessible to the intersection functions
     tempGroup.userData.state = state;
     
-    // Add copies to the temp group
+    // Add copies to temp group
     for (let i = 0; i < copies; i++) {
       const finalScale = state.useModulus 
         ? state.getScaleFactorForCopy(i) 
@@ -286,24 +270,23 @@ export function animate(params) {
       tempGroup.add(copyGroup);
     }
     
-    // Process intersections with the temporary group
+    // Process intersections
     const newGeometry = processIntersections(state, params.baseGeo, tempGroup);
     
-    // If we got a new geometry with intersections added
+    // Update geometry if needed
     if (newGeometry !== params.baseGeo) {
       params.baseGeo = newGeometry;
       state.baseGeo = newGeometry;
     }
     
-    // Clean up temporary group
+    // Clean up temp group
     tempGroup.traverse(obj => {
       if (obj.geometry && obj !== params.baseGeo) obj.geometry.dispose();
       if (obj.material) obj.material.dispose();
     });
     
-    // If no intersections were found, ensure the marker group is cleared
+    // Clean up if no intersections found
     if (!state.intersectionPoints || state.intersectionPoints.length === 0) {
-      // Make sure to clean up both in the scene and in the group
       cleanupIntersectionMarkers(scene);
       
       if (group.userData && group.userData.intersectionMarkerGroup) {
@@ -321,20 +304,17 @@ export function animate(params) {
         group.userData.intersectionMarkerGroup = null;
       }
       
-      // Also clear out the state's intersection points array explicitly
       state.intersectionPoints = [];
     }
     
-    // Reset the flag since we've updated the intersections
+    // Reset update flag
     state.needsIntersectionUpdate = false;
-    
-    // Flag to updateGroup that intersections were just calculated
     state.justCalculatedIntersections = true;
   } else {
     state.justCalculatedIntersections = false;
   }
 
-  // Update the group with current parameters and pass the justCalculatedIntersections flag
+  // Update the group with current parameters
   updateGroup(
     group, 
     copies, 
@@ -348,24 +328,24 @@ export function animate(params) {
     state.justCalculatedIntersections || state.needsPointFreqLabelsUpdate
   );
   
-  // Reset the flag after updating
+  // Reset point frequency labels update flag
   if (state.needsPointFreqLabelsUpdate) {
     state.needsPointFreqLabelsUpdate = false;
   }
 
-  // Calculate animation angle based on BPM
+  // Calculate rotation angle based on BPM
   const dAng = (bpm / 60) * 2 * Math.PI * dt;
   const ang = lastAngle + dAng;
 
-  // Apply rotation to the group
+  // Apply rotation
   group.rotation.z = ang;
 
-  // Update rotating labels (only the point frequency labels)
+  // Update rotating labels if enabled
   if (state.showPointsFreqLabels) {
     updateRotatingLabels(group, cam, renderer);
   }
   
-  // Detection of vertex crossings and audio calculations
+  // Detect vertex crossings and trigger audio
   const triggeredNow = detectCrossings(
     params.baseGeo, 
     lastAngle, 
@@ -374,24 +354,18 @@ export function animate(params) {
     group, 
     lastTrig, 
     tNow, 
-    // Enhanced audio callback handling
+    // Audio callback handling
     (x, y, lastAngle, angle, tNow) => {
-      // Calculate frequency for audio trigger
+      // Calculate frequency
       const freq = Math.hypot(x, y);
       const instrumentId = getInstrumentForFrequency(freq);
-const options = getInstrumentOptions(instrumentId, {
-  frequency: freq
-});
-      // Determine which instrument to use based on frequency
-      // Use different Csound instruments for different frequency ranges
-      let instrumentNumber = 1;
+      const options = getInstrumentOptions(instrumentId, {
+        frequency: freq
+      });
       
       // Choose instrument based on frequency range
-      // Low frequencies use instrument 1 (simple oscillator)
-      // Mid frequencies use instrument 2 (FM synthesis)
-      // High frequencies use instrument 3 (additive synthesis)
-      // Very high frequencies use instrument 4 (plucked string)
-      // Extreme frequencies use instrument 5 (percussion)
+      let instrumentNumber = 1;
+      
       if (freq < 200) {
         instrumentNumber = 1; // Simple oscillator for low frequencies
       } else if (freq < 500) {
@@ -404,49 +378,44 @@ const options = getInstrumentOptions(instrumentId, {
         instrumentNumber = 5; // Percussion for very high frequencies
       }
       
-      // Call the audio trigger callback with the frequency
+      // Trigger audio
       if (triggerAudioCallback) {
-        // Pass additional parameters to allow for more complex audio behavior
         triggerAudioCallback(x, y, lastAngle, angle, tNow, {
           frequency: freq,
           instrument: instrumentNumber
         });
       }
       
-      // Return the frequency for use in visualization
       return freq;
     }
   );
 
-  // Fade and remove markers
+  // Handle and fade markers
   for (let j = markers.length - 1; j >= 0; j--) {
-    const o = markers[j];
-    o.life--;
+    const marker = markers[j];
+    marker.life--;
     
-    // Update opacity based on remaining life
-    if (o.mesh && o.mesh.material) {
-      o.mesh.material.opacity = o.life / MARK_LIFE;
+    // Update opacity
+    if (marker.mesh && marker.mesh.material) {
+      marker.mesh.material.opacity = marker.life / MARK_LIFE;
     }
     
-    // DOM-based text labels are handled by updateAxisLabels
-    
-    // Remove markers with no life left
-    if (o.life <= 0) {
+    // Remove expired markers
+    if (marker.life <= 0) {
       // Clean up mesh
-      if (o.mesh) {
-        scene.remove(o.mesh);
+      if (marker.mesh) {
+        scene.remove(marker.mesh);
         
-        // Proper cleanup to avoid memory leaks
-        if (o.mesh.geometry) o.mesh.geometry.dispose();
-        if (o.mesh.material) o.mesh.material.dispose();
+        if (marker.mesh.geometry) marker.mesh.geometry.dispose();
+        if (marker.mesh.material) marker.mesh.material.dispose();
       }
       
-      // Clean up text label if it has an ID (DOM-based)
-      if (o.textLabel && o.textLabel.id) {
-        removeLabel(o.textLabel.id);
+      // Clean up text label
+      if (marker.textLabel && marker.textLabel.id) {
+        removeLabel(marker.textLabel.id);
       }
       
-      // Remove from markers array
+      // Remove from array
       markers.splice(j, 1);
     }
   }
@@ -455,18 +424,18 @@ const options = getInstrumentOptions(instrumentId, {
   state.lastTrig = triggeredNow;
   state.lastAngle = ang;
   
-  // First update the point frequency labels (only if enabled)
+  // Update point frequency labels
   if (state.showPointsFreqLabels) {
     updateRotatingLabels(group, cam, renderer);
   }
 
-  // Then separately update the axis labels (these must be handled differently)
+  // Update axis labels
   updateAxisLabels();
 
-  // Finally update any other non-rotating labels
+  // Update other labels
   updateLabelPositions(cam, renderer);
   
-  // Render
+  // Render the scene
   stats.begin();
   renderer.render(scene, cam);
   stats.end();

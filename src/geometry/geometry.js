@@ -1,4 +1,4 @@
-// src/geometry/geometry.js
+// src/geometry/geometry.js - Optimized version with proper modulus and step scale handling
 import * as THREE from 'three';
 import { 
   OVERLAP_THRESHOLD, 
@@ -7,12 +7,7 @@ import {
   VERTEX_CIRCLE_COLOR,
   INTERSECTION_POINT_SIZE,
   INTERSECTION_POINT_COLOR,
-  INTERSECTION_POINT_OPACITY,
-  TEXT_LABEL_SIZE,
-  TEXT_LABEL_COLOR,
-  TEXT_LABEL_OFFSET_Y,
-  TEXT_LABEL_OPACITY,
-  INTERSECTION_MERGE_THRESHOLD
+  INTERSECTION_POINT_OPACITY
 } from '../config/constants.js';
 import { findAllIntersections } from './intersections.js';
 import { createOrUpdateLabel, createAxisLabel } from '../ui/domLabels.js';
@@ -145,7 +140,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     // Apply both modulus scale and step scale if modulus is enabled
     // Otherwise just use step scale
     const finalScale = state && state.useModulus 
-      ? modulusScale * stepScaleFactor 
+      ? modulusScale * stepScaleFactor  // CRITICAL: Both modulus and step scale apply!
       : stepScaleFactor;
     
     // Each copy gets a cumulative angle (i * angle) in degrees
@@ -212,7 +207,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     // Apply both modulus scale and step scale if modulus is enabled
     // Otherwise just use step scale
     const finalScale = state && state.useModulus 
-      ? modulusScale * stepScaleFactor 
+      ? modulusScale * stepScaleFactor  // CRITICAL: Both modulus and step scale apply!
       : stepScaleFactor;
     
     // Each copy gets a cumulative angle (i * angle) in degrees

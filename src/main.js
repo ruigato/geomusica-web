@@ -1,4 +1,4 @@
-// src/main.js
+// src/main.js - Fixed version
 import * as THREE from 'three';
 import Stats from 'stats.js';
 
@@ -48,17 +48,15 @@ function initializeApplication() {
   // Setup UI and bind it to state
   setupUI(appState);
 
-  // Setup audio - now with WebAudio
+  // Setup audio - now with enhanced Csound timing for better precision
   setupAudio().then(audioInstance => {
     if (!audioInstance) {
       console.error('Failed to initialize audio. Visualization will run without audio.');
-    } else {
-      console.log('Audio initialized successfully. Click anywhere to start audio.');
     }
 
     // Function to handle audio triggers
-    const handleAudioTrigger = (x, y, lastAngle, angle, tNow) => {
-      triggerAudio(audioInstance, x, y, lastAngle, angle, tNow);
+    const handleAudioTrigger = (x, y, lastAngle, angle, tNow, options = {}) => {
+      return triggerAudio(audioInstance, x, y, lastAngle, angle, tNow, options);
     };
 
     // Three.js setup
@@ -88,7 +86,7 @@ function initializeApplication() {
     const baseGeo = createPolygonGeometry(appState.radius, appState.segments);
     appState.baseGeo = baseGeo; // Store reference in state
     
-    // Use LineBasicMaterial instead of MeshBasicMaterial for lines
+    // Use LineBasicMaterial for lines
     const mat = new THREE.LineBasicMaterial({ color: 0x00ffcc });
     
     const group = new THREE.Group();

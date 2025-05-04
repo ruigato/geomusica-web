@@ -1,207 +1,240 @@
 ; GeoMusica.orc - Csound Orchestra for GeoMusica
-; This orchestra file contains the instruments used for GeoMusica
-; to be loaded via Csound WebAudio integration
+; Modular Csound orchestra file for geometric music application
 
+; Global settings
 sr = 44100
-ksmps = 128
+ksmps = 64
 nchnls = 2
 0dbfs = 1
 
-; Global variables for real-time control
+;==================================================================
+; GLOBAL VARIABLES AND CHANNELS
+;==================================================================
+
+; Timing channel for synchronization with JavaScript
+gkCurrentTime chnexport "currentTime", 1
+
+; Global variables for envelope controls - exposed as channels
+gkAttack chnexport "attack", 1
+gkDecay chnexport "decay", 1
+gkSustain chnexport "sustain", 1
+gkRelease chnexport "release", 1
+; Default envelope values
+gkAttack init 0.01
+gkDecay init 0.1
+gkSustain init 0.7
+gkRelease init 0.5
+
+; Parameter channels for real-time frequency modulation
 gkFreq chnexport "frequency", 1
 giAmp chnexport "amplitude", 1
+gkGate chnexport "gate", 1
 
-; Global parameters
-giFadeTime = 0.05    ; Fade in/out time in seconds
-giBasePitch = 440    ; Base pitch for A4
-giDecayMin = 0.2     ; Minimum decay time
-giDecayMax = 1.5     ; Maximum decay time
+;==================================================================
+; FUNCTION TABLES
+;==================================================================
 
-; Function tables for waveforms
-; Table 1: Sine wave
-giSine     ftgen 1, 0, 8192, 10, 1  
-; Table 2: Triangle wave
-giTriangle ftgen 2, 0, 8192, 10, 1, 0, 0.333, 0, 0.2, 0, 0.143, 0, 0.111
-; Table 3: Square wave with rounded corners
-giSquare   ftgen 3, 0, 8192, 10, 1, 0.5, 0.333, 0.25, 0.2, 0.167, 0.143, 0.125, 0.111
-; Table 4: Sawtooth wave
-giSawtooth ftgen 4, 0, 8192, 10, 1, 0.5, 0.333, 0.25, 0.2, 0.167, 0.143, 0.125, 0.111, 0.1, 0.091
+; Define function tables for waveforms
+giSine     ftgen 1, 0, 16384, 10, 1                           ; Sine wave
+giTriangle ftgen 2, 0, 16384, 10, 1, 0, 0.333, 0, 0.2, 0, 0.143, 0, 0.111  ; Triangle
+giSquare   ftgen 3, 0, 16384, 10, 1, 0.5, 0.333, 0.25, 0.2, 0.167, 0.143, 0.125, 0.111  ; Square-ish
+giSawtooth ftgen 4, 0, 16384, 10, 1, 0.5, 0.333, 0.25, 0.2, 0.167, 0.143, 0.125, 0.111, 0.1, 0.091  ; Sawtooth-ish
 
-; Function tables for envelopes
-; Table 10: Basic ADSR envelope
-giEnv1     ftgen 10, 0, 1024, 7, 0, 102, 1, 409, 0.7, 409, 0.5, 102, 0
-; Table 11: Percussive envelope
-giEnv2     ftgen 11, 0, 1024, 7, 0, 10, 1, 300, 0.6, 713, 0
+;==================================================================
+; INSTRUMENTS
+;==================================================================
 
-; ================================================================
-; Instrument 1: Simple Oscillator
-; A basic sine oscillator with envelope
-; p4 = frequency
-; p5 = amplitude
-; ================================================================
-instr 1
-  ; Get parameters from score
+; Single-trigger synth with automatic envelope (instrument 5)
+; This version doesn't require explicit note-off events
+instr 5
+  ; p4 = frequency
+  ; p5 = amplitude
+  ; p6 = note duration
+  ; p7 = pan position (-1 to 1)
+  
+  ; Get parameters
   ifreq = p4
   iamp = p5
+  idur = p6
+  ipan = p7
   
-  ; Calculate a decay time based on frequency (lower frequencies decay slower)
-  idecay = limit(3 / (ifreq / 100), giDecayMin, giDecayMax)
+  ; Read the envelope parameters from channels
+  iatt = i(gkAttack)
+  idec = i(gkDecay)
+  isus = i(gkSustain)
+  irel = i(gkRelease)
   
-  ; Create amplitude envelope
-  aenv linseg 0, giFadeTime, iamp, idecay, 0
+  ; Create ADSR envelope with absolute duration
+  ; This type of envelope automatically schedules its release phase
+  kenv linsegr 0, iatt, iamp, idec, iamp*isus, idur, 0
   
-  ; Create oscillator
-  a1 oscil aenv, ifreq, giSine
+  ; Create oscillator with envelope
+  asig poscil kenv, ifreq, giSine
   
-  ; Equal power panning based on frequency
-  ipan = 0.5 + 0.2 * sin(ifreq/1000)
-  ipan = limit(ipan, 0.1, 0.9)  ; Limit the panning range
+  ; Normalize pan position to 0-1 range
+  ipan = (ipan + 1) * 0.5
   
   ; Apply panning
-  aL = a1 * sqrt(1 - ipan)
-  aR = a1 * sqrt(ipan)
+  aleft = asig * sqrt(1 - ipan)
+  aright = asig * sqrt(ipan)
   
-  ; Output
-  outs aL, aR
+  ; Output stereo signal
+  outs aleft, aright
 endin
 
-; ================================================================
-; Instrument 2: FM Oscillator with Modulation
-; A frequency modulation instrument
-; p4 = carrier frequency
-; p5 = amplitude
-; p6 = modulation index (defaults to 5 if not specified)
-; p7 = modulator ratio (defaults to 2 if not specified)
-; ================================================================
-instr 2
-  ; Get parameters from score
+; FM Synthesis instrument (instrument 6)
+instr 6
+  ; p4 = carrier frequency
+  ; p5 = amplitude
+  ; p6 = note duration
+  ; p7 = pan position (-1 to 1)
+  ; p8 = modulator ratio (optional, defaults to 2)
+  ; p9 = modulation index (optional, defaults to 3)
+  
+  ; Get parameters
   ifreq = p4
   iamp = p5
-  ; Default values
-  imindex = (p6 == 0 ? 5 : p6)
-  imodratio = (p7 == 0 ? 2 : p7)
+  idur = p6
+  ipan = p7
   
-  ; Calculate modulator frequency
+  ; Optional parameters with defaults
+  imodratio = (p8 == 0 ? 2 : p8)
+  imodindex = (p9 == 0 ? 3 : p9)
+  
+  ; Calculate modulator frequency based on ratio
   imodfreq = ifreq * imodratio
   
-  ; Envelope for carrier
-  aenv linseg 0, giFadeTime, iamp, p3 - (2 * giFadeTime), iamp, giFadeTime, 0
+  ; Read the envelope parameters from channels
+  iatt = i(gkAttack)
+  idec = i(gkDecay)
+  isus = i(gkSustain)
+  irel = i(gkRelease)
   
-  ; Envelope for modulation index
-  amodenv linseg 0, p3 * 0.3, imindex, p3 * 0.7, imindex * 0.3
+  ; Create ADSR envelope
+  kenv linsegr 0, iatt, iamp, idec, iamp*isus, idur, 0
+  
+  ; Create a separate envelope for modulation index
+  kmodenv linsegr 0, iatt*0.5, imodindex, idur, imodindex*0.3, irel*0.5, 0
   
   ; FM synthesis
-  amod oscili amodenv * ifreq, imodfreq, giSine
-  acar oscili aenv, ifreq + amod, giSine
+  amod poscil kmodenv * ifreq, imodfreq, giSine
+  acar poscil kenv, ifreq + amod, giSine
   
-  ; Apply slight stereo width
-  ipan = 0.5 + 0.1 * sin(ifreq/800)
-  aL = acar * sqrt(1 - ipan)
-  aR = acar * sqrt(ipan)
+  ; Normalize pan position to 0-1 range
+  ipan = (ipan + 1) * 0.5
   
-  ; Output
-  outs aL, aR
+  ; Apply panning
+  aleft = acar * sqrt(1 - ipan)
+  aright = acar * sqrt(ipan)
+  
+  ; Output stereo signal
+  outs aleft, aright
 endin
 
-; ================================================================
-; Instrument 3: Additive Synthesis Instrument
-; Creates a rich harmonic sound using multiple oscillators
-; p4 = fundamental frequency
-; p5 = amplitude
-; ================================================================
-instr 3
-  ; Get parameters from score
+; Additive synthesis instrument (instrument 7)
+instr 7
+  ; p4 = fundamental frequency
+  ; p5 = amplitude
+  ; p6 = note duration
+  ; p7 = pan position (-1 to 1)
+  ; p8 = brightness (optional, defaults to 1.0)
+  
+  ; Get parameters
   ifreq = p4
   iamp = p5
+  idur = p6
+  ipan = p7
   
-  ; Base envelope
-  aenv linseg 0, 0.02, iamp, p3 - 0.12, iamp * 0.6, 0.1, 0
+  ; Optional parameters with defaults
+  ibrightness = (p8 == 0 ? 1.0 : p8)
+  
+  ; Read the envelope parameters from channels
+  iatt = i(gkAttack)
+  idec = i(gkDecay)
+  isus = i(gkSustain)
+  irel = i(gkRelease)
+  
+  ; Create ADSR envelope
+  kenv linsegr 0, iatt, iamp, idec, iamp*isus, idur, 0
   
   ; Create 5 partials with different harmonics and waveforms
-  a1 oscili aenv * 0.4, ifreq, giSine
-  a2 oscili aenv * 0.3, ifreq * 2, giSine
-  a3 oscili aenv * 0.2, ifreq * 3, giTriangle
-  a4 oscili aenv * 0.1, ifreq * 4, giTriangle
-  a5 oscili aenv * 0.05, ifreq * 5.02, giSawtooth ; Slight detuning for beating
+  a1 poscil kenv * 0.4, ifreq, giSine
+  a2 poscil kenv * 0.3 * ibrightness, ifreq * 2, giSine
+  a3 poscil kenv * 0.2 * ibrightness, ifreq * 3, giTriangle
+  a4 poscil kenv * 0.1 * ibrightness, ifreq * 4, giTriangle
+  a5 poscil kenv * 0.05 * ibrightness, ifreq * 5.02, giSquare ; Slight detuning for beating
   
   ; Mix all partials
   amix = a1 + a2 + a3 + a4 + a5
   
   ; Apply simple low-pass filter based on frequency
-  ; Lower frequencies get more filtering
-  icut = limit(2000 + ifreq * 2, 2000, 12000)
+  icut = 2000 + (ifreq * ibrightness)
   afilt tone amix, icut
   
-  ; Apply very short stereo delays for width
-  ; Using different opcodes to avoid syntax issues
-  aL = afilt
-  aR = afilt
+  ; Normalize pan position to 0-1 range
+  ipan = (ipan + 1) * 0.5
   
-  ; Output
-  outs aL, aR
+  ; Apply panning
+  aleft = afilt * sqrt(1 - ipan)
+  aright = afilt * sqrt(ipan)
+  
+  ; Output stereo signal
+  outs aleft, aright
 endin
 
-; ================================================================
-; Instrument 4: Plucked String (simplified)
-; Simplified plucked string sound
-; p4 = frequency
-; p5 = amplitude
-; ================================================================
-instr 4
-  ; Get parameters from score
+; Plucked string model (instrument 8)
+instr 8
+  ; p4 = frequency
+  ; p5 = amplitude
+  ; p6 = note duration
+  ; p7 = pan position (-1 to 1)
+  
+  ; Get parameters
   ifreq = p4
   iamp = p5
+  idur = p6
+  ipan = p7
   
-  ; Noise excitation with envelope
-  aenv linseg 1, 0.01, 0, p3-0.01, 0
-  aexc rand iamp * aenv
+  ; Read the envelope parameters from channels
+  iatt = i(gkAttack) * 0.5  ; Shorter attack for plucked string
+  idec = i(gkDecay)
+  isus = i(gkSustain) * 0.7 ; Lower sustain for plucked string
+  irel = i(gkRelease)
   
-  ; Simple resonator using reson filter
-  ares reson aexc, ifreq, ifreq/8, 2
+  ; Create ADSR envelope
+  kenv linsegr 0, iatt, iamp, idec, iamp*isus, idur, 0
   
-  ; Apply envelope
-  aenv2 linseg 0, 0.01, iamp, p3-0.11, iamp*0.7, 0.1, 0
-  asig = ares * aenv2
+  ; Create excitation with noise
+  aexc rand iamp
+  aenvexc linseg 1, 0.01, 0, p3-0.01, 0
+  aexc = aexc * aenvexc
   
-  ; Simple stereo spread
-  aL = asig * 0.9
-  aR = asig * 1.1
+  ; Filter with resonator
+  ares reson aexc, ifreq, ifreq/15
   
-  ; Output
-  outs aL, aR
+  ; Apply final envelope
+  asig = ares * kenv
+  
+  ; Normalize pan position to 0-1 range
+  ipan = (ipan + 1) * 0.5
+  
+  ; Apply panning
+  aleft = asig * sqrt(1 - ipan)
+  aright = asig * sqrt(ipan)
+  
+  ; Output stereo signal
+  outs aleft, aright
 endin
 
-; ================================================================
-; Instrument 5: Percussion with Noise and Resonance
-; Creates a percussive sound with noise filtered through resonators
-; p4 = center frequency
-; p5 = amplitude
-; ================================================================
-instr 5
-  ; Get parameters from score
-  ifreq = p4
-  iamp = p5
-  
-  ; Short percussive envelope
-  aenv linseg 0, 0.005, iamp, 0.1, iamp * 0.2, p3 - 0.105, 0
-  
-  ; Noise source
-  anoise rand 1
-  
-  ; Three resonant filters at harmonic frequencies
-  ares1 reson anoise, ifreq, ifreq/20
-  ares2 reson anoise, ifreq * 1.5, ifreq/25
-  ares3 reson anoise, ifreq * 2.01, ifreq/30 ; Slight detuning
-  
-  ; Mix the resonant outputs with different weights
-  amix = (ares1 * 0.6 + ares2 * 0.3 + ares3 * 0.1) * aenv
-  
-  ; Apply stereo effects 
-  ; Using a simpler approach to avoid syntax issues
-  aL = amix * 0.95
-  aR = amix * 1.05
-  
-  ; Output
-  outs aL, aR
+; Timer instrument for synchronization with JavaScript
+instr 100
+  ktime times
+  chnset ktime, "currentTime"
 endin
 
+;==================================================================
+; INSTRUMENT SCHEDULING
+;==================================================================
+
+; Start the timer instrument automatically
+schedule 100, 0, 100000

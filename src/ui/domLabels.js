@@ -1,19 +1,23 @@
-// src/ui/domLabels.js
+// src/ui/domLabels.js - Optimized version
 import * as THREE from 'three';
 
-// Separate containers for each label type
+// Label containers
 let pointLabelContainer = null;
 let axisLabelContainer = null;
 
-// Separate pools and tracking for different label types
+// Object pools for label reuse
 const pointLabelPool = [];
 const axisLabelPool = [];
+
+// Maps for tracking active labels
 const activePointLabels = new Map();
 const activeAxisLabels = new Map();
 
-// Initialize the labels system with separate containers
+/**
+ * Initialize the label system with separate containers
+ */
 export function initLabels() {
-  // Create the point label container
+  // Create the point label container if it doesn't exist
   pointLabelContainer = document.getElementById('point-labels-container');
   if (!pointLabelContainer) {
     pointLabelContainer = document.createElement('div');
@@ -29,7 +33,7 @@ export function initLabels() {
     document.body.appendChild(pointLabelContainer);
   }
   
-  // Create the axis label container (on top)
+  // Create the axis label container if it doesn't exist
   axisLabelContainer = document.getElementById('axis-labels-container');
   if (!axisLabelContainer) {
     axisLabelContainer = document.createElement('div');
@@ -46,7 +50,10 @@ export function initLabels() {
   }
 }
 
-// Get a point label from the pool or create a new one
+/**
+ * Get a point label from the pool or create a new one
+ * @returns {HTMLElement} Label element
+ */
 function getPointLabel() {
   if (pointLabelPool.length > 0) {
     const label = pointLabelPool.pop();
@@ -54,7 +61,7 @@ function getPointLabel() {
     return label;
   }
   
-  // Create a new point label with specific styling
+  // Create a new point label
   const label = document.createElement('div');
   label.className = 'point-frequency-label';
   label.style.position = 'absolute';
@@ -62,16 +69,19 @@ function getPointLabel() {
   label.style.fontSize = '14px';
   label.style.color = '#ffffff';
   label.style.textAlign = 'center';
-  label.style.backgroundColor = 'transparent'; // Transparent background
+  label.style.backgroundColor = 'transparent';
   label.style.padding = '2px 4px';
   label.style.pointerEvents = 'none';
   label.style.transform = 'translate(-50%, -50%)';
-  pointLabelContainer.appendChild(label); // Use the point label container
+  pointLabelContainer.appendChild(label);
   
   return label;
 }
 
-// Get an axis label from the pool or create a new one
+/**
+ * Get an axis label from the pool or create a new one
+ * @returns {HTMLElement} Label element
+ */
 function getAxisLabel() {
   if (axisLabelPool.length > 0) {
     const label = axisLabelPool.pop();
@@ -79,7 +89,7 @@ function getAxisLabel() {
     return label;
   }
   
-  // Create a new axis label with specific styling
+  // Create a new axis label
   const label = document.createElement('div');
   label.className = 'axis-frequency-label'; 
   label.style.position = 'absolute';
@@ -87,29 +97,43 @@ function getAxisLabel() {
   label.style.fontSize = '14px';
   label.style.color = '#ffffff';
   label.style.textAlign = 'center';
-  label.style.backgroundColor = 'rgba(255, 0, 255, 0.7)'; // Purple background
+  label.style.backgroundColor = 'rgba(255, 0, 255, 0.7)';
   label.style.padding = '2px 4px';
   label.style.borderRadius = '2px';
   label.style.pointerEvents = 'none';
   label.style.transform = 'translate(-50%, -100%)'; // Position above point
-  axisLabelContainer.appendChild(label); // Use the axis label container
+  axisLabelContainer.appendChild(label);
   
   return label;
 }
 
-// Release a point label back to the pool
+/**
+ * Release a point label back to the pool
+ * @param {HTMLElement} label The label to release
+ */
 function releasePointLabel(label) {
   label.style.display = 'none';
   pointLabelPool.push(label);
 }
 
-// Release an axis label back to the pool
+/**
+ * Release an axis label back to the pool
+ * @param {HTMLElement} label The label to release
+ */
 function releaseAxisLabel(label) {
   label.style.display = 'none';
   axisLabelPool.push(label);
 }
 
-// Create or update a point frequency label (persistent, rotates with geometry)
+/**
+ * Create or update a point frequency label
+ * @param {string} id Unique ID for the label
+ * @param {THREE.Vector3} worldPos World position for the label
+ * @param {string} text Text content of the label
+ * @param {THREE.Camera} camera Camera for positioning
+ * @param {THREE.WebGLRenderer} renderer Renderer for positioning
+ * @returns {Object} Label object with ID and DOM element
+ */
 export function createOrUpdateLabel(id, worldPos, text, camera, renderer) {
   if (!pointLabelContainer) initLabels();
   
@@ -123,15 +147,15 @@ export function createOrUpdateLabel(id, worldPos, text, camera, renderer) {
     activePointLabels.set(id, label);
   }
   
-  // Set a data attribute for the ID to find by DOM query later
+  // Set ID for DOM queries
   label.id = 'point-' + id;
   
-  // Store the original world position for rotation calculations
+  // Store world position
   label.dataset.worldX = worldPos.x;
   label.dataset.worldY = worldPos.y;
   label.dataset.worldZ = worldPos.z || 0;
   
-  // Update label position and text
+  // Update position and text
   label.style.left = `${screenPos.x}px`;
   label.style.top = `${screenPos.y}px`;
   label.textContent = text;
@@ -139,14 +163,23 @@ export function createOrUpdateLabel(id, worldPos, text, camera, renderer) {
   return { id: 'point-' + id, domElement: label };
 }
 
-// Create temporary label for axis crossings (doesn't rotate)
+/**
+ * Create a temporary axis crossing label
+ * @param {string} id Unique ID for the label
+ * @param {THREE.Vector3} worldPos World position for the label
+ * @param {string} text Text content of the label
+ * @param {THREE.Camera} camera Camera for positioning
+ * @param {THREE.WebGLRenderer} renderer Renderer for positioning
+ * @param {number} lifespan Lifespan in frames
+ * @returns {Object} Label object with ID and DOM element
+ */
 export function createAxisLabel(id, worldPos, text, camera, renderer, lifespan = 30) {
   if (!axisLabelContainer) initLabels();
   
   const label = getAxisLabel();
   activeAxisLabels.set(id, label);
   
-  // Set label ID for DOM queries
+  // Set ID for DOM queries
   label.id = 'axis-' + id;
   
   // Calculate screen position
@@ -157,18 +190,21 @@ export function createAxisLabel(id, worldPos, text, camera, renderer, lifespan =
   label.dataset.worldY = worldPos.y;
   label.dataset.worldZ = worldPos.z || 0;
   
-  // Set life tracking for this temporary label
+  // Set life tracking
   label.dataset.life = lifespan;
   
-  // Position the label
+  // Position and set text
   label.style.left = `${screenPos.x}px`;
-  label.style.top = `${screenPos.y - 25}px`; // Offset above the point
+  label.style.top = `${screenPos.y - 25}px`;
   label.textContent = text;
   
   return { id: 'axis-' + id, domElement: label };
 }
 
-// Remove a point label
+/**
+ * Remove a point label
+ * @param {string} id Label ID
+ */
 export function removePointLabel(id) {
   const normalizedId = id.startsWith('point-') ? id : 'point-' + id;
   if (activePointLabels.has(normalizedId)) {
@@ -178,7 +214,10 @@ export function removePointLabel(id) {
   }
 }
 
-// Remove an axis label
+/**
+ * Remove an axis label
+ * @param {string} id Label ID
+ */
 export function removeAxisLabel(id) {
   const normalizedId = id.startsWith('axis-') ? id : 'axis-' + id;
   if (activeAxisLabels.has(normalizedId)) {
@@ -188,22 +227,30 @@ export function removeAxisLabel(id) {
   }
 }
 
-// Generic remove that checks both types
+/**
+ * Generic remove that checks both types
+ * @param {string} id Label ID
+ */
 export function removeLabel(id) {
-  // Try both types of labels
   removePointLabel(id);
   removeAxisLabel(id);
 }
 
-// Update non-rotating label positions (for window resize, etc.)
+/**
+ * Update non-rotating label positions
+ * @param {THREE.Camera} camera Camera for positioning
+ * @param {THREE.WebGLRenderer} renderer Renderer for positioning
+ */
 export function updateLabelPositions(camera, renderer) {
-  if (!camera || !renderer) return;
-  
-  // We don't need to do anything here since the other update
-  // functions handle everything specific to their label types
+  // This function is a stub - specific updates are handled elsewhere
 }
 
-// Update rotating point frequency labels
+/**
+ * Update rotating point frequency labels
+ * @param {THREE.Group} group Rotation group
+ * @param {THREE.Camera} camera Camera for positioning
+ * @param {THREE.WebGLRenderer} renderer Renderer for positioning
+ */
 export function updateRotatingLabels(group, camera, renderer) {
   if (!group || !camera || !renderer || !pointLabelContainer) return;
   
@@ -229,7 +276,7 @@ export function updateRotatingLabels(group, camera, renderer) {
     // Convert to screen position
     const screenPos = worldToScreen(rotatedPos, camera, renderer);
     
-    // Update the DOM element position - make sure we're using the correct ID format
+    // Update the DOM element position
     const elementId = label.id.startsWith('point-') ? label.id : 'point-' + label.id;
     const element = document.getElementById(elementId);
     if (element) {
@@ -239,7 +286,9 @@ export function updateRotatingLabels(group, camera, renderer) {
   });
 }
 
-// Update temporary axis labels - fade and remove
+/**
+ * Update temporary axis labels - fade and remove
+ */
 export function updateAxisLabels() {
   if (!axisLabelContainer) return;
   
@@ -259,7 +308,9 @@ export function updateAxisLabels() {
   });
 }
 
-// Clear all labels
+/**
+ * Clear all labels
+ */
 export function clearLabels() {
   // Clear point labels
   activePointLabels.forEach((label, id) => {
@@ -274,20 +325,25 @@ export function clearLabels() {
   activeAxisLabels.clear();
 }
 
-// Convert world position to screen position
+/**
+ * Convert world position to screen position
+ * @param {THREE.Vector3} worldPos World position
+ * @param {THREE.Camera} camera Camera for projection
+ * @param {THREE.WebGLRenderer} renderer Renderer for screen size
+ * @returns {Object} Screen position {x, y}
+ */
 function worldToScreen(worldPos, camera, renderer) {
   // Clone position to avoid modifying the original
   const pos = worldPos.clone ? worldPos.clone() : new THREE.Vector3(worldPos.x, worldPos.y, worldPos.z || 0);
   
-  // Convert world position to screen position
+  // Project world position to camera
   pos.project(camera);
   
-  // Get the canvas bounds to properly position labels relative to the canvas
+  // Get canvas bounds
   const canvas = renderer.domElement;
   const rect = canvas.getBoundingClientRect();
   
-  // Convert from normalized device coordinates to CSS pixels
-  // Use the canvas bounds to properly align with the canvas position
+  // Convert from NDC to CSS pixels
   const widthHalf = canvas.width / 2;
   const heightHalf = canvas.height / 2;
   

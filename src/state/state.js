@@ -1,22 +1,28 @@
-// src/state/state.js
+// src/state/state.js - Optimized version
 import { Tone } from '../audio/audio.js';
 import { DEFAULT_VALUES } from '../config/constants.js';
 import { clearLabels } from '../ui/domLabels.js';
 
-// Function to generate sequence from 1/modulus to 1.0 in even steps
+/**
+ * Generate sequence from 1/modulus to 1.0 in even steps
+ * @param {number} n Modulus value
+ * @returns {Array<number>} Sequence of scale factors
+ */
 export function generateSequence(n) {
   const sequence = [];
   const step = 1.0 / n;
   
   for (let i = 1; i <= n; i++) {
-    // Calculate sequence as i * step
     sequence.push(i * step);
   }
   
   return sequence;
 }
 
-// Create initial application state
+/**
+ * Create initial application state
+ * @returns {Object} Application state object
+ */
 export function createAppState() {
   return {
     // Time and animation related state
@@ -24,10 +30,9 @@ export function createAppState() {
     lastAngle: 0,
     lastTrig: new Set(),
     markers: [],
-    // Add these properties to track intersection calculation state
     justCalculatedIntersections: false,
     
-    // Additional state to track parameter changes
+    // Tracking parameter changes
     lastStepScale: DEFAULT_VALUES.STEP_SCALE,
     lastAngle: DEFAULT_VALUES.ANGLE,
 
@@ -45,15 +50,15 @@ export function createAppState() {
     
     // Intersection related parameters
     useIntersections: DEFAULT_VALUES.USE_INTERSECTIONS,
-    lastUseIntersections: DEFAULT_VALUES.USE_INTERSECTIONS, // Track last state to detect changes
-    intersectionPoints: [], // Store detected intersection points
-    needsIntersectionUpdate: true, // Flag to track when intersections need to be recalculated
+    lastUseIntersections: DEFAULT_VALUES.USE_INTERSECTIONS,
+    intersectionPoints: [],
+    needsIntersectionUpdate: true,
     
     // Lerp/Lag related parameters
     useLerp: false,
-    lerpTime: 1.0, // Time in seconds for lerp transitions
+    lerpTime: DEFAULT_VALUES.LERP_TIME,
     
-    // Target values for lerping (only for parameters that can be lerped)
+    // Target values for lerping
     targetRadius: DEFAULT_VALUES.RADIUS,
     targetStepScale: DEFAULT_VALUES.STEP_SCALE,
     targetAngle: DEFAULT_VALUES.ANGLE,
@@ -62,155 +67,183 @@ export function createAppState() {
     showAxisFreqLabels: DEFAULT_VALUES.SHOW_AXIS_FREQ_LABELS,
     showPointsFreqLabels: DEFAULT_VALUES.SHOW_POINTS_FREQ_LABELS,
     lastShowPointsFreqLabels: DEFAULT_VALUES.SHOW_POINTS_FREQ_LABELS,
-    pointFreqLabels: [], // Array to store persistent frequency labels
+    pointFreqLabels: [],
     needsPointFreqLabelsUpdate: false,
     
-    // Reference to modifiable baseGeo (will be set in main.js)
+    // Reference to modifiable baseGeo
     baseGeo: null,
-    
-    // Track the current geometry's radius to detect changes
     currentGeometryRadius: null,
     
-    // State setters
+    /**
+     * Set BPM value (not affected by lerping)
+     * @param {number} value New BPM value
+     */
     setBpm(value) {
-      // BPM is exempt from lerping - always set immediately
       this.bpm = Number(value);
     },
     
+    /**
+     * Set radius value (affected by lerping if enabled)
+     * @param {number} value New radius value
+     */
     setRadius(value) {
-      // Ensure radius is always a number and within valid range
       const newRadius = Number(value);
       if (!isNaN(newRadius)) {
-        // Only update target for lerping if enabled
         this.targetRadius = Math.max(20, Math.min(2048, newRadius));
-        // If lerping is disabled, update the actual value immediately
         if (!this.useLerp) {
           this.radius = this.targetRadius;
         }
-        // Flag for intersection recalculation
         this.needsIntersectionUpdate = true;
       }
     },
     
+    /**
+     * Set copies count (not affected by lerping)
+     * @param {number} value New copies value
+     */
     setCopies(value) {
-      // Copies is exempt from lerping - always set immediately
       this.copies = Number(value);
-      // Flag for intersection recalculation
       this.needsIntersectionUpdate = true;
     },
     
+    /**
+     * Set segments count (not affected by lerping)
+     * @param {number} value New segments value
+     */
     setSegments(value) {
-      // Segments (Number) is exempt from lerping - always set immediately
       this.segments = Number(value);
-      // Flag for intersection recalculation
       this.needsIntersectionUpdate = true;
     },
     
+    /**
+     * Set step scale value (affected by lerping if enabled)
+     * @param {number} value New step scale value
+     */
     setStepScale(value) {
       this.targetStepScale = Number(value);
       if (!this.useLerp) {
         this.stepScale = this.targetStepScale;
       }
-      // Flag for intersection recalculation
       this.needsIntersectionUpdate = true;
     },
     
+    /**
+     * Set angle value (affected by lerping if enabled)
+     * @param {number} value New angle value
+     */
     setAngle(value) {
       this.targetAngle = Number(value);
       if (!this.useLerp) {
         this.angle = this.targetAngle;
       }
-      // Flag for intersection recalculation
       this.needsIntersectionUpdate = true;
     },
     
+    /**
+     * Set modulus value
+     * @param {number} value New modulus value
+     */
     setModulusValue(value) {
       this.modulusValue = Number(value);
-      // Flag for intersection recalculation if modulus is used
       if (this.useModulus) {
         this.needsIntersectionUpdate = true;
       }
     },
     
+    /**
+     * Toggle modulus mode
+     * @param {boolean} value Enable/disable modulus
+     */
     setUseModulus(value) {
       this.useModulus = Boolean(value);
-      // Flag for intersection recalculation
       this.needsIntersectionUpdate = true;
     },
     
+    /**
+     * Toggle intersections
+     * @param {boolean} value Enable/disable intersections
+     */
     setUseIntersections(value) {
       this.useIntersections = Boolean(value);
-      // Flag for intersection recalculation if being enabled
       this.needsIntersectionUpdate = true;
     },
     
+    /**
+     * Toggle lerping/lag
+     * @param {boolean} value Enable/disable lerping
+     */
     setUseLerp(value) {
       this.useLerp = Boolean(value);
       
-      // If lerping is disabled, sync all values to targets immediately
       if (!this.useLerp) {
         this.radius = this.targetRadius;
         this.stepScale = this.targetStepScale;
         this.angle = this.targetAngle;
-        // Flag for intersection recalculation
         this.needsIntersectionUpdate = true;
       }
     },
     
+    /**
+     * Set lerp time
+     * @param {number} value New lerp time
+     */
     setLerpTime(value) {
       this.lerpTime = Math.max(0.1, Math.min(10.0, Number(value)));
     },
     
-    // Add methods for frequency label toggles
+    /**
+     * Toggle axis frequency labels
+     * @param {boolean} value Enable/disable axis labels
+     */
     setShowAxisFreqLabels(value) {
       this.showAxisFreqLabels = Boolean(value);
     },
     
+    /**
+     * Toggle point frequency labels
+     * @param {boolean} value Enable/disable point labels
+     */
     setShowPointsFreqLabels(value) {
       this.showPointsFreqLabels = Boolean(value);
       
-      // When toggling off, clean up existing point frequency labels
       if (!value && this.pointFreqLabels.length > 0) {
         this.cleanupPointFreqLabels();
       } else if (value) {
-        // When toggling on, flag that we need to generate labels
         this.needsPointFreqLabelsUpdate = true;
       }
     },
     
-    // Helper method to clean up point frequency labels
+    /**
+     * Clean up point frequency labels
+     */
     cleanupPointFreqLabels() {
       if (!this.pointFreqLabels || this.pointFreqLabels.length === 0) return;
       
-      // Clear all DOM-based labels
       clearLabels();
-      
-      // Clear the array
       this.pointFreqLabels = [];
     },
     
-    // Get scale factor for a specific copy based on modulus
+    /**
+     * Get scale factor for a specific copy based on modulus
+     * @param {number} copyIndex Copy index
+     * @returns {number} Scale factor
+     */
     getScaleFactorForCopy(copyIndex) {
       if (!this.useModulus) {
-        // If modulus is not used, use the normal step scale
         return Math.pow(this.stepScale, copyIndex);
       }
       
-      // If modulus is used, calculate scale based on the sequence
       const modVal = this.modulusValue;
-      
-      // Generate sequence from 1/modVal to 1.0 in even steps
       const sequence = generateSequence(modVal);
-      
-      // Use round-robin to select the multiplier from the sequence
       const sequenceIndex = copyIndex % sequence.length;
-      const multiplier = sequence[sequenceIndex];
       
-      // Return the multiplier directly
-      return multiplier;
+      return sequence[sequenceIndex];
     },
     
-    // Update lerp values based on time elapsed
+    /**
+     * Update lerp values based on time elapsed
+     * @param {number} dt Time delta
+     */
     updateLerp(dt) {
       if (!this.useLerp) return;
       
@@ -218,25 +251,26 @@ export function createAppState() {
       const oldStepScale = this.stepScale;
       const oldAngle = this.angle;
       
-      // Calculate lerp factor based on time and lerp duration
       const lerpFactor = Math.min(dt / this.lerpTime, 1.0);
       
-      // Lerp only the parameters that should be affected
       this.radius = this.lerp(this.radius, this.targetRadius, lerpFactor);
       this.stepScale = this.lerp(this.stepScale, this.targetStepScale, lerpFactor);
       this.angle = this.lerp(this.angle, this.targetAngle, lerpFactor);
       
-      // Check if any lerped value changed significantly enough to update intersections
       if (Math.abs(oldRadius - this.radius) > 0.1 || 
           Math.abs(oldStepScale - this.stepScale) > 0.001 || 
           Math.abs(oldAngle - this.angle) > 0.1) {
         this.needsIntersectionUpdate = true;
       }
-      
-      // Note: BPM, copies, and segments (Number) are not lerped
     },
     
-    // Helper function for linear interpolation
+    /**
+     * Linear interpolation helper
+     * @param {number} start Start value
+     * @param {number} end End value
+     * @param {number} t Interpolation factor (0-1)
+     * @returns {number} Interpolated value
+     */
     lerp(start, end, t) {
       return start + (end - start) * t;
     }

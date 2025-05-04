@@ -1,4 +1,4 @@
-// src/audio/instruments.js
+// src/audio/instruments.js - Optimized version
 // This module provides functions for working with different Csound instruments
 
 /**
@@ -11,16 +11,33 @@
  * 0: Automatic selection based on frequency
  */
 
-// Get the appropriate instrument based on frequency
-export function getInstrumentForFrequency(frequency) {
-    // Selection criteria based on frequency ranges
-    if (frequency < 200) {
+// Frequency thresholds for instrument selection
+const FREQ_THRESHOLDS = {
+    LOW: 200,
+    MID_LOW: 500,
+    MID_HIGH: 800,
+    HIGH: 1200
+  };
+  
+  // Instrument name mappings
+  const INSTRUMENT_NAME_MAP = {
+    1: "Simple Oscillator",
+    2: "FM Synthesis",
+    3: "Additive Synthesis",
+    4: "Plucked String",
+    5: "Percussion",
+    0: "Automatic"
+  };
+  
+  // Get the appropriate instrument based on frequency
+  export function getInstrumentForFrequency(frequency) {
+    if (frequency < FREQ_THRESHOLDS.LOW) {
       return 1; // Low frequencies: simple oscillator
-    } else if (frequency < 500) {
+    } else if (frequency < FREQ_THRESHOLDS.MID_LOW) {
       return 2; // Mid-low frequencies: FM synthesis
-    } else if (frequency < 800) {
+    } else if (frequency < FREQ_THRESHOLDS.MID_HIGH) {
       return 3; // Mid-high frequencies: additive synthesis  
-    } else if (frequency < 1200) {
+    } else if (frequency < FREQ_THRESHOLDS.HIGH) {
       return 4; // High frequencies: plucked string
     } else {
       return 5; // Very high frequencies: percussion
@@ -29,51 +46,45 @@ export function getInstrumentForFrequency(frequency) {
   
   // Get instrument by name
   export function getInstrumentByName(name) {
-    switch (name.toLowerCase()) {
-      case 'sine':
-      case 'oscillator':
-      case 'simple':
-        return 1;
-        
-      case 'fm':
-      case 'frequency modulation':
-        return 2;
-        
-      case 'additive':
-      case 'harmonic':
-        return 3;
-        
-      case 'pluck':
-      case 'string':
-      case 'plucked':
-        return 4;
-        
-      case 'percussion':
-      case 'noise':
-      case 'perc':
-        return 5;
-        
-      case 'auto':
-      case 'automatic':
-      default:
-        return 0; // Let the controller decide based on frequency
+    const normalizedName = name.toLowerCase();
+    
+    if (normalizedName.includes('sine') || 
+        normalizedName.includes('oscillator') || 
+        normalizedName.includes('simple')) {
+      return 1;
     }
+    
+    if (normalizedName.includes('fm') || 
+        normalizedName.includes('frequency modulation')) {
+      return 2;
+    }
+    
+    if (normalizedName.includes('additive') || 
+        normalizedName.includes('harmonic')) {
+      return 3;
+    }
+    
+    if (normalizedName.includes('pluck') || 
+        normalizedName.includes('string')) {
+      return 4;
+    }
+    
+    if (normalizedName.includes('percussion') || 
+        normalizedName.includes('noise') || 
+        normalizedName.includes('perc')) {
+      return 5;
+    }
+    
+    // Default: Automatic selection
+    return 0;
   }
   
   // Get instrument name from ID
   export function getInstrumentName(id) {
-    switch (id) {
-      case 1: return "Simple Oscillator";
-      case 2: return "FM Synthesis";
-      case 3: return "Additive Synthesis";
-      case 4: return "Plucked String";
-      case 5: return "Percussion";
-      case 0: 
-      default: return "Automatic";
-    }
+    return INSTRUMENT_NAME_MAP[id] || "Unknown";
   }
   
-  // Set instrument channels if the Csound instance exists
+  // Set instrument in Csound
   export async function setInstrument(csoundInstance, instrumentId) {
     if (!csoundInstance) return false;
     
@@ -94,16 +105,14 @@ export function getInstrumentForFrequency(frequency) {
     // Set the instrument ID
     options.instrument = instrumentId;
     
-    // Add any instrument-specific parameters
+    // Add instrument-specific parameters
     switch (instrumentId) {
       case 2: // FM synthesis
-        // Default modulator ratio if not specified
-        if (!options.modRatio) options.modRatio = 2;
+        options.modRatio = options.modRatio || 2;
         break;
         
       case 3: // Additive synthesis
-        // Default brightness if not specified
-        if (!options.brightness) options.brightness = 1;
+        options.brightness = options.brightness || 1;
         break;
     }
     
