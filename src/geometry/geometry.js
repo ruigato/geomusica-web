@@ -51,6 +51,61 @@ export function createAxis(scene) {
   scene.add(new THREE.Line(axisGeo, new THREE.LineBasicMaterial({ color: 0xffffff })));
 }
 
+/**
+ * Calculate the bounding sphere radius for all visible geometry
+ * @param {THREE.Group} group Group containing all polygon copies
+ * @param {Object} state Application state
+ * @returns {number} Radius needed to contain all geometry
+ */
+export function calculateBoundingSphere(group, state) {
+  if (!state) return 2000; // Default value if no state
+  
+  let maxDistance = state.radius || 500; // Start with base radius
+  
+  // Consider copies and scale factor
+  if (state.copies > 0) {
+    // If using modulus
+    if (state.useModulus) {
+      // Calculate based on modulus pattern
+      let maxScale = 1.0;
+      for (let i = 0; i < state.copies; i++) {
+        const scaleFactor = state.getScaleFactorForCopy(i);
+        const stepScale = Math.pow(state.stepScale, i);
+        const totalScale = scaleFactor * stepScale;
+        maxScale = Math.max(maxScale, totalScale);
+      }
+      maxDistance = state.radius * maxScale * 1.2; // Add 20% margin
+    } else if (state.useAltScale) {
+      // Consider alt scale pattern
+      let maxScale = 1.0;
+      for (let i = 0; i < state.copies; i++) {
+        let scale = Math.pow(state.stepScale, i);
+        // Apply alt scale if needed
+        if ((i + 1) % state.altStepN === 0) {
+          scale *= state.altScale;
+        }
+        maxScale = Math.max(maxScale, scale);
+      }
+      maxDistance = state.radius * maxScale * 1.2;
+    } else {
+      // Simple step scale formula
+      const maxScale = Math.pow(state.stepScale, state.copies - 1);
+      maxDistance = state.radius * maxScale * 1.2; // Add 20% margin
+    }
+  }
+  
+  // Account for intersection points if needed
+  if (state.useIntersections && state.intersectionPoints && state.intersectionPoints.length > 0) {
+    for (const point of state.intersectionPoints) {
+      const dist = Math.hypot(point.x, point.y);
+      maxDistance = Math.max(maxDistance, dist * 1.1); // Add 10% margin
+    }
+  }
+  
+  // Never go below minimum visible distance
+  return Math.max(maxDistance, 500);
+}
+
 // Create a circle geometry for vertices
 function createVertexCircleGeometry() {
   // Use a circle geometry for vertices

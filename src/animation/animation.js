@@ -1,7 +1,7 @@
 // src/animation/animation.js - Optimized version
 import * as THREE from 'three';
 import { getCurrentTime } from '../audio/audio.js';
-import { updateGroup, detectCrossings, createPolygonGeometry } from '../geometry/geometry.js';
+import { updateGroup, detectCrossings, createPolygonGeometry, calculateBoundingSphere } from '../geometry/geometry.js';
 import { processIntersections } from '../geometry/intersections.js';
 import { MARK_LIFE } from '../config/constants.js';
 import { updateLabelPositions, updateAxisLabels, removeLabel, updateRotatingLabels } from '../ui/domLabels.js';
@@ -434,6 +434,20 @@ export function animate(params) {
 
   // Update other labels
   updateLabelPositions(cam, renderer);
+  
+  // Calculate the appropriate camera distance to show all geometry
+  const boundingSphere = calculateBoundingSphere(group, state);
+  
+  // Set target camera distance based on bounding sphere
+  // Use a multiplier to ensure everything is in view
+  const targetDistance = boundingSphere * 2.5;
+  state.setCameraDistance(targetDistance);
+  
+  // Update camera lerping
+  state.updateCameraLerp(dt);
+  
+  // Update the camera position
+  cam.position.z = state.cameraDistance;
   
   // Render the scene
   stats.begin();

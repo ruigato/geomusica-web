@@ -228,7 +228,7 @@ function initializeApplication() {
       75, 
       (window.innerWidth * 0.6) / window.innerHeight, // Updated to account for new UI width
       0.1, 
-      10000
+      100000
     );
     cam.position.set(0, 0, 2000);
     cam.lookAt(0, 0, 0);

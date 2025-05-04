@@ -71,6 +71,11 @@ export function createAppState() {
     useLerp: false,
     lerpTime: DEFAULT_VALUES.LERP_TIME,
     
+    // Camera related parameters 
+    cameraDistance: 2000,
+    targetCameraDistance: 2000,
+    cameraLerpSpeed: 0.1, // Adjust this to control camera smoothness
+    
     // Target values for lerping
     targetRadius: DEFAULT_VALUES.RADIUS,
     targetStepScale: DEFAULT_VALUES.STEP_SCALE,
@@ -236,6 +241,14 @@ export function createAppState() {
     },
     
     /**
+     * Set camera distance
+     * @param {number} value New camera distance
+     */
+    setCameraDistance(value) {
+      this.targetCameraDistance = value;
+    },
+    
+    /**
      * Set attack time
      * @param {number} value New attack time in seconds
      */
@@ -363,6 +376,17 @@ export function createAppState() {
           Math.abs(oldStepScale - this.stepScale) > 0.001 || 
           Math.abs(oldAngle - this.angle) > 0.1) {
         this.needsIntersectionUpdate = true;
+      }
+    },
+    
+    /**
+     * Update camera lerping
+     * @param {number} dt Time delta
+     */
+    updateCameraLerp(dt) {
+      if (Math.abs(this.cameraDistance - this.targetCameraDistance) > 1) {
+        const lerpFactor = this.cameraLerpSpeed;
+        this.cameraDistance = this.lerp(this.cameraDistance, this.targetCameraDistance, lerpFactor);
       }
     },
     
