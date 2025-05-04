@@ -334,7 +334,7 @@ export function animate(params) {
   }
 
   // Calculate rotation angle based on BPM
-  const dAng = (bpm / 60) * 2 * Math.PI * dt;
+  const dAng = (bpm / 240) * 2 * Math.PI * dt;
   const ang = lastAngle + dAng;
 
   // Apply rotation

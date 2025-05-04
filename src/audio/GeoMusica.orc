@@ -54,87 +54,66 @@ instr 1
   ; p5 = amplitude
   ; p6 = note duration
   ; p7 = pan position (-1 to 1)
-  
-  ; Get parameters
+
   ifreq = p4
-  
-  ; Scale amplitude based on frequency to prevent distortion
-  ; High frequencies need less amplitude to avoid harshness
+
   iampscale = (ifreq > 1000) ? 0.4 : ((ifreq > 500) ? 0.6 : ((ifreq > 200) ? 0.8 : 1.0))
   iamp = p5 * i(gkMasterVolume) * iampscale
-  
+
   idur = p6
   ipan = p7
-  
-  ; Read the envelope parameters from channels
+
   iatt = i(gkAttack)
   idec = i(gkDecay)
   isus = i(gkSustain)
   irel = i(gkRelease)
   ibrightness = i(gkBrightness)
-  
-  ; Adjust brightness based on frequency to prevent harshness
   ibrightness = ibrightness * (1.0 - (ifreq/10000))
-  
-  ; Determine carrier-to-modulator ratio based on frequency
-  ; Lower frequencies get higher C:M ratios for more bell-like character
+
   icmratio = (ifreq < 200) ? 1.4 : ((ifreq < 500) ? 1.31 : 1.22)
-  
-  ; Calculate modulator frequency
   imodfreq = ifreq * icmratio
-  
-  ; Reduce modulation index for higher frequencies to prevent distortion
+
   imodindex_base = (ifreq < 300) ? 3 : ((ifreq < 800) ? 2 : 1)
   imodindex = imodindex_base * ibrightness
-  
-  ; Smaller detuning to reduce beating that can cause distortion
+
   idetune1 = 1.0007
   idetune2 = 0.9993
-  
-  ; Create ADSR amplitude envelope with slower attack to reduce clicks
+
   kampenv linsegr 0, iatt+0.005, iamp, idec, iamp*isus, idur-(iatt+idec), iamp*isus, irel, 0
-  
-  ; More gentle modulation envelope
   kmodenv linsegr 0, iatt*0.7, imodindex, idec*0.8, imodindex*0.3, idur, imodindex*0.2, irel*0.6, 0
-  
-  ; Gentler brightness envelope
   kbright linsegr 0.7, iatt, 1.0, idec*0.6, 0.8, idur, 0.6, irel*0.7, 0.4
-  
-  ; FM synthesis
+
   amod poscil kmodenv * ifreq, imodfreq, giSine
   acar1 poscil kampenv * 0.6, (ifreq * idetune1) + amod, giSine
   acar2 poscil kampenv * 0.2, (ifreq * idetune2) + amod, giGlass
-  
-  ; Mix carriers with reduced volume
   acar = (acar1 + acar2) * 0.7
-  
-  ; Apply more gentle brightness filter 
+
   acarfilt tone acar, 2000 + (ifreq * kbright * 0.5)
-  
-  ; Add less "glass" harmonics
   aattack poscil kampenv * 0.06 * (1 - kbright), ifreq * 2.6, giGlass
-  
-  ; Create final mix with reduced volume
+
   amix = (acarfilt + aattack) * 0.8
-  
-  ; Use gentler reverb
   arev reverb amix, 1.2
   amix = amix + (arev * 0.1)
-  
-  ; Apply soft-knee limiter to prevent clipping
   amix limit amix, -0.9, 0.9
-  
-  ; Normalize pan position to 0-1 range
+
+  ; === Delay tipo Roland Echo ===
+  idelay = 0.2        ; tempo de delay em segundos
+  ifeedback = 0.8     ; feedback (quanto do sinal volta a entrar)
+  icutoff = 2000      ; corte do filtro (Hz)
+
+  adelay = delay(amix, idelay)
+  afilt  = butlp(adelay, icutoff)
+  amix = amix + (afilt * ifeedback)
+  ; ==============================
+
   ipan = (ipan + 1) * 0.5
-  
-  ; Apply panning
   aleft = amix * sqrt(1 - ipan)
   aright = amix * sqrt(ipan)
-  
-  ; Send output to global audio bus for final limiting
+
   gaLeftOut = gaLeftOut + aleft
   gaRightOut = gaRightOut + aright
 endin
+
 
 ; Output processor instrument with limiter
 instr 99

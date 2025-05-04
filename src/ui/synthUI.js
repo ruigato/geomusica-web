@@ -4,6 +4,7 @@ import { setEnvelope, setBrightness, setMasterVolume } from '../audio/audio.js';
 /**
  * Setup synth UI controls and connect them to the audio engine
  * @param {Object} state - Application state object
+ * @param {Object} csoundInstance - Csound instance
  * @returns {Object} References to UI elements
  */
 export function setupSynthUI(state, csoundInstance) {
@@ -36,37 +37,37 @@ export function setupSynthUI(state, csoundInstance) {
   if (state.attack !== undefined) {
     attackRange.value = state.attack;
     attackNumber.value = state.attack;
-    attackValue.textContent = state.attack;
+    attackValue.textContent = state.attack.toFixed(2);
   }
 
   if (state.decay !== undefined) {
     decayRange.value = state.decay;
     decayNumber.value = state.decay;
-    decayValue.textContent = state.decay;
+    decayValue.textContent = state.decay.toFixed(2);
   }
 
   if (state.sustain !== undefined) {
     sustainRange.value = state.sustain;
     sustainNumber.value = state.sustain;
-    sustainValue.textContent = state.sustain;
+    sustainValue.textContent = state.sustain.toFixed(2);
   }
 
   if (state.release !== undefined) {
     releaseRange.value = state.release;
     releaseNumber.value = state.release;
-    releaseValue.textContent = state.release;
+    releaseValue.textContent = state.release.toFixed(2);
   }
 
   if (state.brightness !== undefined) {
     brightnessRange.value = state.brightness;
     brightnessNumber.value = state.brightness;
-    brightnessValue.textContent = state.brightness;
+    brightnessValue.textContent = state.brightness.toFixed(2);
   }
 
   if (state.volume !== undefined) {
     volumeRange.value = state.volume;
     volumeNumber.value = state.volume;
-    volumeValue.textContent = state.volume;
+    volumeValue.textContent = state.volume.toFixed(2);
   }
 
   // Helper function to sync a pair of range and number inputs

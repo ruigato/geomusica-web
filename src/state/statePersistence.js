@@ -127,6 +127,53 @@ export function applyLoadedState(state, loadedState) {
 }
 
 /**
+ * Update the audio engine with values from the state
+ * @param {Object} state - The application state
+ * @param {Object} audioModule - The audio module containing the necessary functions
+ */
+export function updateAudioEngineFromState(state, audioModule) {
+  if (!state || !audioModule) return false;
+  
+  try {
+    // Apply all parameters at once using the new function
+    const params = {
+      attack: state.attack,
+      decay: state.decay,
+      sustain: state.sustain,
+      release: state.release,
+      brightness: state.brightness,
+      volume: state.volume
+    };
+    
+    // Use the new applySynthParameters function
+    if (audioModule.applySynthParameters) {
+      audioModule.applySynthParameters(params);
+    } else {
+      // Fallback to individual parameter setting
+      const { setEnvelope, setBrightness, setMasterVolume } = audioModule;
+      
+      if (setEnvelope) {
+        setEnvelope(state.attack, state.decay, state.sustain, state.release);
+      }
+      
+      if (setBrightness) {
+        setBrightness(state.brightness);
+      }
+      
+      if (setMasterVolume) {
+        setMasterVolume(state.volume);
+      }
+    }
+    
+    console.log('Audio engine updated from state successfully');
+    return true;
+  } catch (error) {
+    console.error('Error updating audio engine from state:', error);
+    return false;
+  }
+}
+
+/**
  * Setup auto-save functionality
  * @param {Object} state - The application state to auto-save
  * @param {number} interval - Save interval in milliseconds (default: 5000ms/5s)
@@ -233,136 +280,134 @@ export function importStateFromFile(file, state) {
   });
 }
 
-// src/state/statePersistence.js - Add this function
-
 /**
  * Update UI elements to reflect the current state
  * @param {Object} state - The application state
  * @param {Object} uiElements - References to UI elements
  */
 export function updateUIFromState(state, uiElements) {
-    if (!state || !uiElements) return;
-    
-    try {
-      // Update BPM controls
-      if (uiElements.bpmRange && state.bpm !== undefined) {
-        uiElements.bpmRange.value = state.bpm;
-        if (uiElements.bpmNumber) uiElements.bpmNumber.value = state.bpm;
-        if (uiElements.bpmValue) uiElements.bpmValue.textContent = state.bpm;
-      }
-      
-      // Update Radius controls
-      if (uiElements.radiusRange && state.radius !== undefined) {
-        uiElements.radiusRange.value = state.radius;
-        if (uiElements.radiusNumber) uiElements.radiusNumber.value = state.radius;
-        if (uiElements.radiusValue) uiElements.radiusValue.textContent = state.radius;
-      }
-      
-      // Update Copies controls
-      if (uiElements.copiesRange && state.copies !== undefined) {
-        uiElements.copiesRange.value = state.copies;
-        if (uiElements.copiesNumber) uiElements.copiesNumber.value = state.copies;
-        if (uiElements.copiesValue) uiElements.copiesValue.textContent = state.copies;
-      }
-      
-      // Update Segments/Number controls
-      if (uiElements.numberRange && state.segments !== undefined) {
-        uiElements.numberRange.value = state.segments;
-        if (uiElements.numberNumber) uiElements.numberNumber.value = state.segments;
-        if (uiElements.numberValue) uiElements.numberValue.textContent = state.segments;
-      }
-      
-      // Update Step Scale controls
-      if (uiElements.stepScaleRange && state.stepScale !== undefined) {
-        uiElements.stepScaleRange.value = state.stepScale;
-        if (uiElements.stepScaleNumber) uiElements.stepScaleNumber.value = state.stepScale;
-        if (uiElements.stepScaleValue) uiElements.stepScaleValue.textContent = state.stepScale.toFixed(2);
-      }
-      
-      // Update Angle controls
-      if (uiElements.angleRange && state.angle !== undefined) {
-        uiElements.angleRange.value = state.angle;
-        if (uiElements.angleNumber) uiElements.angleNumber.value = state.angle;
-        if (uiElements.angleValue) uiElements.angleValue.textContent = state.angle;
-      }
-      
-      // Update checkbox states
-      if (uiElements.useLerpCheckbox && state.useLerp !== undefined) {
-        uiElements.useLerpCheckbox.checked = state.useLerp;
-      }
-      
-      if (uiElements.useModulusCheckbox && state.useModulus !== undefined) {
-        uiElements.useModulusCheckbox.checked = state.useModulus;
-      }
-      
-      if (uiElements.useIntersectionsCheckbox && state.useIntersections !== undefined) {
-        uiElements.useIntersectionsCheckbox.checked = state.useIntersections;
-      }
-      
-      if (uiElements.showAxisFreqLabelsCheckbox && state.showAxisFreqLabels !== undefined) {
-        uiElements.showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;
-      }
-      
-      if (uiElements.showPointsFreqLabelsCheckbox && state.showPointsFreqLabels !== undefined) {
-        uiElements.showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
-      }
-      
-      // Update Lerp Time controls
-      if (uiElements.lerpTimeRange && state.lerpTime !== undefined) {
-        uiElements.lerpTimeRange.value = state.lerpTime;
-        if (uiElements.lerpTimeNumber) uiElements.lerpTimeNumber.value = state.lerpTime;
-        if (uiElements.lerpTimeValue) uiElements.lerpTimeValue.textContent = state.lerpTime.toFixed(1);
-      }
-      
-      // Update Synth controls if they exist
-      if (uiElements.attackRange && state.attack !== undefined) {
-        uiElements.attackRange.value = state.attack;
-        if (uiElements.attackNumber) uiElements.attackNumber.value = state.attack;
-        if (uiElements.attackValue) uiElements.attackValue.textContent = state.attack.toFixed(2);
-      }
-      
-      if (uiElements.decayRange && state.decay !== undefined) {
-        uiElements.decayRange.value = state.decay;
-        if (uiElements.decayNumber) uiElements.decayNumber.value = state.decay;
-        if (uiElements.decayValue) uiElements.decayValue.textContent = state.decay.toFixed(2);
-      }
-      
-      if (uiElements.sustainRange && state.sustain !== undefined) {
-        uiElements.sustainRange.value = state.sustain;
-        if (uiElements.sustainNumber) uiElements.sustainNumber.value = state.sustain;
-        if (uiElements.sustainValue) uiElements.sustainValue.textContent = state.sustain.toFixed(2);
-      }
-      
-      if (uiElements.releaseRange && state.release !== undefined) {
-        uiElements.releaseRange.value = state.release;
-        if (uiElements.releaseNumber) uiElements.releaseNumber.value = state.release;
-        if (uiElements.releaseValue) uiElements.releaseValue.textContent = state.release.toFixed(2);
-      }
-      
-      if (uiElements.brightnessRange && state.brightness !== undefined) {
-        uiElements.brightnessRange.value = state.brightness;
-        if (uiElements.brightnessNumber) uiElements.brightnessNumber.value = state.brightness;
-        if (uiElements.brightnessValue) uiElements.brightnessValue.textContent = state.brightness.toFixed(2);
-      }
-      
-      if (uiElements.volumeRange && state.volume !== undefined) {
-        uiElements.volumeRange.value = state.volume;
-        if (uiElements.volumeNumber) uiElements.volumeNumber.value = state.volume;
-        if (uiElements.volumeValue) uiElements.volumeValue.textContent = state.volume.toFixed(2);
-      }
-      
-      // Update modulus radio buttons
-      if (state.modulusValue !== undefined && uiElements.modulusRadioGroup) {
-        const radioButton = document.querySelector(`#modulus-${state.modulusValue}`);
-        if (radioButton) {
-          radioButton.checked = true;
-        }
-      }
-      
-      console.log('UI updated from state successfully');
-      return true;
-    } catch (error) {
-      console.error('Error updating UI from state:', error);
-      return false;
+  if (!state || !uiElements) return;
+  
+  try {
+    // Update BPM controls
+    if (uiElements.bpmRange && state.bpm !== undefined) {
+      uiElements.bpmRange.value = state.bpm;
+      if (uiElements.bpmNumber) uiElements.bpmNumber.value = state.bpm;
+      if (uiElements.bpmValue) uiElements.bpmValue.textContent = state.bpm;
     }
+    
+    // Update Radius controls
+    if (uiElements.radiusRange && state.radius !== undefined) {
+      uiElements.radiusRange.value = state.radius;
+      if (uiElements.radiusNumber) uiElements.radiusNumber.value = state.radius;
+      if (uiElements.radiusValue) uiElements.radiusValue.textContent = state.radius;
+    }
+    
+    // Update Copies controls
+    if (uiElements.copiesRange && state.copies !== undefined) {
+      uiElements.copiesRange.value = state.copies;
+      if (uiElements.copiesNumber) uiElements.copiesNumber.value = state.copies;
+      if (uiElements.copiesValue) uiElements.copiesValue.textContent = state.copies;
+    }
+    
+    // Update Segments/Number controls
+    if (uiElements.numberRange && state.segments !== undefined) {
+      uiElements.numberRange.value = state.segments;
+      if (uiElements.numberNumber) uiElements.numberNumber.value = state.segments;
+      if (uiElements.numberValue) uiElements.numberValue.textContent = state.segments;
+    }
+    
+    // Update Step Scale controls
+    if (uiElements.stepScaleRange && state.stepScale !== undefined) {
+      uiElements.stepScaleRange.value = state.stepScale;
+      if (uiElements.stepScaleNumber) uiElements.stepScaleNumber.value = state.stepScale;
+      if (uiElements.stepScaleValue) uiElements.stepScaleValue.textContent = state.stepScale.toFixed(2);
+    }
+    
+    // Update Angle controls
+    if (uiElements.angleRange && state.angle !== undefined) {
+      uiElements.angleRange.value = state.angle;
+      if (uiElements.angleNumber) uiElements.angleNumber.value = state.angle;
+      if (uiElements.angleValue) uiElements.angleValue.textContent = state.angle;
+    }
+    
+    // Update checkbox states
+    if (uiElements.useLerpCheckbox && state.useLerp !== undefined) {
+      uiElements.useLerpCheckbox.checked = state.useLerp;
+    }
+    
+    if (uiElements.useModulusCheckbox && state.useModulus !== undefined) {
+      uiElements.useModulusCheckbox.checked = state.useModulus;
+    }
+    
+    if (uiElements.useIntersectionsCheckbox && state.useIntersections !== undefined) {
+      uiElements.useIntersectionsCheckbox.checked = state.useIntersections;
+    }
+    
+    if (uiElements.showAxisFreqLabelsCheckbox && state.showAxisFreqLabels !== undefined) {
+      uiElements.showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;
+    }
+    
+    if (uiElements.showPointsFreqLabelsCheckbox && state.showPointsFreqLabels !== undefined) {
+      uiElements.showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
+    }
+    
+    // Update Lerp Time controls
+    if (uiElements.lerpTimeRange && state.lerpTime !== undefined) {
+      uiElements.lerpTimeRange.value = state.lerpTime;
+      if (uiElements.lerpTimeNumber) uiElements.lerpTimeNumber.value = state.lerpTime;
+      if (uiElements.lerpTimeValue) uiElements.lerpTimeValue.textContent = state.lerpTime.toFixed(1);
+    }
+    
+    // Update Synth controls if they exist
+    if (uiElements.attackRange && state.attack !== undefined) {
+      uiElements.attackRange.value = state.attack;
+      if (uiElements.attackNumber) uiElements.attackNumber.value = state.attack;
+      if (uiElements.attackValue) uiElements.attackValue.textContent = state.attack.toFixed(2);
+    }
+    
+    if (uiElements.decayRange && state.decay !== undefined) {
+      uiElements.decayRange.value = state.decay;
+      if (uiElements.decayNumber) uiElements.decayNumber.value = state.decay;
+      if (uiElements.decayValue) uiElements.decayValue.textContent = state.decay.toFixed(2);
+    }
+    
+    if (uiElements.sustainRange && state.sustain !== undefined) {
+      uiElements.sustainRange.value = state.sustain;
+      if (uiElements.sustainNumber) uiElements.sustainNumber.value = state.sustain;
+      if (uiElements.sustainValue) uiElements.sustainValue.textContent = state.sustain.toFixed(2);
+    }
+    
+    if (uiElements.releaseRange && state.release !== undefined) {
+      uiElements.releaseRange.value = state.release;
+      if (uiElements.releaseNumber) uiElements.releaseNumber.value = state.release;
+      if (uiElements.releaseValue) uiElements.releaseValue.textContent = state.release.toFixed(2);
+    }
+    
+    if (uiElements.brightnessRange && state.brightness !== undefined) {
+      uiElements.brightnessRange.value = state.brightness;
+      if (uiElements.brightnessNumber) uiElements.brightnessNumber.value = state.brightness;
+      if (uiElements.brightnessValue) uiElements.brightnessValue.textContent = state.brightness.toFixed(2);
+    }
+    
+    if (uiElements.volumeRange && state.volume !== undefined) {
+      uiElements.volumeRange.value = state.volume;
+      if (uiElements.volumeNumber) uiElements.volumeNumber.value = state.volume;
+      if (uiElements.volumeValue) uiElements.volumeValue.textContent = state.volume.toFixed(2);
+    }
+    
+    // Update modulus radio buttons
+    if (state.modulusValue !== undefined && uiElements.modulusRadioGroup) {
+      const radioButton = document.querySelector(`#modulus-${state.modulusValue}`);
+      if (radioButton) {
+        radioButton.checked = true;
+      }
+    }
+    
+    console.log('UI updated from state successfully');
+    return true;
+  } catch (error) {
+    console.error('Error updating UI from state:', error);
+    return false;
   }
+}

@@ -5,14 +5,29 @@ import Stats from 'stats.js';
 // Import modules
 import { setupUI } from './ui/ui.js';
 import { setupSynthUI } from './ui/synthUI.js'; // Import the new synthUI module
-import { setupAudio, triggerAudio, setEnvelope, setBrightness, setMasterVolume } from './audio/audio.js';
+import { 
+  setupAudio, 
+  triggerAudio, 
+  setEnvelope, 
+  setBrightness, 
+  setMasterVolume,
+  applySynthParameters
+} from './audio/audio.js';
 import { createPolygonGeometry, createAxis } from './geometry/geometry.js';
 import { animate } from './animation/animation.js';
 import { createAppState } from './state/state.js';
 import { MARK_LIFE } from './config/constants.js';
 import { initLabels, updateLabelPositions } from './ui/domLabels.js';
 import { preloadFont } from './utils/fontUtils.js';
-import { loadState, applyLoadedState, setupAutoSave, exportStateToFile, importStateFromFile, updateUIFromState } from './state/statePersistence.js';
+import { 
+  loadState, 
+  applyLoadedState, 
+  setupAutoSave, 
+  exportStateToFile, 
+  importStateFromFile, 
+  updateUIFromState,
+  updateAudioEngineFromState
+} from './state/statePersistence.js';
 
 // Initialize stats for performance monitoring
 const stats = new Stats();
@@ -88,6 +103,18 @@ function addStateControlsToUI(state) {
             // Update UI to reflect imported state
             const allUIReferences = { ...uiReferences, ...synthUIReferences };
             updateUIFromState(state, allUIReferences);
+            
+            // Update audio engine with imported state values - use new approach
+            applySynthParameters({
+              attack: state.attack,
+              decay: state.decay,
+              sustain: state.sustain,
+              release: state.release,
+              brightness: state.brightness,
+              volume: state.volume
+            }).then(result => {
+              console.log("Synth parameters applied after import:", result);
+            });
           } else {
             alert('Failed to import settings');
           }
@@ -156,17 +183,34 @@ function initializeApplication() {
       console.error('Failed to initialize audio. Visualization will run without audio.');
     }
 
-    // Set initial ADSR values in the audio engine
-    setEnvelope(appState.attack, appState.decay, appState.sustain, appState.release);
-    setBrightness(appState.brightness);
-    setMasterVolume(appState.volume);
-
     // Setup synthesizer UI controls after audio is initialized
     synthUIReferences = setupSynthUI(appState, audioInstance);
     
-    // If we have loaded state, update synth UI
+    // If we have loaded state, update synth UI and audio engine
     if (savedState) {
       updateUIFromState(appState, synthUIReferences);
+      
+      // Apply synth parameters directly with the new approach
+      applySynthParameters({
+        attack: appState.attack,
+        decay: appState.decay,
+        sustain: appState.sustain,
+        release: appState.release,
+        brightness: appState.brightness,
+        volume: appState.volume
+      }).then(result => {
+        console.log("Synth parameters applied on load:", result);
+      });
+    } else {
+      // Set initial ADSR values in the audio engine from default state
+      applySynthParameters({
+        attack: appState.attack,
+        decay: appState.decay,
+        sustain: appState.sustain,
+        release: appState.release,
+        brightness: appState.brightness,
+        volume: appState.volume
+      });
     }
 
     // Function to handle audio triggers

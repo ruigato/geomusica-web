@@ -120,6 +120,13 @@ export async function setupAudio() {
             await csoundInstance.setControlChannel("brightness", 1.0);
             await csoundInstance.setControlChannel("masterVolume", 0.8);
             
+            // Check if we have any pending parameters to apply
+            if (window.pendingSynthParams) {
+              applySynthParameters(window.pendingSynthParams).then(() => {
+                console.log("Applied pending synth parameters after initialization");
+              });
+            }
+            
             // Play a test note
             playNote(440, 0.7, 0.5);
             
@@ -154,11 +161,65 @@ export async function setupAudio() {
   }
 }
 
+/**
+ * Apply all synth parameters at once
+ * This is useful for initializing the synth with saved state
+ * @param {Object} params - Object containing all synth parameters
+ * @returns {Promise<boolean>} - Promise that resolves to true if successful
+ */
+export async function applySynthParameters(params) {
+  if (!csoundInstance || !csoundStarted) {
+    console.warn("Csound not initialized yet, will apply parameters on first note");
+    
+    // Store params to apply when audio starts
+    window.pendingSynthParams = params;
+    return false;
+  }
+  
+  try {
+    // Apply all parameters
+    await csoundInstance.setControlChannel("attack", params.attack || 0.01);
+    await csoundInstance.setControlChannel("decay", params.decay || 0.3);
+    await csoundInstance.setControlChannel("sustain", params.sustain || 0.5);
+    await csoundInstance.setControlChannel("release", params.release || 1.0);
+    await csoundInstance.setControlChannel("brightness", params.brightness || 1.0);
+    await csoundInstance.setControlChannel("masterVolume", params.volume || 0.8);
+    
+    console.log("All synth parameters applied successfully:", params);
+    return true;
+  } catch (error) {
+    console.error("Error applying synth parameters:", error);
+    return false;
+  }
+}
+
 // Play a note with the active instrument
 export function playNote(frequency, amplitude = 0.7, duration = 0.2, pan = 0.0) {
   if (!csoundInstance || !csoundStarted) return null;
   
   try {
+    // Apply any pending parameters before playing the note
+    if (window.pendingSynthParams) {
+      console.log("Applying pending synth parameters:", window.pendingSynthParams);
+      
+      // Apply parameters directly (don't wait for the Promise)
+      if (window.pendingSynthParams.attack !== undefined) 
+        csoundInstance.setControlChannel("attack", window.pendingSynthParams.attack);
+      if (window.pendingSynthParams.decay !== undefined) 
+        csoundInstance.setControlChannel("decay", window.pendingSynthParams.decay);
+      if (window.pendingSynthParams.sustain !== undefined) 
+        csoundInstance.setControlChannel("sustain", window.pendingSynthParams.sustain);
+      if (window.pendingSynthParams.release !== undefined) 
+        csoundInstance.setControlChannel("release", window.pendingSynthParams.release);
+      if (window.pendingSynthParams.brightness !== undefined) 
+        csoundInstance.setControlChannel("brightness", window.pendingSynthParams.brightness);
+      if (window.pendingSynthParams.volume !== undefined) 
+        csoundInstance.setControlChannel("masterVolume", window.pendingSynthParams.volume);
+      
+      // Clear pending parameters
+      window.pendingSynthParams = null;
+    }
+    
     // Calculate deterministic pan position if not specified
     if (pan === 0.0) {
       const minFreq = 50;
@@ -187,7 +248,12 @@ export function playNote(frequency, amplitude = 0.7, duration = 0.2, pan = 0.0) 
 
 // Set master volume (0.0-1.0)
 export async function setMasterVolume(volume) {
-  if (!csoundInstance || !csoundStarted) return false;
+  if (!csoundInstance || !csoundStarted) {
+    // Store as pending parameter if Csound not ready
+    if (!window.pendingSynthParams) window.pendingSynthParams = {};
+    window.pendingSynthParams.volume = volume;
+    return false;
+  }
   
   const safeVolume = Math.max(0, Math.min(1, volume));
   
@@ -227,7 +293,15 @@ export async function triggerAudio(audioInstance, x, y, lastAngle, angle, tNow, 
 
 // Set envelope parameters
 export async function setEnvelope(attack, decay, sustain, release) {
-  if (!csoundInstance || !csoundStarted) return false;
+  if (!csoundInstance || !csoundStarted) {
+    // Store as pending parameters if Csound not ready
+    if (!window.pendingSynthParams) window.pendingSynthParams = {};
+    window.pendingSynthParams.attack = attack;
+    window.pendingSynthParams.decay = decay;
+    window.pendingSynthParams.sustain = sustain;
+    window.pendingSynthParams.release = release;
+    return false;
+  }
   
   try {
     await csoundInstance.setControlChannel("attack", attack);
@@ -243,7 +317,12 @@ export async function setEnvelope(attack, decay, sustain, release) {
 
 // Set brightness parameter
 export async function setBrightness(brightness) {
-  if (!csoundInstance || !csoundStarted) return false;
+  if (!csoundInstance || !csoundStarted) {
+    // Store as pending parameter if Csound not ready
+    if (!window.pendingSynthParams) window.pendingSynthParams = {};
+    window.pendingSynthParams.brightness = brightness;
+    return false;
+  }
   
   try {
     await csoundInstance.setControlChannel("brightness", brightness);
