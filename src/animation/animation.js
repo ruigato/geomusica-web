@@ -5,6 +5,7 @@ import { updateGroup, detectCrossings, createPolygonGeometry } from '../geometry
 import { processIntersections, createIntersectionMarkers } from '../geometry/intersections.js';
 import { MARK_LIFE } from '../config/constants.js';
 import { updateLabelPositions, updateAxisLabels, removeLabel, updateRotatingLabels } from '../ui/domLabels.js';
+import { getInstrumentForFrequency, getInstrumentOptions } from '../audio/instruments.js';
 
 // Function to clean up intersection point markers - improved version
 function cleanupIntersectionMarkers(scene) {
@@ -359,10 +360,11 @@ export function animate(params) {
   // Apply rotation to the group
   group.rotation.z = ang;
 
-// Update rotating labels (only the point frequency labels)
-if (state.showPointsFreqLabels) {
-  updateRotatingLabels(group, cam, renderer);
-}
+  // Update rotating labels (only the point frequency labels)
+  if (state.showPointsFreqLabels) {
+    updateRotatingLabels(group, cam, renderer);
+  }
+  
   // Detection of vertex crossings and audio calculations
   const triggeredNow = detectCrossings(
     params.baseGeo, 
@@ -372,7 +374,48 @@ if (state.showPointsFreqLabels) {
     group, 
     lastTrig, 
     tNow, 
-    triggerAudioCallback
+    // Enhanced audio callback handling
+    (x, y, lastAngle, angle, tNow) => {
+      // Calculate frequency for audio trigger
+      const freq = Math.hypot(x, y);
+      const instrumentId = getInstrumentForFrequency(freq);
+const options = getInstrumentOptions(instrumentId, {
+  frequency: freq
+});
+      // Determine which instrument to use based on frequency
+      // Use different Csound instruments for different frequency ranges
+      let instrumentNumber = 1;
+      
+      // Choose instrument based on frequency range
+      // Low frequencies use instrument 1 (simple oscillator)
+      // Mid frequencies use instrument 2 (FM synthesis)
+      // High frequencies use instrument 3 (additive synthesis)
+      // Very high frequencies use instrument 4 (plucked string)
+      // Extreme frequencies use instrument 5 (percussion)
+      if (freq < 200) {
+        instrumentNumber = 1; // Simple oscillator for low frequencies
+      } else if (freq < 500) {
+        instrumentNumber = 2; // FM synthesis for mid-low frequencies
+      } else if (freq < 800) {
+        instrumentNumber = 3; // Additive synthesis for mid-high frequencies
+      } else if (freq < 1200) {
+        instrumentNumber = 4; // Plucked string for high frequencies
+      } else {
+        instrumentNumber = 5; // Percussion for very high frequencies
+      }
+      
+      // Call the audio trigger callback with the frequency
+      if (triggerAudioCallback) {
+        // Pass additional parameters to allow for more complex audio behavior
+        triggerAudioCallback(x, y, lastAngle, angle, tNow, {
+          frequency: freq,
+          instrument: instrumentNumber
+        });
+      }
+      
+      // Return the frequency for use in visualization
+      return freq;
+    }
   );
 
   // Fade and remove markers
@@ -412,16 +455,16 @@ if (state.showPointsFreqLabels) {
   state.lastTrig = triggeredNow;
   state.lastAngle = ang;
   
-// First update the point frequency labels (only if enabled)
-if (state.showPointsFreqLabels) {
-  updateRotatingLabels(group, cam, renderer);
-}
+  // First update the point frequency labels (only if enabled)
+  if (state.showPointsFreqLabels) {
+    updateRotatingLabels(group, cam, renderer);
+  }
 
-// Then separately update the axis labels (these must be handled differently)
-updateAxisLabels();
+  // Then separately update the axis labels (these must be handled differently)
+  updateAxisLabels();
 
-// Finally update any other non-rotating labels
-updateLabelPositions(cam, renderer);
+  // Finally update any other non-rotating labels
+  updateLabelPositions(cam, renderer);
   
   // Render
   stats.begin();
