@@ -197,6 +197,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         finalScale = modulusScale * stepScaleFactor;  // Apply both modulus scale and step scale
       } else if (state.useAltScale) {
         // Apply alt scale multiplier if this is an Nth copy (without modulus)
+        // Always use the current altScale value (which will be lerped if lerping is enabled)
         if ((i + 1) % state.altStepN === 0) {
           finalScale = stepScaleFactor * state.altScale;
         }

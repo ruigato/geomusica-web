@@ -80,6 +80,7 @@ export function createAppState() {
     targetRadius: DEFAULT_VALUES.RADIUS,
     targetStepScale: DEFAULT_VALUES.STEP_SCALE,
     targetAngle: DEFAULT_VALUES.ANGLE,
+    targetAltScale: DEFAULT_VALUES.ALT_SCALE,
     
     // Frequency label settings
     showAxisFreqLabels: DEFAULT_VALUES.SHOW_AXIS_FREQ_LABELS,
@@ -178,11 +179,19 @@ export function createAppState() {
     },
     
     /**
-     * Set alt scale value
+     * Set alt scale value (affected by lerping if enabled)
      * @param {number} value New alt scale value
      */
     setAltScale(value) {
-      this.altScale = Number(value);
+      const newValue = Number(value);
+      this.targetAltScale = newValue;
+      
+      // If lerping is off, update the actual value immediately
+      if (!this.useLerp) {
+        this.altScale = newValue;
+      }
+      
+      // Always mark for intersection update when alt scale is being used
       if (this.useAltScale) {
         this.needsIntersectionUpdate = true;
       }
@@ -228,6 +237,7 @@ export function createAppState() {
         this.radius = this.targetRadius;
         this.stepScale = this.targetStepScale;
         this.angle = this.targetAngle;
+        this.altScale = this.targetAltScale;
         this.needsIntersectionUpdate = true;
       }
     },
@@ -365,16 +375,19 @@ export function createAppState() {
       const oldRadius = this.radius;
       const oldStepScale = this.stepScale;
       const oldAngle = this.angle;
+      const oldAltScale = this.altScale;
       
       const lerpFactor = Math.min(dt / this.lerpTime, 1.0);
       
       this.radius = this.lerp(this.radius, this.targetRadius, lerpFactor);
       this.stepScale = this.lerp(this.stepScale, this.targetStepScale, lerpFactor);
       this.angle = this.lerp(this.angle, this.targetAngle, lerpFactor);
+      this.altScale = this.lerp(this.altScale, this.targetAltScale, lerpFactor);
       
       if (Math.abs(oldRadius - this.radius) > 0.1 || 
           Math.abs(oldStepScale - this.stepScale) > 0.001 || 
-          Math.abs(oldAngle - this.angle) > 0.1) {
+          Math.abs(oldAngle - this.angle) > 0.1 ||
+          Math.abs(oldAltScale - this.altScale) > 0.01) {
         this.needsIntersectionUpdate = true;
       }
     },
