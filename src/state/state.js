@@ -1,4 +1,4 @@
-// src/state/state.js - Updated with synth controls
+// src/state/state.js - Updated with synth controls and alt scale
 import { Tone } from '../audio/audio.js';
 import { DEFAULT_VALUES } from '../config/constants.js';
 import { clearLabels } from '../ui/domLabels.js';
@@ -55,6 +55,11 @@ export function createAppState() {
     // MODULUS related parameters
     modulusValue: DEFAULT_VALUES.MODULUS_VALUE,
     useModulus: DEFAULT_VALUES.USE_MODULUS,
+    
+    // SCALE MOD related parameters
+    altScale: DEFAULT_VALUES.ALT_SCALE,
+    altStepN: DEFAULT_VALUES.ALT_STEP_N,
+    useAltScale: DEFAULT_VALUES.USE_ALT_SCALE,
     
     // Intersection related parameters
     useIntersections: DEFAULT_VALUES.USE_INTERSECTIONS,
@@ -164,6 +169,37 @@ export function createAppState() {
      */
     setUseModulus(value) {
       this.useModulus = Boolean(value);
+      this.needsIntersectionUpdate = true;
+    },
+    
+    /**
+     * Set alt scale value
+     * @param {number} value New alt scale value
+     */
+    setAltScale(value) {
+      this.altScale = Number(value);
+      if (this.useAltScale) {
+        this.needsIntersectionUpdate = true;
+      }
+    },
+    
+    /**
+     * Set alt step N value
+     * @param {number} value New alt step N value
+     */
+    setAltStepN(value) {
+      this.altStepN = Number(value);
+      if (this.useAltScale) {
+        this.needsIntersectionUpdate = true;
+      }
+    },
+    
+    /**
+     * Toggle alt scale mode
+     * @param {boolean} value Enable/disable alt scale
+     */
+    setUseAltScale(value) {
+      this.useAltScale = Boolean(value);
       this.needsIntersectionUpdate = true;
     },
     
@@ -280,20 +316,30 @@ export function createAppState() {
     },
     
     /**
-     * Get scale factor for a specific copy based on modulus
+     * Get scale factor for a specific copy based on modulus and alt scale
      * @param {number} copyIndex Copy index
      * @returns {number} Scale factor
      */
     getScaleFactorForCopy(copyIndex) {
-      if (!this.useModulus) {
-        return Math.pow(this.stepScale, copyIndex);
+      let baseFactor = 1.0;
+      
+      // Apply modulus scaling if enabled
+      if (this.useModulus) {
+        const modVal = this.modulusValue;
+        const sequence = generateSequence(modVal);
+        const sequenceIndex = copyIndex % sequence.length;
+        baseFactor = sequence[sequenceIndex];
       }
       
-      const modVal = this.modulusValue;
-      const sequence = generateSequence(modVal);
-      const sequenceIndex = copyIndex % sequence.length;
+      // Apply alt scale if enabled
+      if (this.useAltScale && this.altStepN > 0) {
+        // Check if this copy index matches the alt step pattern
+        if ((copyIndex + 1) % this.altStepN === 0) {
+          baseFactor *= this.altScale;
+        }
+      }
       
-      return sequence[sequenceIndex];
+      return baseFactor;
     },
     
     /**

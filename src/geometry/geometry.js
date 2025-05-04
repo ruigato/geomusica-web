@@ -1,4 +1,4 @@
-// src/geometry/geometry.js - Optimized version with proper modulus and step scale handling
+// src/geometry/geometry.js - Optimized version with proper modulus, alt scale, and step scale handling
 import * as THREE from 'three';
 import { 
   OVERLAP_THRESHOLD, 
@@ -128,20 +128,25 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   const targetGroup = tempGroup || group;
   
   for (let i = 0; i < copies; i++) {
-    let modulusScale = 1.0;
+    // Base scale factor from step scale
     let stepScaleFactor = Math.pow(stepScale, i);
     
-    // Determine scale based on modulus or standard step scale
-    if (state && state.useModulus) {
-      // Get the sequence value (increasing from 1/modulus to 1.0)
-      modulusScale = state.getScaleFactorForCopy(i);
-    }
+    // Initialize final scale variables
+    let finalScale = stepScaleFactor;
     
-    // Apply both modulus scale and step scale if modulus is enabled
-    // Otherwise just use step scale
-    const finalScale = state && state.useModulus 
-      ? modulusScale * stepScaleFactor  // CRITICAL: Both modulus and step scale apply!
-      : stepScaleFactor;
+    // Determine scale based on different features
+    if (state) {
+      if (state.useModulus) {
+        // Get the sequence value (increasing from 1/modulus to 1.0)
+        const modulusScale = state.getScaleFactorForCopy(i);
+        finalScale = modulusScale * stepScaleFactor;  // Apply both modulus scale and step scale
+      } else if (state.useAltScale) {
+        // Apply alt scale multiplier if this is an Nth copy (without modulus)
+        if ((i + 1) % state.altStepN === 0) {
+          finalScale = stepScaleFactor * state.altScale;
+        }
+      }
+    }
     
     // Each copy gets a cumulative angle (i * angle) in degrees
     const cumulativeAngleDegrees = i * angle;
@@ -195,20 +200,25 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   
   // Now create the actual group based on the updated geometry
   for (let i = 0; i < copies; i++) {
-    let modulusScale = 1.0;
+    // Base scale factor from step scale
     let stepScaleFactor = Math.pow(stepScale, i);
     
-    // Determine scale based on modulus or standard step scale
-    if (state && state.useModulus) {
-      // Get the sequence value (increasing from 1/modulus to 1.0)
-      modulusScale = state.getScaleFactorForCopy(i);
-    }
+    // Initialize final scale variables
+    let finalScale = stepScaleFactor;
     
-    // Apply both modulus scale and step scale if modulus is enabled
-    // Otherwise just use step scale
-    const finalScale = state && state.useModulus 
-      ? modulusScale * stepScaleFactor  // CRITICAL: Both modulus and step scale apply!
-      : stepScaleFactor;
+    // Determine scale based on different features
+    if (state) {
+      if (state.useModulus) {
+        // Get the sequence value (increasing from 1/modulus to 1.0)
+        const modulusScale = state.getScaleFactorForCopy(i);
+        finalScale = modulusScale * stepScaleFactor;  // Apply both modulus scale and step scale
+      } else if (state.useAltScale) {
+        // Apply alt scale multiplier if this is an Nth copy (without modulus)
+        if ((i + 1) % state.altStepN === 0) {
+          finalScale = stepScaleFactor * state.altScale;
+        }
+      }
+    }
     
     // Each copy gets a cumulative angle (i * angle) in degrees
     const cumulativeAngleDegrees = i * angle;

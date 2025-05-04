@@ -36,7 +36,10 @@ export const DEFAULT_VALUES = {
   USE_MODULUS: false,
   USE_INTERSECTIONS: false, // Default for intersection feature
   SHOW_AXIS_FREQ_LABELS: true, // Default for axis crossing frequency labels
-  SHOW_POINTS_FREQ_LABELS: false // Default for point frequency labels
+  SHOW_POINTS_FREQ_LABELS: false, // Default for point frequency labels
+  ALT_SCALE: 1.2, // Default alt scale value
+  ALT_STEP_N: 2, // Default apply alt scale every N copies
+  USE_ALT_SCALE: false // Default for alt scale feature
 };
 
 // UI ranges
@@ -48,5 +51,7 @@ export const UI_RANGES = {
   ANGLE: { MIN: -180, MAX: 180, STEP: 0.1 },
   NUMBER: { MIN: 2, MAX: 12, STEP: 1 },
   LERP_TIME: { MIN: 0.1, MAX: 5.0, STEP: 0.1 },
-  MODULUS: { MIN: 1, MAX: 12, STEP: 1 }
+  MODULUS: { MIN: 1, MAX: 12, STEP: 1 },
+  ALT_SCALE: { MIN: 0.1, MAX: 10, STEP: 0.01 }, // Range for alt scale
+  ALT_STEP_N: { MIN: 1, MAX: 32, STEP: 1 } // Range for alt step N
 };

@@ -37,25 +37,36 @@ export function setupUI(state) {
   const useModulusCheckbox = document.getElementById('useModulusCheckbox');
   const modulusRadioGroup = document.getElementById('modulusRadioGroup');
   
+  // Scale Mod controls
+  const altScaleRange = document.getElementById('altScaleRange');
+  const altScaleNumber = document.getElementById('altScaleNumber');
+  const altScaleValue = document.getElementById('altScaleValue');
+
+  const altStepNRange = document.getElementById('altStepNRange');
+  const altStepNNumber = document.getElementById('altStepNNumber');
+  const altStepNValue = document.getElementById('altStepNValue');
+
+  const useAltScaleCheckbox = document.getElementById('useAltScaleCheckbox');
+  
   // Intersections control
   const useIntersectionsCheckbox = document.getElementById('useIntersectionsCheckbox');
 
-    // Get new UI elements
-    const showAxisFreqLabelsCheckbox = document.getElementById('showAxisFreqLabelsCheckbox');
-    const showPointsFreqLabelsCheckbox = document.getElementById('showPointsFreqLabelsCheckbox');
-    
-    // Initialize checkbox states from app state
-    showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;
-    showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
-    
-    // Setup event listeners for new checkboxes
-    showAxisFreqLabelsCheckbox.addEventListener('change', e => {
-      state.setShowAxisFreqLabels(e.target.checked);
-    });
+  // Get new UI elements
+  const showAxisFreqLabelsCheckbox = document.getElementById('showAxisFreqLabelsCheckbox');
+  const showPointsFreqLabelsCheckbox = document.getElementById('showPointsFreqLabelsCheckbox');
   
-    showPointsFreqLabelsCheckbox.addEventListener('change', e => {
-      state.setShowPointsFreqLabels(e.target.checked);
-    });
+  // Initialize checkbox states from app state
+  showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;
+  showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
+  
+  // Setup event listeners for new checkboxes
+  showAxisFreqLabelsCheckbox.addEventListener('change', e => {
+    state.setShowAxisFreqLabels(e.target.checked);
+  });
+
+  showPointsFreqLabelsCheckbox.addEventListener('change', e => {
+    state.setShowPointsFreqLabels(e.target.checked);
+  });
   
   // Initialize modulus radio buttons
   setupModulusRadioButtons(modulusRadioGroup, state);
@@ -64,6 +75,12 @@ export function setupUI(state) {
   useModulusCheckbox.checked = state.useModulus;
   useModulusCheckbox.addEventListener('change', e => {
     state.setUseModulus(e.target.checked);
+  });
+  
+  // Setup alt scale checkbox
+  useAltScaleCheckbox.checked = state.useAltScale;
+  useAltScaleCheckbox.addEventListener('change', e => {
+    state.setUseAltScale(e.target.checked);
   });
   
   // Setup intersections checkbox
@@ -137,6 +154,17 @@ export function setupUI(state) {
     value => state.setLerpTime(Number(value)), 
     UI_RANGES.LERP_TIME.MIN, UI_RANGES.LERP_TIME.MAX, 
     Number);
+    
+  // Link Scale Mod UI controls to state
+  syncPair(altScaleRange, altScaleNumber, altScaleValue, 
+    value => state.setAltScale(Number(value)), 
+    UI_RANGES.ALT_SCALE.MIN, UI_RANGES.ALT_SCALE.MAX, 
+    Number);
+  
+  syncPair(altStepNRange, altStepNNumber, altStepNValue, 
+    value => state.setAltStepN(Number(value)), 
+    UI_RANGES.ALT_STEP_N.MIN, UI_RANGES.ALT_STEP_N.MAX, 
+    Number);
 
   return {
     bpmRange, bpmNumber, bpmValue,
@@ -147,7 +175,10 @@ export function setupUI(state) {
     numberRange, numberNumber, numberValue,
     useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
     useModulusCheckbox, modulusRadioGroup,
-    useIntersectionsCheckbox,     showAxisFreqLabelsCheckbox,
+    altScaleRange, altScaleNumber, altScaleValue,
+    altStepNRange, altStepNNumber, altStepNValue,
+    useAltScaleCheckbox,
+    useIntersectionsCheckbox, showAxisFreqLabelsCheckbox,
     showPointsFreqLabelsCheckbox
   };
 }
