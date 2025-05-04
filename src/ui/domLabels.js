@@ -65,7 +65,7 @@ function getPointLabel() {
   const label = document.createElement('div');
   label.className = 'point-frequency-label';
   label.style.position = 'absolute';
-  label.style.fontFamily = '"Perfect DOS VGA 437", monospace';
+  label.style.fontFamily = '"Roboto Mono", Consolas, Menlo, "DejaVu Sans Mono", monospace';
   label.style.fontSize = '14px';
   label.style.color = '#ffffff';
   label.style.textAlign = 'center';
@@ -93,7 +93,7 @@ function getAxisLabel() {
   const label = document.createElement('div');
   label.className = 'axis-frequency-label'; 
   label.style.position = 'absolute';
-  label.style.fontFamily = '"Perfect DOS VGA 437", monospace';
+  label.style.fontFamily = '"Roboto Mono", Consolas, Menlo, "DejaVu Sans Mono", monospace';
   label.style.fontSize = '14px';
   label.style.color = '#ffffff';
   label.style.textAlign = 'center';

@@ -1,10 +1,10 @@
-// src/main.js - Updated to include proper handling of scale mod parameters
+// src/main.js - Updated to use TrueType fonts
 import * as THREE from 'three';
 import Stats from 'stats.js';
 
 // Import modules
 import { setupUI } from './ui/ui.js';
-import { setupSynthUI } from './ui/synthUI.js';
+import { setupSynthUI } from './ui/synthUI.js'; 
 import { 
   setupAudio, 
   triggerAudio, 
@@ -18,7 +18,7 @@ import { animate } from './animation/animation.js';
 import { createAppState } from './state/state.js';
 import { MARK_LIFE } from './config/constants.js';
 import { initLabels, updateLabelPositions } from './ui/domLabels.js';
-import { preloadFont } from './utils/fontUtils.js';
+import { ensureRobotoMono, waitForFonts } from './utils/fontUtils.js';
 import { 
   loadState, 
   applyLoadedState, 
@@ -135,24 +135,24 @@ function addStateControlsToUI(state) {
   document.body.appendChild(container);
 }
 
-// Preload the DOS VGA font before proceeding with setup
-preloadFont('Perfect DOS VGA 437', '/fonts/PerfectDOSVGA437.ttf')
+// Ensure TrueType fonts are available before proceeding with setup
+ensureRobotoMono()
   .then(() => {
-    console.log('DOS VGA font loaded successfully');
+    console.log('TrueType fonts are ready');
     
-    // Initialize label system after font is loaded
+    // Initialize label system
     initLabels();
     
     // Continue with application setup
     initializeApplication();
   })
   .catch(error => {
-    console.error('Error loading DOS VGA font:', error);
+    console.error('Error setting up fonts:', error);
     
-    // Continue anyway with fallback font
-    console.warn('Using fallback font instead');
+    // Continue anyway with fallback fonts
+    console.warn('Using fallback system fonts');
     
-    // Initialize label system with fallback font
+    // Initialize label system with fallback fonts
     initLabels();
     
     initializeApplication();
@@ -166,7 +166,6 @@ function initializeApplication() {
   // Load saved state if available
   const savedState = loadState();
   if (savedState) {
-    console.log("Loading saved state:", savedState);
     applyLoadedState(appState, savedState);
     // Update UI to reflect loaded state
     updateUIFromState(appState, uiReferences);
@@ -189,10 +188,7 @@ function initializeApplication() {
     
     // If we have loaded state, update synth UI and audio engine
     if (savedState) {
-      console.log("Applying loaded state to UI elements:", savedState);
-      
-      // Update both UI sets with all loaded values including scale mod parameters
-      updateUIFromState(appState, { ...uiReferences, ...synthUIReferences });
+      updateUIFromState(appState, synthUIReferences);
       
       // Apply synth parameters directly with the new approach
       applySynthParameters({
@@ -230,7 +226,7 @@ function initializeApplication() {
     
     const cam = new THREE.PerspectiveCamera(
       75, 
-      (window.innerWidth * 0.6) / window.innerHeight, // Updated to account for new UI width
+      (window.innerWidth * 0.6) / window.innerHeight, // For 60% canvas width
       0.1, 
       100000
     );
@@ -238,7 +234,7 @@ function initializeApplication() {
     cam.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // Updated to account for new UI width
+    renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // For 60% canvas width
     document.getElementById('canvas').appendChild(renderer.domElement);
 
     // Store camera and renderer in scene's userData for label management
@@ -264,9 +260,9 @@ function initializeApplication() {
 
     // Handle window resize
     window.addEventListener('resize', () => {
-      cam.aspect = (window.innerWidth * 0.6) / window.innerHeight; // Updated to account for new UI width
+      cam.aspect = (window.innerWidth * 0.6) / window.innerHeight; // For 60% canvas width
       cam.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // Updated to account for new UI width
+      renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // For 60% canvas width
       
       // Update DOM label positions when window resizes
       updateLabelPositions(cam, renderer);
@@ -283,13 +279,6 @@ function initializeApplication() {
     infoEl.style.borderRadius = '5px';
     infoEl.textContent = 'GeoMusica - Click anywhere to start audio';
     document.body.appendChild(infoEl);
-    
-    // Print state to console for debugging
-    console.log("Current state before animation:", {
-      useAltScale: appState.useAltScale,
-      altScale: appState.altScale,
-      altStepN: appState.altStepN
-    });
     
     // Start animation loop
     animate({
@@ -315,7 +304,7 @@ function initializeApplication() {
     
     const cam = new THREE.PerspectiveCamera(
       75, 
-      (window.innerWidth * 0.6) / window.innerHeight, // Updated to account for new UI width
+      (window.innerWidth * 0.6) / window.innerHeight, // For 60% canvas width
       0.1, 
       10000
     );
@@ -323,7 +312,7 @@ function initializeApplication() {
     cam.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // Updated to account for new UI width
+    renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // For 60% canvas width
     document.getElementById('canvas').appendChild(renderer.domElement);
 
     // Store camera and renderer in scene's userData for label management
@@ -349,9 +338,9 @@ function initializeApplication() {
 
     // Handle window resize with label updates
     window.addEventListener('resize', () => {
-      cam.aspect = (window.innerWidth * 0.6) / window.innerHeight; // Updated to account for new UI width
+      cam.aspect = (window.innerWidth * 0.6) / window.innerHeight; // For 60% canvas width
       cam.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // Updated to account for new UI width
+      renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // For 60% canvas width
       
       // Update DOM label positions when window resizes
       updateLabelPositions(cam, renderer);
@@ -365,8 +354,7 @@ function initializeApplication() {
     
     // If we have loaded state, update synth UI
     if (savedState) {
-      // Update both UI sets with all loaded values including scale mod parameters
-      updateUIFromState(appState, { ...uiReferences, ...synthUIReferences });
+      updateUIFromState(appState, synthUIReferences);
     }
 
     // Start animation loop without audio

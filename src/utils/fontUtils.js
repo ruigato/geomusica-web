@@ -1,4 +1,4 @@
-// src/utils/fontUtils.js - Optimized version
+// src/utils/fontUtils.js - Updated version for TrueType fonts
 
 /**
  * Preload a font by name and URL
@@ -27,11 +27,13 @@ export function preloadFont(fontFamily, url) {
         })
         .catch(error => {
           console.error(`Failed to load font ${fontFamily}:`, error);
-          reject(error);
+          // Resolve anyway since we're using system fonts as fallback
+          resolve(null);
         });
     } catch (error) {
       console.error(`Error creating FontFace for ${fontFamily}:`, error);
-      reject(error);
+      // Resolve anyway since we're using system fonts as fallback
+      resolve(null);
     }
   });
 }
@@ -59,4 +61,41 @@ export function waitForFonts() {
   }
   
   return document.fonts.ready;
+}
+
+/**
+ * Check if Roboto Mono is available, if not, load it from Google Fonts
+ * @returns {Promise} Promise that resolves when Roboto Mono is available
+ */
+export function ensureRobotoMono() {
+  // First check if Roboto Mono is already available
+  if (isFontAvailable('Roboto Mono')) {
+    return Promise.resolve();
+  }
+  
+  // If not available, try to load it from Google Fonts
+  return new Promise((resolve) => {
+    // Create a link element for Google Fonts
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap';
+    
+    // Add load event listener
+    link.onload = () => {
+      // Wait a moment for the font to be applied
+      setTimeout(resolve, 100);
+    };
+    
+    // In case of error, resolve anyway (we'll use system fonts)
+    link.onerror = () => {
+      console.warn('Failed to load Roboto Mono from Google Fonts, falling back to system fonts');
+      resolve();
+    };
+    
+    // Add to document head
+    document.head.appendChild(link);
+    
+    // Set a timeout just in case
+    setTimeout(resolve, 1000);
+  });
 }

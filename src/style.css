@@ -177,7 +177,7 @@ section:nth-child(5) h2 {
 
 .axis-frequency-label {
   position: absolute;
-  font-family: "Perfect DOS VGA 437", monospace;
+  font-family: "Roboto Mono", Consolas, Menlo, "DejaVu Sans Mono", monospace;
   font-size: 14px;
   color: #ffffff;
   text-align: center;
@@ -190,7 +190,7 @@ section:nth-child(5) h2 {
 
 .point-frequency-label {
   position: absolute;
-  font-family: "Perfect DOS VGA 437", monospace;
+  font-family: "Roboto Mono", Consolas, Menlo, "DejaVu Sans Mono", monospace;
   font-size: 14px;
   color: #ffffff;
   text-align: center;
