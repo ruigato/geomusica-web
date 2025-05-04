@@ -18,6 +18,11 @@ const stats = new Stats();
 stats.showPanel(0);
 document.body.appendChild(stats.dom);
 
+// Position the stats panel in the top right corner
+stats.dom.style.position = 'absolute';
+stats.dom.style.left = 'auto';
+stats.dom.style.right = '10px';
+stats.dom.style.top = '10px';
 // Create application state
 const appState = createAppState();
 
