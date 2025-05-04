@@ -1,4 +1,4 @@
-// src/audio/audio.js - Optimized version with testing code removed
+// src/audio/audio.js - Updated for single FM bell instrument
 
 import { Csound } from '@csound/browser';
 
@@ -14,16 +14,13 @@ let lastCsoundTime = 0;
 // Path to the orchestra file
 const ORC_FILE_PATH = '/src/audio/GeoMusica.orc';
 
-// Instrument types
+// We now have a single instrument with ID 1
 export const InstrumentType = {
-  SIMPLE: 5,
-  FM: 6,
-  ADDITIVE: 7,
-  PLUCKED: 8
+  FM_BELL: 1 // Our only instrument
 };
 
 // Default instrument type
-let activeInstrument = InstrumentType.SIMPLE;
+let activeInstrument = InstrumentType.FM_BELL;
 
 // Channel for time synchronization with Csound
 const TIME_CHANNEL_NAME = "currentTime";
@@ -117,9 +114,10 @@ export async function setupAudio() {
             
             // Set default parameters
             await csoundInstance.setControlChannel("attack", 0.01);
-            await csoundInstance.setControlChannel("decay", 0.1);
-            await csoundInstance.setControlChannel("sustain", 0.7);
-            await csoundInstance.setControlChannel("release", 0.5);
+            await csoundInstance.setControlChannel("decay", 0.3);
+            await csoundInstance.setControlChannel("sustain", 0.5);
+            await csoundInstance.setControlChannel("release", 1.0);
+            await csoundInstance.setControlChannel("brightness", 1.0);
             await csoundInstance.setControlChannel("masterVolume", 0.8);
             
             // Play a test note
@@ -174,19 +172,8 @@ export function playNote(frequency, amplitude = 0.7, duration = 0.2, pan = 0.0) 
     // Limit duration to reasonable values
     duration = Math.max(0.05, Math.min(10, duration));
     
-    // Add instrument-specific parameters
-    let extraParams = "";
-    switch (activeInstrument) {
-      case InstrumentType.FM:
-        extraParams = " 2.0 3.0"; // modRatio and modIndex
-        break;
-      case InstrumentType.ADDITIVE:
-        extraParams = " 1.0"; // brightness
-        break;
-    }
-    
-    // Build Csound score event
-    const scoreEvent = `i ${activeInstrument} 0 ${duration} ${frequency} ${amplitude} ${duration} ${pan}${extraParams}`;
+    // Build Csound score event with instrument 1 (FM Bell)
+    const scoreEvent = `i 1 0 ${duration} ${frequency} ${amplitude} ${duration} ${pan}`;
     
     // Play the note
     csoundInstance.readScore(scoreEvent);
@@ -196,15 +183,6 @@ export function playNote(frequency, amplitude = 0.7, duration = 0.2, pan = 0.0) 
     console.error("Error playing note:", error);
     return false;
   }
-}
-
-// Set active instrument by ID
-export function setInstrument(instrumentId) {
-  if (Object.values(InstrumentType).includes(instrumentId)) {
-    activeInstrument = instrumentId;
-    return true;
-  }
-  return false;
 }
 
 // Set master volume (0.0-1.0)
@@ -234,16 +212,11 @@ export async function triggerAudio(audioInstance, x, y, lastAngle, angle, tNow, 
     const angRad = angle % (2 * Math.PI);
     const pan = Math.sin(angRad);
     
-    // Use provided instrument if specified in options
-    const instrument = options.instrument;
-    if (instrument && Object.values(InstrumentType).includes(instrument)) {
-      const savedInstrument = activeInstrument;
-      setInstrument(instrument);
-      playNote(freq, 0.7, 0.2, pan);
-      setInstrument(savedInstrument);
-    } else {
-      playNote(freq, 0.7, 0.2, pan);
-    }
+    // Calculate duration based on frequency (lower notes need longer duration)
+    const noteDuration = Math.min(2.0, Math.max(0.2, 3000 / freq));
+    
+    // Always use our FM bell instrument
+    playNote(freq, 0.7, noteDuration, pan);
     
     return freq;
   } catch (error) {
@@ -264,6 +237,19 @@ export async function setEnvelope(attack, decay, sustain, release) {
     return true;
   } catch (error) {
     console.error("Error setting envelope:", error);
+    return false;
+  }
+}
+
+// Set brightness parameter
+export async function setBrightness(brightness) {
+  if (!csoundInstance || !csoundStarted) return false;
+  
+  try {
+    await csoundInstance.setControlChannel("brightness", brightness);
+    return true;
+  } catch (error) {
+    console.error("Error setting brightness:", error);
     return false;
   }
 }
