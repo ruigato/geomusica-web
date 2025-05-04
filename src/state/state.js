@@ -1,4 +1,4 @@
-// src/state/state.js - Updated with synth controls and alt scale
+// src/state/state.js - Updated with proper handling for altScale and altStepN
 import { Tone } from '../audio/audio.js';
 import { DEFAULT_VALUES } from '../config/constants.js';
 import { clearLabels } from '../ui/domLabels.js';
@@ -56,7 +56,7 @@ export function createAppState() {
     modulusValue: DEFAULT_VALUES.MODULUS_VALUE,
     useModulus: DEFAULT_VALUES.USE_MODULUS,
     
-    // SCALE MOD related parameters
+    // SCALE MOD related parameters - properly initialized
     altScale: DEFAULT_VALUES.ALT_SCALE,
     altStepN: DEFAULT_VALUES.ALT_STEP_N,
     useAltScale: DEFAULT_VALUES.USE_ALT_SCALE,

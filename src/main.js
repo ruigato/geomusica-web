@@ -1,10 +1,10 @@
-// src/main.js - Updated to include synth UI and state persistence
+// src/main.js - Updated to include proper handling of scale mod parameters
 import * as THREE from 'three';
 import Stats from 'stats.js';
 
 // Import modules
 import { setupUI } from './ui/ui.js';
-import { setupSynthUI } from './ui/synthUI.js'; // Import the new synthUI module
+import { setupSynthUI } from './ui/synthUI.js';
 import { 
   setupAudio, 
   triggerAudio, 
@@ -166,6 +166,7 @@ function initializeApplication() {
   // Load saved state if available
   const savedState = loadState();
   if (savedState) {
+    console.log("Loading saved state:", savedState);
     applyLoadedState(appState, savedState);
     // Update UI to reflect loaded state
     updateUIFromState(appState, uiReferences);
@@ -188,7 +189,10 @@ function initializeApplication() {
     
     // If we have loaded state, update synth UI and audio engine
     if (savedState) {
-      updateUIFromState(appState, synthUIReferences);
+      console.log("Applying loaded state to UI elements:", savedState);
+      
+      // Update both UI sets with all loaded values including scale mod parameters
+      updateUIFromState(appState, { ...uiReferences, ...synthUIReferences });
       
       // Apply synth parameters directly with the new approach
       applySynthParameters({
@@ -280,6 +284,13 @@ function initializeApplication() {
     infoEl.textContent = 'GeoMusica - Click anywhere to start audio';
     document.body.appendChild(infoEl);
     
+    // Print state to console for debugging
+    console.log("Current state before animation:", {
+      useAltScale: appState.useAltScale,
+      altScale: appState.altScale,
+      altStepN: appState.altStepN
+    });
+    
     // Start animation loop
     animate({
       scene,
@@ -354,7 +365,8 @@ function initializeApplication() {
     
     // If we have loaded state, update synth UI
     if (savedState) {
-      updateUIFromState(appState, synthUIReferences);
+      // Update both UI sets with all loaded values including scale mod parameters
+      updateUIFromState(appState, { ...uiReferences, ...synthUIReferences });
     }
 
     // Start animation loop without audio

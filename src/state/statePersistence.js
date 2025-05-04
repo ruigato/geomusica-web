@@ -28,6 +28,11 @@ export function saveState(state) {
       modulusValue: state.modulusValue,
       useModulus: state.useModulus,
       
+      // Scale Mod parameters - Add these to the saved data
+      altScale: state.altScale,
+      altStepN: state.altStepN,
+      useAltScale: state.useAltScale,
+      
       // Intersection parameters
       useIntersections: state.useIntersections,
       
@@ -102,6 +107,11 @@ export function applyLoadedState(state, loadedState) {
     
     if (loadedState.modulusValue !== undefined) state.setModulusValue(loadedState.modulusValue);
     if (loadedState.useModulus !== undefined) state.setUseModulus(loadedState.useModulus);
+    
+    // Apply scale mod parameters
+    if (loadedState.altScale !== undefined) state.setAltScale(loadedState.altScale);
+    if (loadedState.altStepN !== undefined) state.setAltStepN(loadedState.altStepN);
+    if (loadedState.useAltScale !== undefined) state.setUseAltScale(loadedState.useAltScale);
     
     if (loadedState.useIntersections !== undefined) state.setUseIntersections(loadedState.useIntersections);
     
@@ -207,6 +217,10 @@ export function exportStateToFile(state) {
       angle: state.angle,
       modulusValue: state.modulusValue,
       useModulus: state.useModulus,
+      // Add scale mod parameters to the export
+      altScale: state.altScale,
+      altStepN: state.altStepN,
+      useAltScale: state.useAltScale,
       useIntersections: state.useIntersections,
       useLerp: state.useLerp,
       lerpTime: state.lerpTime,
@@ -331,6 +345,19 @@ export function updateUIFromState(state, uiElements) {
       if (uiElements.angleValue) uiElements.angleValue.textContent = state.angle;
     }
     
+    // Update Scale Mod controls
+    if (uiElements.altScaleRange && state.altScale !== undefined) {
+      uiElements.altScaleRange.value = state.altScale;
+      if (uiElements.altScaleNumber) uiElements.altScaleNumber.value = state.altScale;
+      if (uiElements.altScaleValue) uiElements.altScaleValue.textContent = state.altScale.toFixed(2);
+    }
+    
+    if (uiElements.altStepNRange && state.altStepN !== undefined) {
+      uiElements.altStepNRange.value = state.altStepN;
+      if (uiElements.altStepNNumber) uiElements.altStepNNumber.value = state.altStepN;
+      if (uiElements.altStepNValue) uiElements.altStepNValue.textContent = state.altStepN;
+    }
+    
     // Update checkbox states
     if (uiElements.useLerpCheckbox && state.useLerp !== undefined) {
       uiElements.useLerpCheckbox.checked = state.useLerp;
@@ -338,6 +365,10 @@ export function updateUIFromState(state, uiElements) {
     
     if (uiElements.useModulusCheckbox && state.useModulus !== undefined) {
       uiElements.useModulusCheckbox.checked = state.useModulus;
+    }
+    
+    if (uiElements.useAltScaleCheckbox && state.useAltScale !== undefined) {
+      uiElements.useAltScaleCheckbox.checked = state.useAltScale;
     }
     
     if (uiElements.useIntersectionsCheckbox && state.useIntersections !== undefined) {

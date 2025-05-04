@@ -117,7 +117,7 @@ export async function setupAudio() {
             await csoundInstance.setControlChannel("decay", 0.3);
             await csoundInstance.setControlChannel("sustain", 0.5);
             await csoundInstance.setControlChannel("release", 1.0);
-            await csoundInstance.setControlChannel("brightness", 1.0);
+            await csoundInstance.setControlChannel("brightness", 0.0);
             await csoundInstance.setControlChannel("masterVolume", 0.8);
             
             // Check if we have any pending parameters to apply
@@ -128,7 +128,7 @@ export async function setupAudio() {
             }
             
             // Play a test note
-            playNote(440, 0.7, 0.5);
+            playNote(432, 0.7, 0.5);
             
             // Enable Csound timing
             setTimeout(async () => {
@@ -178,12 +178,12 @@ export async function applySynthParameters(params) {
   
   try {
     // Apply all parameters
-    await csoundInstance.setControlChannel("attack", params.attack || 0.01);
+/*     await csoundInstance.setControlChannel("attack", params.attack || 0.01);
     await csoundInstance.setControlChannel("decay", params.decay || 0.3);
     await csoundInstance.setControlChannel("sustain", params.sustain || 0.5);
     await csoundInstance.setControlChannel("release", params.release || 1.0);
-    await csoundInstance.setControlChannel("brightness", params.brightness || 1.0);
-    await csoundInstance.setControlChannel("masterVolume", params.volume || 0.8);
+    await csoundInstance.setControlChannel("brightness", params.brightness || 0.0);
+    await csoundInstance.setControlChannel("masterVolume", params.volume || 0.8); */
     
     console.log("All synth parameters applied successfully:", params);
     return true;

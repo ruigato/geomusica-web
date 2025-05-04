@@ -58,6 +58,16 @@ export function setupUI(state) {
   // Initialize checkbox states from app state
   showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;
   showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
+  useAltScaleCheckbox.checked = state.useAltScale;
+  
+  // Set initial values for scale mod controls from state
+  altScaleRange.value = state.altScale;
+  altScaleNumber.value = state.altScale;
+  altScaleValue.textContent = state.altScale.toFixed(2);
+  
+  altStepNRange.value = state.altStepN;
+  altStepNNumber.value = state.altStepN;
+  altStepNValue.textContent = state.altStepN;
   
   // Setup event listeners for new checkboxes
   showAxisFreqLabelsCheckbox.addEventListener('change', e => {
@@ -155,7 +165,7 @@ export function setupUI(state) {
     UI_RANGES.LERP_TIME.MIN, UI_RANGES.LERP_TIME.MAX, 
     Number);
     
-  // Link Scale Mod UI controls to state
+  // Link Scale Mod UI controls to state with proper formatting
   syncPair(altScaleRange, altScaleNumber, altScaleValue, 
     value => state.setAltScale(Number(value)), 
     UI_RANGES.ALT_SCALE.MIN, UI_RANGES.ALT_SCALE.MAX, 
