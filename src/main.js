@@ -1,4 +1,4 @@
-// src/main.js - Updated to include synth UI
+// src/main.js - Updated to include synth UI and state persistence
 import * as THREE from 'three';
 import Stats from 'stats.js';
 
@@ -12,6 +12,7 @@ import { createAppState } from './state/state.js';
 import { MARK_LIFE } from './config/constants.js';
 import { initLabels, updateLabelPositions } from './ui/domLabels.js';
 import { preloadFont } from './utils/fontUtils.js';
+import { loadState, applyLoadedState, setupAutoSave, exportStateToFile, importStateFromFile, updateUIFromState } from './state/statePersistence.js';
 
 // Initialize stats for performance monitoring
 const stats = new Stats();
@@ -23,8 +24,89 @@ stats.dom.style.position = 'absolute';
 stats.dom.style.left = 'auto';
 stats.dom.style.right = '10px';
 stats.dom.style.top = '10px';
+
 // Create application state
 const appState = createAppState();
+
+// Store UI references globally
+let uiReferences = null;
+let synthUIReferences = null;
+
+// Add this function to the file
+function addStateControlsToUI(state) {
+  // Create a container for the controls
+  const container = document.createElement('div');
+  container.style.position = 'absolute';
+  container.style.bottom = '10px';
+  container.style.right = '10px';
+  container.style.zIndex = '1000';
+  container.style.display = 'flex';
+  container.style.gap = '10px';
+  
+  // Create export button
+  const exportButton = document.createElement('button');
+  exportButton.textContent = 'Export Settings';
+  exportButton.style.padding = '8px 12px';
+  exportButton.style.backgroundColor = '#333';
+  exportButton.style.color = '#fff';
+  exportButton.style.border = 'none';
+  exportButton.style.borderRadius = '4px';
+  exportButton.style.cursor = 'pointer';
+  
+  // Add export click handler
+  exportButton.addEventListener('click', () => {
+    exportStateToFile(state);
+  });
+  
+  // Create import button and file input
+  const importButton = document.createElement('button');
+  importButton.textContent = 'Import Settings';
+  importButton.style.padding = '8px 12px';
+  importButton.style.backgroundColor = '#333';
+  importButton.style.color = '#fff';
+  importButton.style.border = 'none';
+  importButton.style.borderRadius = '4px';
+  importButton.style.cursor = 'pointer';
+  
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.json';
+  fileInput.style.display = 'none';
+  
+  // Set up import click handler
+  importButton.addEventListener('click', () => {
+    fileInput.click();
+  });
+  
+  // Handle file selection
+  fileInput.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      importStateFromFile(file, state)
+        .then(success => {
+          if (success) {
+            // Update UI to reflect imported state
+            const allUIReferences = { ...uiReferences, ...synthUIReferences };
+            updateUIFromState(state, allUIReferences);
+          } else {
+            alert('Failed to import settings');
+          }
+        })
+        .catch(error => {
+          console.error('Import error:', error);
+          alert('Error importing settings file');
+        });
+    }
+  });
+  
+  // Add elements to container
+  container.appendChild(exportButton);
+  container.appendChild(importButton);
+  container.appendChild(fileInput);
+  
+  // Add container to document
+  document.body.appendChild(container);
+}
 
 // Preload the DOS VGA font before proceeding with setup
 preloadFont('Perfect DOS VGA 437', '/fonts/PerfectDOSVGA437.ttf')
@@ -51,8 +133,22 @@ preloadFont('Perfect DOS VGA 437', '/fonts/PerfectDOSVGA437.ttf')
 
 // Function to initialize the application after font loading
 function initializeApplication() {
-  // Setup UI and bind it to state
-  setupUI(appState);
+  // Setup UI and bind it to state - STORE the references
+  uiReferences = setupUI(appState);
+
+  // Load saved state if available
+  const savedState = loadState();
+  if (savedState) {
+    applyLoadedState(appState, savedState);
+    // Update UI to reflect loaded state
+    updateUIFromState(appState, uiReferences);
+  }
+
+  // Add import/export controls to the UI
+  addStateControlsToUI(appState);
+
+  // Set up auto save (every 5 seconds)
+  const stopAutoSave = setupAutoSave(appState, 5000);
 
   // Setup audio - now with enhanced Csound timing for better precision
   setupAudio().then(audioInstance => {
@@ -66,7 +162,12 @@ function initializeApplication() {
     setMasterVolume(appState.volume);
 
     // Setup synthesizer UI controls after audio is initialized
-    setupSynthUI(appState, audioInstance);
+    synthUIReferences = setupSynthUI(appState, audioInstance);
+    
+    // If we have loaded state, update synth UI
+    if (savedState) {
+      updateUIFromState(appState, synthUIReferences);
+    }
 
     // Function to handle audio triggers
     const handleAudioTrigger = (x, y, lastAngle, angle, tNow, options = {}) => {
@@ -134,7 +235,7 @@ function initializeApplication() {
     infoEl.style.borderRadius = '5px';
     infoEl.textContent = 'GeoMusica - Click anywhere to start audio';
     document.body.appendChild(infoEl);
-
+    
     // Start animation loop
     animate({
       scene,
@@ -205,7 +306,12 @@ function initializeApplication() {
     const silentAudioTrigger = () => {};
 
     // Still setup the synth UI even without audio
-    setupSynthUI(appState, null);
+    synthUIReferences = setupSynthUI(appState, null);
+    
+    // If we have loaded state, update synth UI
+    if (savedState) {
+      updateUIFromState(appState, synthUIReferences);
+    }
 
     // Start animation loop without audio
     animate({
