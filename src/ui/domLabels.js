@@ -1,4 +1,4 @@
-// src/ui/domLabels.js - Optimized version
+// src/ui/domLabels.js - Simple version with targeted optimizations
 import * as THREE from 'three';
 
 // Label containers
@@ -12,6 +12,10 @@ const axisLabelPool = [];
 // Maps for tracking active labels
 const activePointLabels = new Map();
 const activeAxisLabels = new Map();
+
+// Reusable Vector3 object for calculations
+const _tempVector = new THREE.Vector3();
+const _rotationAxis = new THREE.Vector3(0, 0, 1);
 
 /**
  * Initialize the label system with separate containers
@@ -61,18 +65,15 @@ function getPointLabel() {
     return label;
   }
   
-  // Create a new point label
+  // Create a new point label with optimized styling
   const label = document.createElement('div');
   label.className = 'point-frequency-label';
   label.style.position = 'absolute';
-  label.style.fontFamily = '"Roboto Mono", Consolas, Menlo, "DejaVu Sans Mono", monospace';
+  label.style.fontFamily = '"Roboto Mono", monospace'; // Simplified font stack
   label.style.fontSize = '14px';
-  label.style.color = '#ffffff';
-  label.style.textAlign = 'center';
-  label.style.backgroundColor = 'transparent';
-  label.style.padding = '2px 4px';
+  label.style.color = '#fff';
+  label.style.transform = 'translate3d(-50%, -50%, 0)'; // Use translate3d for GPU acceleration
   label.style.pointerEvents = 'none';
-  label.style.transform = 'translate(-50%, -50%)';
   pointLabelContainer.appendChild(label);
   
   return label;
@@ -89,19 +90,16 @@ function getAxisLabel() {
     return label;
   }
   
-  // Create a new axis label
+  // Create a new axis label with optimized styling
   const label = document.createElement('div');
   label.className = 'axis-frequency-label'; 
   label.style.position = 'absolute';
-  label.style.fontFamily = '"Roboto Mono", Consolas, Menlo, "DejaVu Sans Mono", monospace';
+  label.style.fontFamily = '"Roboto Mono", monospace'; // Simplified font stack
   label.style.fontSize = '14px';
-  label.style.color = '#ffffff';
-  label.style.textAlign = 'center';
-  label.style.backgroundColor = 'rgba(255, 0, 255, 0.7)';
-  label.style.padding = '2px 4px';
-  label.style.borderRadius = '2px';
+  label.style.color = '#fff';
+  label.style.backgroundColor = 'rgba(255,0,255,0.7)';
+  label.style.transform = 'translate3d(-50%, -100%, 0)'; // Use translate3d for GPU acceleration
   label.style.pointerEvents = 'none';
-  label.style.transform = 'translate(-50%, -100%)'; // Position above point
   axisLabelContainer.appendChild(label);
   
   return label;
@@ -188,7 +186,7 @@ export function createAxisLabel(id, worldPos, text, camera, renderer, lifespan =
   // Store world position
   label.dataset.worldX = worldPos.x;
   label.dataset.worldY = worldPos.y;
-  label.dataset.worldZ = worldPos.z || 0;
+  label.dataset.worldZ = worldPos.z || 10;
   
   // Set life tracking
   label.dataset.life = lifespan;
@@ -246,7 +244,7 @@ export function updateLabelPositions(camera, renderer) {
 }
 
 /**
- * Update rotating point frequency labels
+ * Update rotating point frequency labels - simplified but optimized
  * @param {THREE.Group} group Rotation group
  * @param {THREE.Camera} camera Camera for positioning
  * @param {THREE.WebGLRenderer} renderer Renderer for positioning
@@ -262,35 +260,39 @@ export function updateRotatingLabels(group, camera, renderer) {
   if (!state || !state.pointFreqLabels || !state.pointFreqLabels.length) return;
   
   // Update each point frequency label based on geometry rotation
-  state.pointFreqLabels.forEach(labelInfo => {
+  for (let i = 0; i < state.pointFreqLabels.length; i++) {
+    const labelInfo = state.pointFreqLabels[i];
     const label = labelInfo.label;
-    if (!label || !label.id) return;
     
-    // Get the original position
-    const originalPos = labelInfo.position.clone();
+    if (!label || !label.id) continue;
+    
+    // Optimization: Reuse Vector3 object instead of cloning
+    _tempVector.copy(labelInfo.position);
     
     // Apply the current group rotation
-    const rotatedPos = originalPos.clone();
-    rotatedPos.applyAxisAngle(new THREE.Vector3(0, 0, 1), worldRotation);
+    _tempVector.applyAxisAngle(_rotationAxis, worldRotation);
     
     // Convert to screen position
-    const screenPos = worldToScreen(rotatedPos, camera, renderer);
+    const screenPos = worldToScreen(_tempVector, camera, renderer);
     
-    // Update the DOM element position
+    // Update the DOM element position - direct approach for rotation correctness
     const elementId = label.id.startsWith('point-') ? label.id : 'point-' + label.id;
     const element = document.getElementById(elementId);
+    
     if (element) {
       element.style.left = `${screenPos.x}px`;
       element.style.top = `${screenPos.y}px`;
     }
-  });
+  }
 }
 
 /**
- * Update temporary axis labels - fade and remove
+ * Update temporary axis labels - simplified version
  */
 export function updateAxisLabels() {
   if (!axisLabelContainer) return;
+  
+  const removeIds = [];
   
   activeAxisLabels.forEach((label, id) => {
     if (!label.dataset.life) return;
@@ -301,10 +303,15 @@ export function updateAxisLabels() {
     // Update opacity
     label.style.opacity = life / 30;
     
-    // Remove if expired
+    // Mark for removal if expired
     if (life <= 0) {
-      removeAxisLabel(id);
+      removeIds.push(id);
     }
+  });
+  
+  // Remove expired labels
+  removeIds.forEach(id => {
+    removeAxisLabel(id);
   });
 }
 
@@ -326,15 +333,15 @@ export function clearLabels() {
 }
 
 /**
- * Convert world position to screen position
+ * Convert world position to screen position - optimized
  * @param {THREE.Vector3} worldPos World position
  * @param {THREE.Camera} camera Camera for projection
  * @param {THREE.WebGLRenderer} renderer Renderer for screen size
  * @returns {Object} Screen position {x, y}
  */
 function worldToScreen(worldPos, camera, renderer) {
-  // Clone position to avoid modifying the original
-  const pos = worldPos.clone ? worldPos.clone() : new THREE.Vector3(worldPos.x, worldPos.y, worldPos.z || 0);
+  // Create a position vector if needed
+  const pos = worldPos.isVector3 ? worldPos : new THREE.Vector3(worldPos.x, worldPos.y, worldPos.z || 0);
   
   // Project world position to camera
   pos.project(camera);
