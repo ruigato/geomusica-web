@@ -1,5 +1,5 @@
-// src/ui/ui.js
-import { UI_RANGES } from '../config/constants.js';
+// src/ui/ui.js - With fixed quantization selectors
+import { UI_RANGES, QUANTIZATION_VALUES } from '../config/constants.js';
 
 export function setupUI(state) {
   // Get all UI elements
@@ -41,6 +41,10 @@ export function setupUI(state) {
   const useTimeSubdivisionCheckbox = document.getElementById('useTimeSubdivisionCheckbox');
   const timeSubdivisionRadioGroup = document.getElementById('timeSubdivisionRadioGroup');
   
+  // Time quantization controls
+  const useQuantizationCheckbox = document.getElementById('useQuantizationCheckbox');
+  const quantizationRadioGroup = document.getElementById('quantizationRadioGroup');
+  
   // Scale Mod controls
   const altScaleRange = document.getElementById('altScaleRange');
   const altScaleNumber = document.getElementById('altScaleNumber');
@@ -71,6 +75,7 @@ export function setupUI(state) {
   useAltScaleCheckbox.checked = state.useAltScale;
   useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
   useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
+  useQuantizationCheckbox.checked = state.useQuantization;
   
   // Set initial values for scale mod controls from state
   altScaleRange.value = state.altScale;
@@ -101,6 +106,9 @@ export function setupUI(state) {
   // Initialize time subdivision radio buttons
   setupTimeSubdivisionRadioButtons(timeSubdivisionRadioGroup, state);
   
+  // Initialize quantization radio buttons
+  setupQuantizationRadioButtons(quantizationRadioGroup, state);
+  
   // Setup modulus checkbox
   useModulusCheckbox.checked = state.useModulus;
   useModulusCheckbox.addEventListener('change', e => {
@@ -111,6 +119,12 @@ export function setupUI(state) {
   useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
   useTimeSubdivisionCheckbox.addEventListener('change', e => {
     state.setUseTimeSubdivision(e.target.checked);
+  });
+  
+  // Setup quantization checkbox
+  useQuantizationCheckbox.checked = state.useQuantization;
+  useQuantizationCheckbox.addEventListener('change', e => {
+    state.setUseQuantization(e.target.checked);
   });
   
   // Setup alt scale checkbox
@@ -224,6 +238,7 @@ export function setupUI(state) {
     useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
     useModulusCheckbox, modulusRadioGroup,
     useTimeSubdivisionCheckbox, timeSubdivisionRadioGroup,
+    useQuantizationCheckbox, quantizationRadioGroup,
     altScaleRange, altScaleNumber, altScaleValue,
     altStepNRange, altStepNNumber, altStepNValue,
     useAltScaleCheckbox,
@@ -298,9 +313,12 @@ function setupTimeSubdivisionRadioButtons(container, state) {
     const radioItem = document.createElement('div');
     radioItem.className = 'radio-item';
     
+    // Create a CSS-safe ID by replacing slashes and dots with underscores
+    const safeCssId = `timeSubdivision-${String(value).replace(/[\/\.]/g, '_')}`;
+    
     const radioInput = document.createElement('input');
     radioInput.type = 'radio';
-    radioInput.id = `timeSubdivision-${value}`;
+    radioInput.id = safeCssId;
     radioInput.name = 'timeSubdivision';
     radioInput.value = value;
     radioInput.checked = (Math.abs(value - state.timeSubdivisionValue) < 0.001);
@@ -313,8 +331,48 @@ function setupTimeSubdivisionRadioButtons(container, state) {
     });
     
     const radioLabel = document.createElement('label');
-    radioLabel.htmlFor = `timeSubdivision-${value}`;
+    radioLabel.htmlFor = safeCssId;
     radioLabel.textContent = label;
+    
+    radioItem.appendChild(radioInput);
+    radioItem.appendChild(radioLabel);
+    container.appendChild(radioItem);
+  }
+}
+
+// Function to set up quantization radio buttons
+function setupQuantizationRadioButtons(container, state) {
+  // Clear any existing content
+  container.innerHTML = '';
+  
+  // Create a radio button for each quantization value
+  for (const value of QUANTIZATION_VALUES) {
+    const radioItem = document.createElement('div');
+    radioItem.className = 'radio-item';
+    
+    // Create a CSS-safe ID by replacing slashes with underscores
+    const safeCssId = `quantization-${value.replace(/\//g, '_')}`;
+    
+    const radioInput = document.createElement('input');
+    radioInput.type = 'radio';
+    radioInput.id = safeCssId;
+    radioInput.name = 'quantization';
+    radioInput.value = value;
+    radioInput.checked = (value === state.quantizationValue);
+    
+    // Store the original value as a data attribute for reference
+    radioInput.dataset.originalValue = value;
+    
+    // Add event listener
+    radioInput.addEventListener('change', () => {
+      if (radioInput.checked) {
+        state.setQuantizationValue(value);
+      }
+    });
+    
+    const radioLabel = document.createElement('label');
+    radioLabel.htmlFor = safeCssId;
+    radioLabel.textContent = value; // Display the note value (e.g., "1/4", "1/8T")
     
     radioItem.appendChild(radioInput);
     radioItem.appendChild(radioLabel);

@@ -1,9 +1,18 @@
-// src/triggers/triggers.js - New module for trigger detection and management
+// src/triggers/triggers.js - Enhanced time quantization implementation
 import * as THREE from 'three';
-import { MARK_LIFE, OVERLAP_THRESHOLD } from '../config/constants.js';
+import { MARK_LIFE, OVERLAP_THRESHOLD, TICKS_PER_BEAT, TICKS_PER_MEASURE } from '../config/constants.js';
 import { createOrUpdateLabel, createAxisLabel, removeLabel } from '../ui/domLabels.js';
 import { getFrequency } from '../geometry/geometry.js';
 import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils.js';
+import { 
+  getCurrentTime, 
+  ticksToSeconds, 
+  secondsToTicks, 
+  getMeasurePosition 
+} from '../time/time.js';
+
+// Store for pending triggers
+let pendingTriggers = [];
 
 /**
  * Calculate distance between two points in 2D space
@@ -40,6 +49,182 @@ function isPointOverlapping(x, y, activePoints) {
 }
 
 /**
+ * Store a trigger for future execution
+ * @param {Object} triggerInfo - Trigger information
+ * @param {number} quantizedTime - Time when trigger should execute
+ */
+function storePendingTrigger(triggerInfo, quantizedTime) {
+  pendingTriggers.push({
+    ...triggerInfo,
+    executeTime: quantizedTime
+  });
+  
+  // Sort pending triggers by execution time
+  pendingTriggers.sort((a, b) => a.executeTime - b.executeTime);
+  
+  // For debugging
+  if (triggerInfo.freq !== undefined) {
+    console.log(`Scheduled trigger for ${quantizedTime.toFixed(3)}s, freq: ${triggerInfo.freq.toFixed(1)}Hz, pending: ${pendingTriggers.length}`);
+  }
+}
+
+/**
+ * Process any pending triggers that should now be executed
+ * @param {number} currentTime - Current time in seconds
+ * @param {Function} audioCallback - Callback to execute triggers
+ * @param {Object} scene - Scene for creating visual markers
+ */
+export function processPendingTriggers(currentTime, audioCallback, scene) {
+  if (pendingTriggers.length === 0) return;
+  
+  // Check for triggers that should execute now
+  const triggersToExecute = [];
+  
+  // Find triggers that should be executed (with a small tolerance for timing)
+  const tolerance = 0.005; // 5ms tolerance
+  while (pendingTriggers.length > 0 && pendingTriggers[0].executeTime <= currentTime + tolerance) {
+    triggersToExecute.push(pendingTriggers.shift());
+  }
+  
+  // Execute the triggers
+  for (const trigger of triggersToExecute) {
+    const { x, y, lastAngle, angle, executeTime, worldRot, freq, camera, renderer, key } = trigger;
+    
+    // Trigger the audio
+    audioCallback(x, y, lastAngle, angle, executeTime);
+    
+    // Create a marker with visual feedback that this is a quantized trigger
+    if (scene && worldRot !== undefined && freq !== undefined) {
+      createMarker(worldRot, x, y, scene, freq, camera, renderer, true);
+    }
+    
+    // For debugging
+    if (freq !== undefined) {
+      console.log(`Executed quantized trigger at ${executeTime.toFixed(3)}s, freq: ${freq.toFixed(1)}Hz`);
+    }
+  }
+}
+
+/**
+ * Parse a quantization value and convert to ticks
+ * @param {string} quantValue - Quantization value (e.g., "1/4", "1/8T")
+ * @param {number} measureTicks - Ticks per measure (default: TICKS_PER_MEASURE)
+ * @returns {number} Ticks per quantization unit
+ */
+function parseQuantizationValue(quantValue, measureTicks = TICKS_PER_MEASURE) {
+  if (!quantValue) return TICKS_PER_BEAT; // Default to quarter notes
+  
+  // Check if it's a triplet
+  const isTriplet = quantValue.endsWith('T');
+  
+  // Get the denominator (4 for quarter notes, 8 for eighth notes, etc.)
+  const denominator = parseInt(quantValue.replace('1/', '').replace('T', ''));
+  
+  if (isNaN(denominator) || denominator <= 0) {
+    return TICKS_PER_BEAT; // Default to quarter notes
+  }
+  
+  // Calculate the number of ticks
+  if (isTriplet) {
+    // For triplets, divide by 3 to get 3 notes where 2 would normally fit
+    return Math.round((measureTicks / denominator) * (2/3));
+  } else {
+    return measureTicks / denominator;
+  }
+}
+
+/**
+ * Quantize time to nearest grid point
+ * @param {number} timeTicks - Time in ticks
+ * @param {number} gridTicks - Grid size in ticks
+ * @returns {number} Quantized time in ticks
+ */
+function quantizeToGrid(timeTicks, gridTicks) {
+  if (gridTicks <= 0) return timeTicks;
+  
+  // Find the nearest grid point
+  const gridIndex = Math.round(timeTicks / gridTicks);
+  return gridIndex * gridTicks;
+}
+
+/**
+ * Determine if we should trigger immediately or schedule for later
+ * @param {number} tNow - Current time in seconds
+ * @param {Object} state - Application state
+ * @param {Object} triggerInfo - Information about the trigger
+ * @returns {Object} Decision object with shouldTrigger and triggerInfo
+ */
+function handleQuantizedTrigger(tNow, state, triggerInfo) {
+  // If quantization is not enabled, trigger immediately
+  if (!state || !state.useQuantization) {
+    return { 
+      shouldTrigger: true,
+      triggerTime: tNow,
+      isQuantized: false
+    };
+  }
+  
+  // Get the BPM
+  const bpm = state.bpm || 120;
+  
+  // Convert current time to ticks
+  const currentTicks = secondsToTicks(tNow, bpm);
+  
+  // Get quantization settings
+  const quantizationValue = state.quantizationValue || "1/4";
+  const gridTicks = parseQuantizationValue(quantizationValue);
+  
+  // Quantize to the nearest grid point
+  const quantizedTicks = quantizeToGrid(currentTicks, gridTicks);
+  const quantizedTime = ticksToSeconds(quantizedTicks, bpm);
+  
+  // Calculate distance to quantized point in seconds
+  const distanceSeconds = Math.abs(quantizedTime - tNow);
+  
+  // Calculate a tolerance window based on the grid size
+  const gridSizeInSeconds = ticksToSeconds(gridTicks, bpm);
+  const toleranceWindow = Math.min(0.03, gridSizeInSeconds * 0.1); // 10% of grid size or 30ms max
+  
+  // If we're very close to a quantized point, trigger now
+  if (distanceSeconds < toleranceWindow) {
+    return {
+      shouldTrigger: true,
+      triggerTime: quantizedTime,
+      isQuantized: true
+    };
+  }
+  
+  // If the quantized time is in the future
+  if (quantizedTime > tNow) {
+    // Schedule the trigger for the future
+    storePendingTrigger(triggerInfo, quantizedTime);
+    
+    // Don't trigger now
+    return {
+      shouldTrigger: false,
+      triggerTime: null,
+      isQuantized: true,
+      scheduledFor: quantizedTime
+    };
+  }
+  
+  // If the quantized time is in the past, find the next grid point
+  const nextGridTicks = quantizedTicks + gridTicks;
+  const nextGridTime = ticksToSeconds(nextGridTicks, bpm);
+  
+  // Schedule the trigger for the next grid point
+  storePendingTrigger(triggerInfo, nextGridTime);
+  
+  // Don't trigger now
+  return {
+    shouldTrigger: false,
+    triggerTime: null,
+    isQuantized: true,
+    scheduledFor: nextGridTime
+  };
+}
+
+/**
  * Create a marker at the given coordinates with frequency label
  * @param {number} worldRot Rotation angle in radians
  * @param {number} x X coordinate in local space
@@ -48,9 +233,10 @@ function isPointOverlapping(x, y, activePoints) {
  * @param {number} frequency Frequency value for label
  * @param {THREE.Camera} camera Camera for label positioning
  * @param {THREE.WebGLRenderer} renderer Renderer for label positioning
+ * @param {boolean} isQuantized Whether this is a quantized trigger
  * @returns {Object} Created marker
  */
-function createMarker(worldRot, x, y, scene, frequency = null, camera = null, renderer = null) {
+function createMarker(worldRot, x, y, scene, frequency = null, camera = null, renderer = null, isQuantized = false) {
   // Check if the scene's userData contains our markers array
   if (!scene.userData.markers) {
     scene.userData.markers = [];
@@ -60,8 +246,11 @@ function createMarker(worldRot, x, y, scene, frequency = null, camera = null, re
   const markerGeom = new THREE.SphereGeometry(8, 8, 8);
   
   // Create a semi-transparent material for the marker
+  // Use a different color for quantized triggers to provide visual feedback
+  const markerColor = isQuantized ? 0x00ff00 : 0xff00ff; // Green for quantized, pink for normal
+  
   const markerMat = new THREE.MeshBasicMaterial({
-    color: 0xff00ff,
+    color: markerColor,
     transparent: true,
     opacity: 1.0,
     depthTest: false
@@ -89,10 +278,15 @@ function createMarker(worldRot, x, y, scene, frequency = null, camera = null, re
       const refFreq = scene.userData.state.referenceFrequency || 440;
       const quantizedFreq = quantizeToEqualTemperament(frequency, refFreq);
       const noteName = getNoteName(quantizedFreq, refFreq);
-      freqText = `${frequency.toFixed(1)}Hz (${noteName})`;
+      
+      // Add a "Q" prefix for quantized triggers for visual feedback
+      const qPrefix = isQuantized ? "Q " : "";
+      freqText = `${qPrefix}${frequency.toFixed(1)}Hz (${noteName})`;
     } else {
       // Just show frequency in free temperament mode
-      freqText = `${frequency.toFixed(2)}Hz`;
+      // Add a "Q" prefix for quantized triggers
+      const qPrefix = isQuantized ? "Q " : "";
+      freqText = `${qPrefix}${frequency.toFixed(2)}Hz`;
     }
     
     // Create a unique ID for this temporary label
@@ -107,7 +301,8 @@ function createMarker(worldRot, x, y, scene, frequency = null, camera = null, re
   const marker = {
     mesh: markerMesh,
     textLabel: textLabel,
-    life: MARK_LIFE
+    life: MARK_LIFE,
+    isQuantized: isQuantized
   };
   
   if (scene.userData.state && scene.userData.state.markers) {
@@ -135,6 +330,9 @@ function createMarker(worldRot, x, y, scene, frequency = null, camera = null, re
 export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTrig, tNow, audioCallback) {
   const triggeredNow = new Set();
   const triggeredPoints = []; // Store positions of triggered points
+  
+  // Get application state from group's parent (scene)
+  const state = group.parent?.userData?.state;
   
   // Get vertices from buffer geometry
   const positions = baseGeo.getAttribute('position').array;
@@ -227,21 +425,47 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
         
         // Check if this point overlaps with any previously triggered points
         if (!isPointOverlapping(worldX, worldY, triggeredPoints)) {
-          // No overlap, trigger audio and create marker
-          audioCallback(x1, y1, lastAngle, angle, tNow);
-          triggeredNow.add(key);
-          
           // Add this point to the list of triggered points
           triggeredPoints.push({ x: worldX, y: worldY });
           
-          // Create a marker at the current vertex position (in world space)
-          createMarker(worldRot, x1, y1, group.parent, freq, camera, renderer);
+          // Enhanced quantization logic
+          if (state && state.useQuantization) {
+            // Create trigger info object with all needed data
+            const triggerInfo = {
+              x: x1,
+              y: y1,
+              lastAngle,
+              angle,
+              worldRot,
+              freq,
+              camera,
+              renderer,
+              key
+            };
+            
+            // Handle quantized trigger (may schedule for later)
+            const { shouldTrigger, triggerTime, isQuantized } = 
+              handleQuantizedTrigger(tNow, state, triggerInfo);
+            
+            if (shouldTrigger) {
+              // Trigger audio now with possibly quantized time
+              audioCallback(x1, y1, lastAngle, angle, triggerTime);
+              
+              // Create a marker with visual feedback for quantization
+              createMarker(worldRot, x1, y1, group.parent, freq, camera, renderer, isQuantized);
+            }
+            
+            // Always add to triggered set to prevent re-triggering
+            triggeredNow.add(key);
+          } else {
+            // Regular non-quantized trigger
+            audioCallback(x1, y1, lastAngle, angle, tNow);
+            createMarker(worldRot, x1, y1, group.parent, freq, camera, renderer, false);
+            triggeredNow.add(key);
+          }
         } else {
           // Point is overlapping, still add to triggered set but don't trigger audio
           triggeredNow.add(key);
-          
-          // Still create visual marker to maintain visual consistency
-          createMarker(worldRot, x1, y1, group.parent, freq, camera, renderer);
         }
       }
     }
@@ -313,15 +537,44 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
         
         // Check for overlap with already triggered points
         if (!isPointOverlapping(worldX, worldY, triggeredPoints)) {
-          // No overlap, trigger audio and create marker
-          audioCallback(localPos.x, localPos.y, lastAngle, angle, tNow);
-          triggeredNow.add(key);
-          
           // Add to triggered points
           triggeredPoints.push({ x: worldX, y: worldY });
           
-          // Create visual marker with frequency label
-          createMarker(angle, localPos.x, localPos.y, group.parent, freq, camera, renderer);
+          // Enhanced quantization logic for intersection points
+          if (state && state.useQuantization) {
+            // Create trigger info object with all needed data
+            const triggerInfo = {
+              x: localPos.x,
+              y: localPos.y,
+              lastAngle,
+              angle,
+              worldRot: angle, // Use global angle since this is not in a copy group
+              freq,
+              camera,
+              renderer,
+              key
+            };
+            
+            // Handle quantized trigger (may schedule for later)
+            const { shouldTrigger, triggerTime, isQuantized } = 
+              handleQuantizedTrigger(tNow, state, triggerInfo);
+            
+            if (shouldTrigger) {
+              // Trigger audio now with possibly quantized time
+              audioCallback(localPos.x, localPos.y, lastAngle, angle, triggerTime);
+              
+              // Create a marker with visual feedback for quantization
+              createMarker(angle, localPos.x, localPos.y, group.parent, freq, camera, renderer, isQuantized);
+            }
+            
+            // Always add to triggered set to prevent re-triggering
+            triggeredNow.add(key);
+          } else {
+            // Regular non-quantized trigger
+            audioCallback(localPos.x, localPos.y, lastAngle, angle, tNow);
+            createMarker(angle, localPos.x, localPos.y, group.parent, freq, camera, renderer, false);
+            triggeredNow.add(key);
+          }
         } else {
           // Point is overlapping, just add to triggered set
           triggeredNow.add(key);

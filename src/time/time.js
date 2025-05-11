@@ -1,4 +1,4 @@
-// src/time/time.js
+// src/time/time.js - Updated with time quantization functions
 import { TICKS_PER_BEAT, TICKS_PER_MEASURE } from '../config/constants.js';
 
 // Time constants
@@ -236,4 +236,87 @@ export function calculateRotation(currentTime, bpm, subdivisionValue, useSubdivi
   
   // Convert to rotation angle
   return timeToRotation(normalizedTime);
+}
+
+/**
+ * Parse a quantization value and convert to ticks
+ * @param {string} quantValue - Quantization value (e.g., "1/4", "1/8T")
+ * @param {number} measureTicks - Ticks per measure (default: TICKS_PER_MEASURE)
+ * @returns {number} Ticks per quantization unit
+ */
+export function parseQuantizationValue(quantValue, measureTicks = TICKS_PER_MEASURE) {
+  if (!quantValue) return TICKS_PER_BEAT; // Default to quarter notes
+  
+  // Check if it's a triplet
+  const isTriplet = quantValue.endsWith('T');
+  
+  // Get the denominator (4 for quarter notes, 8 for eighth notes, etc.)
+  const denominator = parseInt(quantValue.replace('1/', '').replace('T', ''));
+  
+  if (isNaN(denominator) || denominator <= 0) {
+    return TICKS_PER_BEAT; // Default to quarter notes
+  }
+  
+  // Calculate the number of ticks
+  if (isTriplet) {
+    // For triplets, divide by 3 to get 3 notes where 2 would normally fit
+    return Math.round((measureTicks / denominator) * (2/3));
+  } else {
+    return measureTicks / denominator;
+  }
+}
+
+/**
+ * Quantize time to nearest grid point
+ * @param {number} timeTicks - Time in ticks
+ * @param {number} gridTicks - Grid size in ticks
+ * @returns {number} Quantized time in ticks
+ */
+export function quantizeToGrid(timeTicks, gridTicks) {
+  if (gridTicks <= 0) return timeTicks;
+  
+  // Find the nearest grid point
+  const gridIndex = Math.round(timeTicks / gridTicks);
+  return gridIndex * gridTicks;
+}
+
+/**
+ * Get quantized measure position
+ * @param {number} ticks - Current tick count
+ * @param {number} quantizationTicks - Quantization grid size in ticks
+ * @returns {number} Quantized position within measure (0-1)
+ */
+export function getQuantizedMeasurePosition(ticks, quantizationTicks) {
+  // Quantize the ticks to the nearest grid point
+  const quantizedTicks = quantizeToGrid(ticks, quantizationTicks);
+  
+  // Return the position within the measure
+  return (quantizedTicks % TICKS_PER_MEASURE) / TICKS_PER_MEASURE;
+}
+
+/**
+ * Calculate quantized rotation based on time
+ * @param {number} currentTime - Current time in seconds
+ * @param {number} bpm - Beats per minute
+ * @param {string} quantizationValue - Quantization value (e.g., "1/4", "1/8T")
+ * @param {boolean} useQuantization - Whether to use quantization
+ * @returns {number} Rotation angle in radians
+ */
+export function calculateQuantizedRotation(currentTime, bpm, quantizationValue, useQuantization) {
+  // Get the current ticks
+  const ticks = secondsToTicks(currentTime, bpm);
+  
+  if (!useQuantization) {
+    // If quantization is disabled, return the exact rotation
+    return timeToRotation(getMeasurePosition(ticks));
+  }
+  
+  // Parse the quantization value to get grid size in ticks
+  const quantizationTicks = parseQuantizationValue(quantizationValue);
+  
+  // Get the quantized position in the measure
+  const quantizedPosition = getQuantizedMeasurePosition(ticks, quantizationTicks);
+  
+  // Convert to rotation angle
+  return timeToRotation(quantizedPosition);
 }

@@ -47,7 +47,11 @@ export const DEFAULT_VALUES = {
   TIME_SUBDIVISION_VALUE: 1, // Default time subdivision value (1x normal speed)
   USE_TIME_SUBDIVISION: false, // Default for time subdivision feature (disabled)
   USE_EQUAL_TEMPERAMENT: false, // Default for equal temperament feature (disabled)
-  REFERENCE_FREQUENCY: 440 // Default reference frequency (A4 = 440Hz)
+  REFERENCE_FREQUENCY: 440, // Default reference frequency (A4 = 440Hz)
+  // New quantization parameters
+  QUANTIZATION_VALUE: "1/4", // Default to quarter notes
+  USE_QUANTIZATION: false    // Off by default
+
 };
 
 // UI ranges
@@ -65,3 +69,17 @@ export const UI_RANGES = {
   TIME_SUBDIVISION: { MIN: 0.5, MAX: 8, STEP: 0.5 }, // Range for time subdivision
   REFERENCE_FREQUENCY: { MIN: 415, MAX: 466, STEP: 1 } // Range for reference frequency
 };
+
+// Add this list of valid quantization values for reference
+export const QUANTIZATION_VALUES = [
+  "1/1",    // Whole notes - one per measure
+  "1/2",    // Half notes - two per measure
+  "1/2T",   // Half note triplets - three per measure
+  "1/4",    // Quarter notes - four per measure (one per beat in 4/4)
+  "1/4T",   // Quarter note triplets - six per measure
+  "1/8",    // Eighth notes - eight per measure
+  "1/8T",   // Eighth note triplets - twelve per measure
+  "1/16",   // Sixteenth notes - sixteen per measure
+  "1/16T",  // Sixteenth note triplets - twenty-four per measure
+  "1/32",   // Thirty-second notes - thirty-two per measure
+];

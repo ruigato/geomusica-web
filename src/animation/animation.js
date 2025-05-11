@@ -1,11 +1,29 @@
-// src/animation/animation.js - Updated to use triggers module
+// src/animation/animation.js - Updated with time quantization
 import * as THREE from 'three';
-import { getCurrentTime } from '../time/time.js';
-// Fix for animation.js - add missing import
-import { updateGroup, calculateBoundingSphere, cleanupIntersectionMarkers, createPolygonGeometry } from '../geometry/geometry.js';
+import { 
+  getCurrentTime, 
+  secondsToTicks, 
+  ticksToSeconds, 
+  calculateRotation 
+} from '../time/time.js';
+// Import the updateGroup function from geometry.js
+import { 
+  updateGroup, 
+  calculateBoundingSphere, 
+  cleanupIntersectionMarkers, 
+  createPolygonGeometry 
+} from '../geometry/geometry.js';
 import { processIntersections } from '../geometry/intersections.js';
-import { detectTriggers, clearExpiredMarkers } from '../triggers/triggers.js';
-import { updateLabelPositions, updateAxisLabels, updateRotatingLabels } from '../ui/domLabels.js';
+import { 
+  detectTriggers, 
+  clearExpiredMarkers, 
+  processPendingTriggers 
+} from '../triggers/triggers.js';
+import { 
+  updateLabelPositions, 
+  updateAxisLabels, 
+  updateRotatingLabels 
+} from '../ui/domLabels.js';
 import { getInstrumentForFrequency, getInstrumentOptions } from '../audio/instruments.js';
 
 // Main animation function
@@ -49,6 +67,11 @@ export function animate(params) {
   const dt = tNow - lastTime;
   state.lastTime = tNow;
   
+// Process any pending triggers that should execute now
+if (triggerAudioCallback) {
+  processPendingTriggers(tNow, triggerAudioCallback, scene);
+}
+
   // Update lerped values
   state.updateLerp(dt);
 
@@ -282,7 +305,7 @@ export function animate(params) {
     updateRotatingLabels(group, cam, renderer);
   }
   
-  // Detect triggers using the new triggers module
+  // Detect triggers with time quantization options
   const triggeredNow = detectTriggers(
     params.baseGeo, 
     lastAngle, 
@@ -297,13 +320,6 @@ export function animate(params) {
       const freq = Math.hypot(x, y);
       const instrumentId = getInstrumentForFrequency(freq);
     
-      // Add equal temperament options
-      const options = getInstrumentOptions(instrumentId, {
-        frequency: freq,
-        useEqualTemperament: state.useEqualTemperament,
-        referenceFrequency: state.referenceFrequency
-      });
-      
       // Choose instrument based on frequency range
       let instrumentNumber = 1;
       
@@ -319,15 +335,17 @@ export function animate(params) {
         instrumentNumber = 5; // Percussion for very high frequencies
       }
       
-    // Trigger audio with updated options including equal temperament settings
-    if (triggerAudioCallback) {
-      return triggerAudioCallback(x, y, lastAngle, angle, tNow, {
-        frequency: freq,
-        instrument: instrumentNumber,
-        useEqualTemperament: state.useEqualTemperament,
-        referenceFrequency: state.referenceFrequency
-      });
-    }
+      // Trigger audio with updated options including both equal temperament and quantization settings
+      if (triggerAudioCallback) {
+        return triggerAudioCallback(x, y, lastAngle, angle, tNow, {
+          frequency: freq,
+          instrument: instrumentNumber,
+          useEqualTemperament: state.useEqualTemperament,
+          referenceFrequency: state.referenceFrequency,
+          useQuantization: state.useQuantization,
+          quantizationValue: state.quantizationValue
+        });
+      }
       
       return freq;
     }

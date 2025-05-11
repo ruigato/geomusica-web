@@ -1,6 +1,6 @@
-// src/state/state.js - Updated with time module integration
+// src/state/state.js - Updated with time quantization
 import { getCurrentTime } from '../time/time.js';
-import { DEFAULT_VALUES, UI_RANGES } from '../config/constants.js';
+import { DEFAULT_VALUES, UI_RANGES, TICKS_PER_BEAT, TICKS_PER_MEASURE } from '../config/constants.js';
 import { clearLabels } from '../ui/domLabels.js';
 
 /**
@@ -64,6 +64,10 @@ export function createAppState() {
     timeSubdivisionValue: DEFAULT_VALUES.TIME_SUBDIVISION_VALUE,
     useTimeSubdivision: DEFAULT_VALUES.USE_TIME_SUBDIVISION,
     
+    // TIME QUANTIZATION related parameters
+    quantizationValue: DEFAULT_VALUES.QUANTIZATION_VALUE,
+    useQuantization: DEFAULT_VALUES.USE_QUANTIZATION,
+    
     // SCALE MOD related parameters
     altScale: DEFAULT_VALUES.ALT_SCALE,
     altStepN: DEFAULT_VALUES.ALT_STEP_N,
@@ -100,6 +104,9 @@ export function createAppState() {
     // Reference to modifiable baseGeo
     baseGeo: null,
     currentGeometryRadius: null,
+    
+    // Debug mode flag
+    debug: false,
     
     /**
      * Set BPM value (not affected by lerping)
@@ -216,6 +223,67 @@ export function createAppState() {
      */
     isUsingTimeSubdivision() {
       return this.useTimeSubdivision;
+    },
+    
+    /**
+     * Set quantization value
+     * @param {string} value New quantization value
+     */
+    setQuantizationValue(value) {
+      this.quantizationValue = value;
+    },
+    
+    /**
+     * Toggle quantization mode
+     * @param {boolean} value Enable/disable quantization
+     */
+    setUseQuantization(value) {
+      this.useQuantization = Boolean(value);
+    },
+    
+    /**
+     * Get quantization value
+     * @returns {string} Current quantization value
+     */
+    getQuantizationValue() {
+      return this.quantizationValue;
+    },
+    
+    /**
+     * Convert current quantization setting to ticks
+     * @returns {number} Ticks per quantization unit
+     */
+    getQuantizationTicks() {
+      // Parse the quantization value (format: '1/4', '1/8T', etc.)
+      const value = this.quantizationValue;
+      
+      if (!value) return TICKS_PER_BEAT; // Default to quarter notes
+      
+      // Check if it's a triplet
+      const isTriplet = value.endsWith('T');
+      
+      // Get the denominator (4 for quarter notes, 8 for eighth notes, etc.)
+      const denominator = parseInt(value.replace('1/', '').replace('T', ''));
+      
+      if (isNaN(denominator) || denominator <= 0) {
+        return TICKS_PER_BEAT; // Default to quarter notes
+      }
+      
+      // Calculate the number of ticks
+      if (isTriplet) {
+        // For triplets, divide by 3 to get 3 notes where 2 would normally fit
+        return Math.round((TICKS_PER_MEASURE / denominator) * (2/3));
+      } else {
+        return TICKS_PER_MEASURE / denominator;
+      }
+    },
+    
+    /**
+     * Check if quantization is enabled
+     * @returns {boolean} True if quantization is enabled
+     */
+    isUsingQuantization() {
+      return this.useQuantization;
     },
     
     /**
@@ -383,6 +451,14 @@ export function createAppState() {
       } else if (value) {
         this.needsPointFreqLabelsUpdate = true;
       }
+    },
+    
+    /**
+     * Toggle debug mode
+     * @param {boolean} value Enable/disable debug mode
+     */
+    setDebug(value) {
+      this.debug = Boolean(value);
     },
     
     /**

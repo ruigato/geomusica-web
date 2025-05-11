@@ -1,4 +1,4 @@
-// src/state/statePersistence.js
+// src/state/statePersistence.js - With fixed quantization selectors
 /**
  * State persistence module for GeoMusica
  * Saves and loads application state to/from localStorage
@@ -32,7 +32,11 @@ export function saveState(state) {
       timeSubdivisionValue: state.timeSubdivisionValue,
       useTimeSubdivision: state.useTimeSubdivision,
       
-      // Scale Mod parameters - Add these to the saved data
+      // Time Quantization parameters
+      quantizationValue: state.quantizationValue,
+      useQuantization: state.useQuantization,
+      
+      // Scale Mod parameters
       altScale: state.altScale,
       altStepN: state.altStepN,
       useAltScale: state.useAltScale,
@@ -118,6 +122,10 @@ export function applyLoadedState(state, loadedState) {
     // Apply time subdivision parameters
     if (loadedState.timeSubdivisionValue !== undefined) state.setTimeSubdivisionValue(loadedState.timeSubdivisionValue);
     if (loadedState.useTimeSubdivision !== undefined) state.setUseTimeSubdivision(loadedState.useTimeSubdivision);
+    
+    // Apply time quantization parameters
+    if (loadedState.quantizationValue !== undefined) state.setQuantizationValue(loadedState.quantizationValue);
+    if (loadedState.useQuantization !== undefined) state.setUseQuantization(loadedState.useQuantization);
     
     // Apply scale mod parameters
     if (loadedState.altScale !== undefined) state.setAltScale(loadedState.altScale);
@@ -235,6 +243,9 @@ export function exportStateToFile(state) {
       // Add time subdivision parameters to the export
       timeSubdivisionValue: state.timeSubdivisionValue,
       useTimeSubdivision: state.useTimeSubdivision,
+      // Add time quantization parameters to the export
+      quantizationValue: state.quantizationValue,
+      useQuantization: state.useQuantization,
       // Add scale mod parameters to the export
       altScale: state.altScale,
       altStepN: state.altStepN,
@@ -248,6 +259,8 @@ export function exportStateToFile(state) {
       release: state.release,
       brightness: state.brightness,
       volume: state.volume,
+      useEqualTemperament: state.useEqualTemperament,
+      referenceFrequency: state.referenceFrequency,
       showAxisFreqLabels: state.showAxisFreqLabels,
       showPointsFreqLabels: state.showPointsFreqLabels
     };
@@ -389,6 +402,10 @@ export function updateUIFromState(state, uiElements) {
       uiElements.useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
     }
     
+    if (uiElements.useQuantizationCheckbox && state.useQuantization !== undefined) {
+      uiElements.useQuantizationCheckbox.checked = state.useQuantization;
+    }
+    
     if (uiElements.useAltScaleCheckbox && state.useAltScale !== undefined) {
       uiElements.useAltScaleCheckbox.checked = state.useAltScale;
     }
@@ -469,9 +486,28 @@ export function updateUIFromState(state, uiElements) {
     
     // Update time subdivision radio buttons
     if (state.timeSubdivisionValue !== undefined && uiElements.timeSubdivisionRadioGroup) {
-      const radioButton = document.querySelector(`#timeSubdivision-${state.timeSubdivisionValue}`);
+      // Create a CSS-safe selector by replacing slashes and dots with underscores
+      const safeValue = String(state.timeSubdivisionValue).replace(/[\/\.]/g, '_');
+      const radioButton = document.querySelector(`#timeSubdivision-${safeValue}`);
       if (radioButton) {
         radioButton.checked = true;
+      }
+    }
+    
+    // Update quantization radio buttons with CSS-safe selector
+    if (state.quantizationValue !== undefined && uiElements.quantizationRadioGroup) {
+      // Convert the quantization value to a CSS-safe selector by replacing slashes with underscores
+      const safeCssSelector = `#quantization-${state.quantizationValue.replace(/\//g, '_')}`;
+      
+      try {
+        const radioButton = document.querySelector(safeCssSelector);
+        if (radioButton) {
+          radioButton.checked = true;
+        } else {
+          console.warn(`Could not find quantization radio button with selector: ${safeCssSelector}`);
+        }
+      } catch (error) {
+        console.error(`Error selecting quantization radio button: ${error.message}`);
       }
     }
     
