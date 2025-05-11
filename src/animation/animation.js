@@ -1,4 +1,4 @@
-// src/animation/animation.js - Updated with time quantization
+// src/animation/animation.js - Updated to use note objects
 import * as THREE from 'three';
 import { 
   getCurrentTime, 
@@ -24,7 +24,8 @@ import {
   updateAxisLabels, 
   updateRotatingLabels 
 } from '../ui/domLabels.js';
-import { getInstrumentForFrequency, getInstrumentOptions } from '../audio/instruments.js';
+import { getInstrumentForFrequency } from '../audio/instruments.js';
+import { triggerAudio } from '../audio/audio.js';
 
 // Main animation function
 export function animate(params) {
@@ -67,10 +68,10 @@ export function animate(params) {
   const dt = tNow - lastTime;
   state.lastTime = tNow;
   
-// Process any pending triggers that should execute now
-if (triggerAudioCallback) {
-  processPendingTriggers(tNow, triggerAudioCallback, scene);
-}
+  // Process any pending triggers that should execute now
+  if (triggerAudioCallback) {
+    processPendingTriggers(tNow, triggerAudioCallback, scene);
+  }
 
   // Update lerped values
   state.updateLerp(dt);
@@ -305,7 +306,25 @@ if (triggerAudioCallback) {
     updateRotatingLabels(group, cam, renderer);
   }
   
-  // Detect triggers with time quantization options
+// Updated handleAudioTrigger in animation.js
+const handleAudioTrigger = (note) => {
+  if (!csound) {
+    return note;
+  }
+  
+  try {
+    // Debug the incoming note
+    console.log("Animation handleAudioTrigger received:", note);
+    
+    // Make sure we're passing the complete note object
+    return triggerAudio(note);
+  } catch (error) {
+    console.error("Error in handleAudioTrigger:", error);
+    return note;
+  }
+};
+  
+  // Detect triggers with the new audio handler
   const triggeredNow = detectTriggers(
     params.baseGeo, 
     lastAngle, 
@@ -314,44 +333,11 @@ if (triggerAudioCallback) {
     group, 
     lastTrig, 
     tNow, 
-    // Audio callback handling
-    (x, y, lastAngle, angle, tNow) => {
-      // Calculate frequency
-      const freq = Math.hypot(x, y);
-      const instrumentId = getInstrumentForFrequency(freq);
-    
-      // Choose instrument based on frequency range
-      let instrumentNumber = 1;
-      
-      if (freq < 200) {
-        instrumentNumber = 1; // Simple oscillator for low frequencies
-      } else if (freq < 500) {
-        instrumentNumber = 2; // FM synthesis for mid-low frequencies
-      } else if (freq < 800) {
-        instrumentNumber = 3; // Additive synthesis for mid-high frequencies
-      } else if (freq < 1200) {
-        instrumentNumber = 4; // Plucked string for high frequencies
-      } else {
-        instrumentNumber = 5; // Percussion for very high frequencies
-      }
-      
-      // Trigger audio with updated options including both equal temperament and quantization settings
-      if (triggerAudioCallback) {
-        return triggerAudioCallback(x, y, lastAngle, angle, tNow, {
-          frequency: freq,
-          instrument: instrumentNumber,
-          useEqualTemperament: state.useEqualTemperament,
-          referenceFrequency: state.referenceFrequency,
-          useQuantization: state.useQuantization,
-          quantizationValue: state.quantizationValue
-        });
-      }
-      
-      return freq;
-    }
+    // Use the new audio handler
+    handleAudioTrigger
   );
 
-  // Handle marker cleanup using the new module
+  // Handle marker cleanup
   clearExpiredMarkers(scene, state.markers);
   
   // Update state

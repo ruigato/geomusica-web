@@ -1,5 +1,157 @@
-// src/ui/ui.js - With fixed quantization selectors
+// src/ui/ui.js - Updated with Note Parameters and fixed function order
 import { UI_RANGES, QUANTIZATION_VALUES } from '../config/constants.js';
+import { ParameterMode } from '../notes/notes.js';
+
+// Function to set up modulus radio buttons - MOVED TO TOP OF FILE
+function setupModulusRadioButtons(container, state, type = null) {
+  // Clear any existing content
+  container.innerHTML = '';
+  
+  // Get current value from state based on type
+  let currentValue;
+  
+  if (type === 'duration') {
+    currentValue = state.durationModulo;
+  } else if (type === 'velocity') {
+    currentValue = state.velocityModulo;
+  } else {
+    currentValue = state.modulusValue;
+  }
+  
+  // Create a radio button for each value from 1 to 12
+  for (let i = 1; i <= 12; i++) {
+    const radioItem = document.createElement('div');
+    radioItem.className = 'radio-item';
+    
+    const radioId = type ? `${type}Modulo-${i}` : `modulus-${i}`;
+    const radioName = type ? `${type}Modulo` : 'modulus';
+    
+    const radioInput = document.createElement('input');
+    radioInput.type = 'radio';
+    radioInput.id = radioId;
+    radioInput.name = radioName;
+    radioInput.value = i;
+    radioInput.checked = (i === currentValue);
+    
+    // Add event listener with appropriate state setter
+    radioInput.addEventListener('change', () => {
+      if (radioInput.checked) {
+        if (type === 'duration') {
+          state.setDurationModulo(i);
+        } else if (type === 'velocity') {
+          state.setVelocityModulo(i);
+        } else {
+          state.setModulusValue(i);
+        }
+      }
+    });
+    
+    const radioLabel = document.createElement('label');
+    radioLabel.htmlFor = radioId;
+    radioLabel.textContent = i;
+    
+    radioItem.appendChild(radioInput);
+    radioItem.appendChild(radioLabel);
+    container.appendChild(radioItem);
+  }
+}
+
+// Function to set up time subdivision radio buttons - MOVED TO TOP OF FILE
+function setupTimeSubdivisionRadioButtons(container, state) {
+  // Clear any existing content
+  container.innerHTML = '';
+  
+  // Create radio buttons for each division option
+  // Format: [displayed value, actual multiplier]
+  const divisions = [
+    // Faster options (>1x)
+    ["8x", 8],
+    ["6x", 6],
+    ["4x", 4],
+    ["3x", 3],
+    ["2x", 2],
+    ["1.5x", 1.5],
+    // Normal speed
+    ["1x", 1],
+    // Slower options (<1x)
+    ["1/1.5x", 1/1.5],
+    ["1/2x", 1/2],
+    ["1/3x", 1/3],
+    ["1/4x", 1/4],
+    ["1/6x", 1/6],
+    ["1/8x", 1/8]
+  ];
+  
+  for (const [label, value] of divisions) {
+    const radioItem = document.createElement('div');
+    radioItem.className = 'radio-item';
+    
+    // Create a CSS-safe ID by replacing slashes and dots with underscores
+    const safeCssId = `timeSubdivision-${String(value).replace(/[\/\.]/g, '_')}`;
+    
+    const radioInput = document.createElement('input');
+    radioInput.type = 'radio';
+    radioInput.id = safeCssId;
+    radioInput.name = 'timeSubdivision';
+    radioInput.value = value;
+    radioInput.checked = (Math.abs(value - state.timeSubdivisionValue) < 0.001);
+    
+    // Add event listener
+    radioInput.addEventListener('change', () => {
+      if (radioInput.checked) {
+        state.setTimeSubdivisionValue(parseFloat(value));
+      }
+    });
+    
+    const radioLabel = document.createElement('label');
+    radioLabel.htmlFor = safeCssId;
+    radioLabel.textContent = label;
+    
+    radioItem.appendChild(radioInput);
+    radioItem.appendChild(radioLabel);
+    container.appendChild(radioItem);
+  }
+}
+
+// Function to set up quantization radio buttons - MOVED TO TOP OF FILE
+function setupQuantizationRadioButtons(container, state) {
+  // Clear any existing content
+  container.innerHTML = '';
+  
+  // Create a radio button for each quantization value
+  for (const value of QUANTIZATION_VALUES) {
+    const radioItem = document.createElement('div');
+    radioItem.className = 'radio-item';
+    
+    // Create a CSS-safe ID by replacing slashes with underscores
+    const safeCssId = `quantization-${value.replace(/\//g, '_')}`;
+    
+    const radioInput = document.createElement('input');
+    radioInput.type = 'radio';
+    radioInput.id = safeCssId;
+    radioInput.name = 'quantization';
+    radioInput.value = value;
+    radioInput.checked = (value === state.quantizationValue);
+    
+    // Store the original value as a data attribute for reference
+    radioInput.dataset.originalValue = value;
+    
+    // Add event listener
+    radioInput.addEventListener('change', () => {
+      if (radioInput.checked) {
+        state.setQuantizationValue(value);
+      }
+    });
+    
+    const radioLabel = document.createElement('label');
+    radioLabel.htmlFor = safeCssId;
+    radioLabel.textContent = value; // Display the note value (e.g., "1/4", "1/8T")
+    
+    radioItem.appendChild(radioInput);
+    radioItem.appendChild(radioLabel);
+    container.appendChild(radioItem);
+  }
+}
 
 export function setupUI(state) {
   // Get all UI elements
@@ -59,7 +211,7 @@ export function setupUI(state) {
   // Intersections control
   const useIntersectionsCheckbox = document.getElementById('useIntersectionsCheckbox');
 
-  // Get new UI elements
+  // Get UI elements for display settings
   const showAxisFreqLabelsCheckbox = document.getElementById('showAxisFreqLabelsCheckbox');
   const showPointsFreqLabelsCheckbox = document.getElementById('showPointsFreqLabelsCheckbox');
   
@@ -68,6 +220,26 @@ export function setupUI(state) {
   const referenceFreqRange = document.getElementById('referenceFreqRange');
   const referenceFreqNumber = document.getElementById('referenceFreqNumber');
   const referenceFreqValue = document.getElementById('referenceFreqValue');
+  
+  // Note parameter controls - Duration
+  const durationModeRadios = document.querySelectorAll('input[name="durationMode"]');
+  const durationModuloRadioGroup = document.getElementById('durationModuloRadioGroup');
+  const minDurationRange = document.getElementById('minDurationRange');
+  const minDurationNumber = document.getElementById('minDurationNumber');
+  const minDurationValue = document.getElementById('minDurationValue');
+  const maxDurationRange = document.getElementById('maxDurationRange');
+  const maxDurationNumber = document.getElementById('maxDurationNumber');
+  const maxDurationValue = document.getElementById('maxDurationValue');
+  
+  // Note parameter controls - Velocity
+  const velocityModeRadios = document.querySelectorAll('input[name="velocityMode"]');
+  const velocityModuloRadioGroup = document.getElementById('velocityModuloRadioGroup');
+  const minVelocityRange = document.getElementById('minVelocityRange');
+  const minVelocityNumber = document.getElementById('minVelocityNumber');
+  const minVelocityValue = document.getElementById('minVelocityValue');
+  const maxVelocityRange = document.getElementById('maxVelocityRange');
+  const maxVelocityNumber = document.getElementById('maxVelocityNumber');
+  const maxVelocityValue = document.getElementById('maxVelocityValue');
   
   // Initialize checkbox states from app state
   showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;
@@ -91,6 +263,24 @@ export function setupUI(state) {
   referenceFreqNumber.value = state.referenceFrequency;
   referenceFreqValue.textContent = state.referenceFrequency;
   
+  // Set initial values for duration controls
+  minDurationRange.value = state.minDuration;
+  minDurationNumber.value = state.minDuration;
+  minDurationValue.textContent = state.minDuration.toFixed(2);
+  
+  maxDurationRange.value = state.maxDuration;
+  maxDurationNumber.value = state.maxDuration;
+  maxDurationValue.textContent = state.maxDuration.toFixed(2);
+  
+  // Set initial values for velocity controls
+  minVelocityRange.value = state.minVelocity;
+  minVelocityNumber.value = state.minVelocity;
+  minVelocityValue.textContent = state.minVelocity.toFixed(2);
+  
+  maxVelocityRange.value = state.maxVelocity;
+  maxVelocityNumber.value = state.maxVelocity;
+  maxVelocityValue.textContent = state.maxVelocity.toFixed(2);
+  
   // Setup event listeners for new checkboxes
   showAxisFreqLabelsCheckbox.addEventListener('change', e => {
     state.setShowAxisFreqLabels(e.target.checked);
@@ -108,6 +298,10 @@ export function setupUI(state) {
   
   // Initialize quantization radio buttons
   setupQuantizationRadioButtons(quantizationRadioGroup, state);
+  
+  // Initialize duration and velocity modulo radio buttons
+  setupModulusRadioButtons(durationModuloRadioGroup, state, 'duration');
+  setupModulusRadioButtons(velocityModuloRadioGroup, state, 'velocity');
   
   // Setup modulus checkbox
   useModulusCheckbox.checked = state.useModulus;
@@ -143,6 +337,36 @@ export function setupUI(state) {
   useIntersectionsCheckbox.checked = state.useIntersections;
   useIntersectionsCheckbox.addEventListener('change', e => {
     state.setUseIntersections(e.target.checked);
+  });
+
+  // Setup duration mode radio buttons
+  durationModeRadios.forEach(radio => {
+    // Check the one that matches the current state
+    if (radio.value === state.durationMode) {
+      radio.checked = true;
+    }
+    
+    // Add event listener
+    radio.addEventListener('change', e => {
+      if (e.target.checked) {
+        state.setDurationMode(e.target.value);
+      }
+    });
+  });
+  
+  // Setup velocity mode radio buttons
+  velocityModeRadios.forEach(radio => {
+    // Check the one that matches the current state
+    if (radio.value === state.velocityMode) {
+      radio.checked = true;
+    }
+    
+    // Add event listener
+    radio.addEventListener('change', e => {
+      if (e.target.checked) {
+        state.setVelocityMode(e.target.value);
+      }
+    });
   });
 
   // Sync control values with the UI
@@ -227,6 +451,28 @@ export function setupUI(state) {
     value => state.setReferenceFrequency(Number(value)),
     UI_RANGES.REFERENCE_FREQUENCY.MIN, UI_RANGES.REFERENCE_FREQUENCY.MAX,
     Number);
+    
+  // Link duration controls
+  syncPair(minDurationRange, minDurationNumber, minDurationValue,
+    value => state.setMinDuration(Number(value)),
+    0.05, 1.0,
+    Number);
+    
+  syncPair(maxDurationRange, maxDurationNumber, maxDurationValue,
+    value => state.setMaxDuration(Number(value)),
+    0.1, 2.0,
+    Number);
+    
+  // Link velocity controls
+  syncPair(minVelocityRange, minVelocityNumber, minVelocityValue,
+    value => state.setMinVelocity(Number(value)),
+    0.1, 0.9,
+    Number);
+    
+  syncPair(maxVelocityRange, maxVelocityNumber, maxVelocityValue,
+    value => state.setMaxVelocity(Number(value)),
+    0.2, 1.0,
+    Number);
 
   return {
     bpmRange, bpmNumber, bpmValue,
@@ -242,140 +488,19 @@ export function setupUI(state) {
     altScaleRange, altScaleNumber, altScaleValue,
     altStepNRange, altStepNNumber, altStepNValue,
     useAltScaleCheckbox,
-    useIntersectionsCheckbox, showAxisFreqLabelsCheckbox,
+    useIntersectionsCheckbox, 
+    showAxisFreqLabelsCheckbox,
     showPointsFreqLabelsCheckbox,
     useEqualTemperamentCheckbox,
-    referenceFreqRange, referenceFreqNumber, referenceFreqValue
+    referenceFreqRange, referenceFreqNumber, referenceFreqValue,
+    
+    // Note parameter controls
+    durationModeRadios, durationModuloRadioGroup,
+    minDurationRange, minDurationNumber, minDurationValue,
+    maxDurationRange, maxDurationNumber, maxDurationValue,
+    
+    velocityModeRadios, velocityModuloRadioGroup,
+    minVelocityRange, minVelocityNumber, minVelocityValue,
+    maxVelocityRange, maxVelocityNumber, maxVelocityValue
   };
-}
-
-// Function to set up modulus radio buttons
-function setupModulusRadioButtons(container, state) {
-  // Clear any existing content
-  container.innerHTML = '';
-  
-  // Create a radio button for each value from 1 to 12
-  for (let i = 1; i <= 12; i++) {
-    const radioItem = document.createElement('div');
-    radioItem.className = 'radio-item';
-    
-    const radioInput = document.createElement('input');
-    radioInput.type = 'radio';
-    radioInput.id = `modulus-${i}`;
-    radioInput.name = 'modulus';
-    radioInput.value = i;
-    radioInput.checked = (i === state.modulusValue);
-    
-    // Add event listener
-    radioInput.addEventListener('change', () => {
-      if (radioInput.checked) {
-        state.setModulusValue(i);
-      }
-    });
-    
-    const radioLabel = document.createElement('label');
-    radioLabel.htmlFor = `modulus-${i}`;
-    radioLabel.textContent = i;
-    
-    radioItem.appendChild(radioInput);
-    radioItem.appendChild(radioLabel);
-    container.appendChild(radioItem);
-  }
-}
-
-// Function to set up time subdivision radio buttons
-function setupTimeSubdivisionRadioButtons(container, state) {
-  // Clear any existing content
-  container.innerHTML = '';
-  
-  // Create radio buttons for each division option
-  // Format: [displayed value, actual multiplier]
-  const divisions = [
-    // Faster options (>1x)
-    ["8x", 8],
-    ["6x", 6],
-    ["4x", 4],
-    ["3x", 3],
-    ["2x", 2],
-    ["1.5x", 1.5],
-    // Normal speed
-    ["1x", 1],
-    // Slower options (<1x)
-    ["1/1.5x", 1/1.5],
-    ["1/2x", 1/2],
-    ["1/3x", 1/3],
-    ["1/4x", 1/4],
-    ["1/6x", 1/6],
-    ["1/8x", 1/8]
-  ];
-  
-  for (const [label, value] of divisions) {
-    const radioItem = document.createElement('div');
-    radioItem.className = 'radio-item';
-    
-    // Create a CSS-safe ID by replacing slashes and dots with underscores
-    const safeCssId = `timeSubdivision-${String(value).replace(/[\/\.]/g, '_')}`;
-    
-    const radioInput = document.createElement('input');
-    radioInput.type = 'radio';
-    radioInput.id = safeCssId;
-    radioInput.name = 'timeSubdivision';
-    radioInput.value = value;
-    radioInput.checked = (Math.abs(value - state.timeSubdivisionValue) < 0.001);
-    
-    // Add event listener
-    radioInput.addEventListener('change', () => {
-      if (radioInput.checked) {
-        state.setTimeSubdivisionValue(parseFloat(value));
-      }
-    });
-    
-    const radioLabel = document.createElement('label');
-    radioLabel.htmlFor = safeCssId;
-    radioLabel.textContent = label;
-    
-    radioItem.appendChild(radioInput);
-    radioItem.appendChild(radioLabel);
-    container.appendChild(radioItem);
-  }
-}
-
-// Function to set up quantization radio buttons
-function setupQuantizationRadioButtons(container, state) {
-  // Clear any existing content
-  container.innerHTML = '';
-  
-  // Create a radio button for each quantization value
-  for (const value of QUANTIZATION_VALUES) {
-    const radioItem = document.createElement('div');
-    radioItem.className = 'radio-item';
-    
-    // Create a CSS-safe ID by replacing slashes with underscores
-    const safeCssId = `quantization-${value.replace(/\//g, '_')}`;
-    
-    const radioInput = document.createElement('input');
-    radioInput.type = 'radio';
-    radioInput.id = safeCssId;
-    radioInput.name = 'quantization';
-    radioInput.value = value;
-    radioInput.checked = (value === state.quantizationValue);
-    
-    // Store the original value as a data attribute for reference
-    radioInput.dataset.originalValue = value;
-    
-    // Add event listener
-    radioInput.addEventListener('change', () => {
-      if (radioInput.checked) {
-        state.setQuantizationValue(value);
-      }
-    });
-    
-    const radioLabel = document.createElement('label');
-    radioLabel.htmlFor = safeCssId;
-    radioLabel.textContent = value; // Display the note value (e.g., "1/4", "1/8T")
-    
-    radioItem.appendChild(radioInput);
-    radioItem.appendChild(radioLabel);
-    container.appendChild(radioItem);
-  }
 }

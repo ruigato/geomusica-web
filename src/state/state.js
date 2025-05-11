@@ -1,7 +1,8 @@
-// src/state/state.js - Updated with time quantization
+// src/state/state.js - Updated with Note Parameters
 import { getCurrentTime } from '../time/time.js';
 import { DEFAULT_VALUES, UI_RANGES, TICKS_PER_BEAT, TICKS_PER_MEASURE } from '../config/constants.js';
 import { clearLabels } from '../ui/domLabels.js';
+import { ParameterMode } from '../notes/notes.js';
 
 /**
  * Generate sequence from 1/modulus to 1.0 in even steps
@@ -72,6 +73,19 @@ export function createAppState() {
     altScale: DEFAULT_VALUES.ALT_SCALE,
     altStepN: DEFAULT_VALUES.ALT_STEP_N,
     useAltScale: DEFAULT_VALUES.USE_ALT_SCALE,
+    
+    // NOTE PARAMETER related parameters
+    // Duration parameters
+    durationMode: ParameterMode.MODULO, // Default to modulo mode
+    durationModulo: 3, // Default modulo value
+    minDuration: 0.1, // Minimum duration in seconds
+    maxDuration: 0.5, // Maximum duration in seconds
+    
+    // Velocity parameters
+    velocityMode: ParameterMode.MODULO, // Default to modulo mode
+    velocityModulo: 4, // Default modulo value
+    minVelocity: 0.3, // Minimum velocity (0-1)
+    maxVelocity: 0.9, // Maximum velocity (0-1)
     
     // Intersection related parameters
     useIntersections: DEFAULT_VALUES.USE_INTERSECTIONS,
@@ -496,6 +510,88 @@ export function createAppState() {
       }
       
       return baseFactor;
+    },
+    
+    /**
+     * Set duration mode
+     * @param {string} mode Parameter mode (modulo, random, interpolation)
+     */
+    setDurationMode(mode) {
+      if (Object.values(ParameterMode).includes(mode)) {
+        this.durationMode = mode;
+      }
+    },
+    
+    /**
+     * Set duration modulo value
+     * @param {number} value New modulo value (1-12)
+     */
+    setDurationModulo(value) {
+      this.durationModulo = Math.max(1, Math.min(12, Number(value)));
+    },
+    
+    /**
+     * Set min duration value
+     * @param {number} value New min duration in seconds
+     */
+    setMinDuration(value) {
+      this.minDuration = Math.max(0.05, Math.min(this.maxDuration, Number(value)));
+    },
+    
+    /**
+     * Set max duration value
+     * @param {number} value New max duration in seconds
+     */
+    setMaxDuration(value) {
+      this.maxDuration = Math.max(this.minDuration, Math.min(2.0, Number(value)));
+    },
+    
+    /**
+     * Set velocity mode
+     * @param {string} mode Parameter mode (modulo, random, interpolation)
+     */
+    setVelocityMode(mode) {
+      if (Object.values(ParameterMode).includes(mode)) {
+        this.velocityMode = mode;
+      }
+    },
+    
+    /**
+     * Set velocity modulo value
+     * @param {number} value New modulo value (1-12)
+     */
+    setVelocityModulo(value) {
+      this.velocityModulo = Math.max(1, Math.min(12, Number(value)));
+    },
+    
+    /**
+     * Set min velocity value
+     * @param {number} value New min velocity (0-1)
+     */
+    setMinVelocity(value) {
+      this.minVelocity = Math.max(0.1, Math.min(this.maxVelocity, Number(value)));
+    },
+    
+    /**
+     * Set max velocity value
+     * @param {number} value New max velocity (0-1)
+     */
+    setMaxVelocity(value) {
+      this.maxVelocity = Math.max(this.minVelocity, Math.min(1.0, Number(value)));
+    },
+    
+    /**
+     * Get total point count in the current geometry
+     * @returns {number} Total number of points (vertices and intersections)
+     */
+    getTotalPointCount() {
+      let count = this.segments * this.copies; // Regular vertices
+      
+      if (this.intersectionPoints) {
+        count += this.intersectionPoints.length; // Intersection points
+      }
+      
+      return count;
     },
     
     /**

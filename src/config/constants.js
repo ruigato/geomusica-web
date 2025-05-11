@@ -1,4 +1,4 @@
-// src/config/constants.js
+// src/config/constants.js - Updated with note parameter constants
 
 // Animation constants
 export const MARK_LIFE = 30;
@@ -50,8 +50,18 @@ export const DEFAULT_VALUES = {
   REFERENCE_FREQUENCY: 440, // Default reference frequency (A4 = 440Hz)
   // New quantization parameters
   QUANTIZATION_VALUE: "1/4", // Default to quarter notes
-  USE_QUANTIZATION: false    // Off by default
-
+  USE_QUANTIZATION: false,    // Off by default
+  
+  // Note parameter defaults
+  DURATION_MODE: 'modulo',   // Default to modulo mode
+  DURATION_MODULO: 3,        // Default duration modulo value
+  MIN_DURATION: 0.1,         // Default minimum duration (seconds)
+  MAX_DURATION: 0.5,         // Default maximum duration (seconds)
+  
+  VELOCITY_MODE: 'modulo',   // Default to modulo mode
+  VELOCITY_MODULO: 4,        // Default velocity modulo value
+  MIN_VELOCITY: 0.3,         // Default minimum velocity (0-1)
+  MAX_VELOCITY: 0.9          // Default maximum velocity (0-1)
 };
 
 // UI ranges
@@ -67,7 +77,13 @@ export const UI_RANGES = {
   ALT_SCALE: { MIN: 0.1, MAX: 10, STEP: 0.01 }, // Range for alt scale
   ALT_STEP_N: { MIN: 1, MAX: 32, STEP: 1 }, // Range for alt step N
   TIME_SUBDIVISION: { MIN: 0.5, MAX: 8, STEP: 0.5 }, // Range for time subdivision
-  REFERENCE_FREQUENCY: { MIN: 415, MAX: 466, STEP: 1 } // Range for reference frequency
+  REFERENCE_FREQUENCY: { MIN: 415, MAX: 466, STEP: 1 }, // Range for reference frequency
+  
+  // Note parameter ranges
+  MIN_DURATION: { MIN: 0.05, MAX: 1.0, STEP: 0.01 },
+  MAX_DURATION: { MIN: 0.1, MAX: 2.0, STEP: 0.01 },
+  MIN_VELOCITY: { MIN: 0.1, MAX: 0.9, STEP: 0.01 },
+  MAX_VELOCITY: { MIN: 0.2, MAX: 1.0, STEP: 0.01 }
 };
 
 // Add this list of valid quantization values for reference

@@ -1,4 +1,4 @@
-// src/audio/audio.js - Updated for time module integration
+// src/audio/audio.js - Updated to handle note objects
 
 import { Csound } from '@csound/browser';
 import { quantizeToEqualTemperament, getNoteName } from './frequencyUtils.js';
@@ -127,7 +127,12 @@ export async function setupAudio() {
             }
             
             // Play a test note
-            playNote(432, 0.7, 0.5);
+            playNote({
+              frequency: 432,
+              duration: 0.5,
+              velocity: 0.7,
+              pan: 0.0
+            });
             
             // Initialize time channel
             setTimeout(async () => {
@@ -171,12 +176,12 @@ export async function applySynthParameters(params) {
   
   try {
     // Apply all parameters
-/*     await csoundInstance.setControlChannel("attack", params.attack || 0.01);
+    await csoundInstance.setControlChannel("attack", params.attack || 0.01);
     await csoundInstance.setControlChannel("decay", params.decay || 0.3);
     await csoundInstance.setControlChannel("sustain", params.sustain || 0.5);
     await csoundInstance.setControlChannel("release", params.release || 1.0);
     await csoundInstance.setControlChannel("brightness", params.brightness || 0.0);
-    await csoundInstance.setControlChannel("masterVolume", params.volume || 0.8); */
+    await csoundInstance.setControlChannel("masterVolume", params.volume || 0.8);
     
     console.log("All synth parameters applied successfully:", params);
     return true;
@@ -186,11 +191,27 @@ export async function applySynthParameters(params) {
   }
 }
 
-// Play a note with the active instrument
-export function playNote(frequency, amplitude = 0.7, duration = 0.2, pan = 0.0) {
-  if (!csoundInstance || !csoundStarted) return null;
+/**
+ * Play a note with the active instrument
+ * @param {Object} note - Note object with all parameters
+ * @returns {boolean} True if successful
+ */
+export function playNote(note) {
+  if (!csoundInstance || !csoundStarted) return false;
   
   try {
+    // Log the full note object
+    console.log("playNote received:", JSON.stringify(note));
+    
+    // Extract parameters with proper defaults
+    const frequency = note && note.frequency ? note.frequency : 440;
+    const amplitude = note && note.velocity ? note.velocity : 0.7;
+    const duration = note && note.duration ? note.duration : 0.3;
+    const pan = note && note.pan ? note.pan : 0.0;
+    
+    console.log(`Playing note: frequency=${frequency}, velocity=${amplitude}, duration=${duration}, pan=${pan}`);
+  
+
     // Apply any pending parameters before playing the note
     if (window.pendingSynthParams) {
       console.log("Applying pending synth parameters:", window.pendingSynthParams);
@@ -213,18 +234,15 @@ export function playNote(frequency, amplitude = 0.7, duration = 0.2, pan = 0.0) 
       window.pendingSynthParams = null;
     }
     
-    // Calculate deterministic pan position if not specified
-    if (pan === 0.0) {
-      const minFreq = 50;
-      const maxFreq = 5000;
-      const normalizedFreq = Math.max(0, Math.min(1, 
-        Math.log(frequency / minFreq) / Math.log(maxFreq / minFreq)
-      ));
-      pan = normalizedFreq * 1.6 - 0.8;
-    }
-    
     // Limit duration to reasonable values
-    duration = Math.max(0.05, Math.min(10, duration));
+    const safeDuration = Math.max(0.05, Math.min(10, duration));
+    
+    // Log note information for debugging
+    if (note.noteName) {
+      console.log(`Playing note: ${frequency.toFixed(2)}Hz (${note.noteName}), duration: ${safeDuration}s, velocity: ${amplitude}`);
+    } else {
+      console.log(`Playing note: ${frequency.toFixed(2)}Hz, duration: ${safeDuration}s, velocity: ${amplitude}`);
+    }
     
     // Build Csound score event with instrument 1 (FM Bell)
     const scoreEvent = `i 1 0 ${duration} ${frequency} ${amplitude} ${duration} ${pan}`;
@@ -259,41 +277,31 @@ export async function setMasterVolume(volume) {
   }
 }
 
-// Trigger audio based on polygon vertex passing the axis
-export async function triggerAudio(audioInstance, x, y, lastAngle, angle, tNow, options = {}) {
-  if (!audioInstance || !csoundStarted) return Math.hypot(x, y);
+/**
+ * Trigger audio based on a note object
+ * @param {Object} note - Complete note object
+ * @returns {Object} The same note object for chaining
+ */
+export async function triggerAudio(note) {
+  if (!csoundInstance || !csoundStarted) return note;
   
   try {
-    // Calculate frequency from coordinates
-    let freq = Math.hypot(x, y);
-    const originalFreq = freq; // Store the original for return value
-
-    // If equal temperament is enabled, quantize the frequency
-    if (options.useEqualTemperament) {
-      const refFreq = options.referenceFrequency || 440;
-      freq = quantizeToEqualTemperament(freq, refFreq);
-      
-      // If debug logging is enabled, log the original and quantized frequency
-      if (options.debug) {
-        const noteName = getNoteName(freq, refFreq);
-        console.log(`Original freq: ${originalFreq.toFixed(2)} Hz, Quantized: ${freq.toFixed(2)} Hz (${noteName})`);
-      }
-    }    
-
-    // Calculate pan based on angle
-    const angRad = angle % (2 * Math.PI);
-    const pan = Math.sin(angRad);
+    // Log the received note
+    console.log("triggerAudio received note:", JSON.stringify(note));
     
-    // Calculate duration based on frequency (lower notes need longer duration)
-    const noteDuration = Math.min(2.0, Math.max(0.2, 3000 / freq));
+    // Check if we have a valid note object
+    if (!note || typeof note !== 'object') {
+      console.error("Invalid note object received:", note);
+      return note;
+    }
     
-    // Always use our FM bell instrument
-    playNote(freq, 0.7, noteDuration, pan);
+    // Play the note
+    playNote(note);
     
-    return originalFreq;
+    return note;
   } catch (error) {
     console.error("Error in triggerAudio:", error);
-    return Math.hypot(x, y);
+    return note;
   }
 }
 
@@ -388,7 +396,12 @@ export const Tone = {
       if (csoundInstance && csoundStarted) {
         try {
           const dur = parseFloat(duration) || 0.3;
-          playNote(freq, 0.7, dur);
+          playNote({
+            frequency: freq,
+            duration: dur,
+            velocity: 0.7,
+            pan: 0
+          });
         } catch (error) {
           console.error("Error in triggerAttackRelease:", error);
         }

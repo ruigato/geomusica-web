@@ -1,4 +1,4 @@
-// src/state/statePersistence.js - With fixed quantization selectors
+// src/state/statePersistence.js - Updated with Note Parameters
 /**
  * State persistence module for GeoMusica
  * Saves and loads application state to/from localStorage
@@ -61,7 +61,18 @@ export function saveState(state) {
 
       // Display parameters
       showAxisFreqLabels: state.showAxisFreqLabels,
-      showPointsFreqLabels: state.showPointsFreqLabels
+      showPointsFreqLabels: state.showPointsFreqLabels,
+      
+      // Note parameter settings
+      durationMode: state.durationMode,
+      durationModulo: state.durationModulo,
+      minDuration: state.minDuration, 
+      maxDuration: state.maxDuration,
+      
+      velocityMode: state.velocityMode,
+      velocityModulo: state.velocityModulo,
+      minVelocity: state.minVelocity,
+      maxVelocity: state.maxVelocity
     };
     
     // Convert to string and save
@@ -147,9 +158,19 @@ export function applyLoadedState(state, loadedState) {
     if (loadedState.useEqualTemperament !== undefined) state.setUseEqualTemperament(loadedState.useEqualTemperament);
     if (loadedState.referenceFrequency !== undefined) state.setReferenceFrequency(loadedState.referenceFrequency);
   
-
     if (loadedState.showAxisFreqLabels !== undefined) state.setShowAxisFreqLabels(loadedState.showAxisFreqLabels);
     if (loadedState.showPointsFreqLabels !== undefined) state.setShowPointsFreqLabels(loadedState.showPointsFreqLabels);
+    
+    // Apply note parameter settings
+    if (loadedState.durationMode !== undefined) state.setDurationMode(loadedState.durationMode);
+    if (loadedState.durationModulo !== undefined) state.setDurationModulo(loadedState.durationModulo);
+    if (loadedState.minDuration !== undefined) state.setMinDuration(loadedState.minDuration);
+    if (loadedState.maxDuration !== undefined) state.setMaxDuration(loadedState.maxDuration);
+    
+    if (loadedState.velocityMode !== undefined) state.setVelocityMode(loadedState.velocityMode);
+    if (loadedState.velocityModulo !== undefined) state.setVelocityModulo(loadedState.velocityModulo);
+    if (loadedState.minVelocity !== undefined) state.setMinVelocity(loadedState.minVelocity);
+    if (loadedState.maxVelocity !== undefined) state.setMaxVelocity(loadedState.maxVelocity);
     
     console.log('State applied successfully');
     return true;
@@ -240,13 +261,13 @@ export function exportStateToFile(state) {
       angle: state.angle,
       modulusValue: state.modulusValue,
       useModulus: state.useModulus,
-      // Add time subdivision parameters to the export
+      
       timeSubdivisionValue: state.timeSubdivisionValue,
       useTimeSubdivision: state.useTimeSubdivision,
-      // Add time quantization parameters to the export
+      
       quantizationValue: state.quantizationValue,
       useQuantization: state.useQuantization,
-      // Add scale mod parameters to the export
+      
       altScale: state.altScale,
       altStepN: state.altStepN,
       useAltScale: state.useAltScale,
@@ -262,7 +283,18 @@ export function exportStateToFile(state) {
       useEqualTemperament: state.useEqualTemperament,
       referenceFrequency: state.referenceFrequency,
       showAxisFreqLabels: state.showAxisFreqLabels,
-      showPointsFreqLabels: state.showPointsFreqLabels
+      showPointsFreqLabels: state.showPointsFreqLabels,
+      
+      // Include note parameter settings
+      durationMode: state.durationMode,
+      durationModulo: state.durationModulo,
+      minDuration: state.minDuration, 
+      maxDuration: state.maxDuration,
+      
+      velocityMode: state.velocityMode,
+      velocityModulo: state.velocityModulo,
+      minVelocity: state.minVelocity,
+      maxVelocity: state.maxVelocity
     };
     
     // Add timestamp
@@ -475,10 +507,68 @@ export function updateUIFromState(state, uiElements) {
       if (uiElements.referenceFreqNumber) uiElements.referenceFreqNumber.value = state.referenceFrequency;
       if (uiElements.referenceFreqValue) uiElements.referenceFreqValue.textContent = state.referenceFrequency;
     }
+    
+    // Update Note Parameters controls
+    
+    // Update Duration Mode radio buttons
+    if (uiElements.durationModeRadios && state.durationMode !== undefined) {
+      uiElements.durationModeRadios.forEach(radio => {
+        radio.checked = (radio.value === state.durationMode);
+      });
+    }
+    
+    // Update Duration Min/Max values
+    if (uiElements.minDurationRange && state.minDuration !== undefined) {
+      uiElements.minDurationRange.value = state.minDuration;
+      if (uiElements.minDurationNumber) uiElements.minDurationNumber.value = state.minDuration;
+      if (uiElements.minDurationValue) uiElements.minDurationValue.textContent = state.minDuration.toFixed(2);
+    }
+    
+    if (uiElements.maxDurationRange && state.maxDuration !== undefined) {
+      uiElements.maxDurationRange.value = state.maxDuration;
+      if (uiElements.maxDurationNumber) uiElements.maxDurationNumber.value = state.maxDuration;
+      if (uiElements.maxDurationValue) uiElements.maxDurationValue.textContent = state.maxDuration.toFixed(2);
+    }
+    
+    // Update Velocity Mode radio buttons
+    if (uiElements.velocityModeRadios && state.velocityMode !== undefined) {
+      uiElements.velocityModeRadios.forEach(radio => {
+        radio.checked = (radio.value === state.velocityMode);
+      });
+    }
+    
+    // Update Velocity Min/Max values
+    if (uiElements.minVelocityRange && state.minVelocity !== undefined) {
+      uiElements.minVelocityRange.value = state.minVelocity;
+      if (uiElements.minVelocityNumber) uiElements.minVelocityNumber.value = state.minVelocity;
+      if (uiElements.minVelocityValue) uiElements.minVelocityValue.textContent = state.minVelocity.toFixed(2);
+    }
+    
+    if (uiElements.maxVelocityRange && state.maxVelocity !== undefined) {
+      uiElements.maxVelocityRange.value = state.maxVelocity;
+      if (uiElements.maxVelocityNumber) uiElements.maxVelocityNumber.value = state.maxVelocity;
+      if (uiElements.maxVelocityValue) uiElements.maxVelocityValue.textContent = state.maxVelocity.toFixed(2);
+    }
 
     // Update modulus radio buttons
     if (state.modulusValue !== undefined && uiElements.modulusRadioGroup) {
       const radioButton = document.querySelector(`#modulus-${state.modulusValue}`);
+      if (radioButton) {
+        radioButton.checked = true;
+      }
+    }
+    
+    // Update duration modulo radio buttons
+    if (state.durationModulo !== undefined && uiElements.durationModuloRadioGroup) {
+      const radioButton = document.querySelector(`#durationModulo-${state.durationModulo}`);
+      if (radioButton) {
+        radioButton.checked = true;
+      }
+    }
+    
+    // Update velocity modulo radio buttons
+    if (state.velocityModulo !== undefined && uiElements.velocityModuloRadioGroup) {
+      const radioButton = document.querySelector(`#velocityModulo-${state.velocityModulo}`);
       if (radioButton) {
         radioButton.checked = true;
       }

@@ -1,4 +1,4 @@
-// src/triggers/triggers.js - Enhanced time quantization implementation
+// src/triggers/triggers.js - Updated to use note objects
 import * as THREE from 'three';
 import { MARK_LIFE, OVERLAP_THRESHOLD, TICKS_PER_BEAT, TICKS_PER_MEASURE } from '../config/constants.js';
 import { createOrUpdateLabel, createAxisLabel, removeLabel } from '../ui/domLabels.js';
@@ -10,6 +10,7 @@ import {
   secondsToTicks, 
   getMeasurePosition 
 } from '../time/time.js';
+import { createNote } from '../notes/notes.js';
 
 // Store for pending triggers
 let pendingTriggers = [];
@@ -63,8 +64,8 @@ function storePendingTrigger(triggerInfo, quantizedTime) {
   pendingTriggers.sort((a, b) => a.executeTime - b.executeTime);
   
   // For debugging
-  if (triggerInfo.freq !== undefined) {
-    console.log(`Scheduled trigger for ${quantizedTime.toFixed(3)}s, freq: ${triggerInfo.freq.toFixed(1)}Hz, pending: ${pendingTriggers.length}`);
+  if (triggerInfo.note) {
+    console.log(`Scheduled trigger for ${quantizedTime.toFixed(3)}s, freq: ${triggerInfo.note.frequency.toFixed(1)}Hz, pending: ${pendingTriggers.length}`);
   }
 }
 
@@ -77,37 +78,40 @@ function storePendingTrigger(triggerInfo, quantizedTime) {
 export function processPendingTriggers(currentTime, audioCallback, scene) {
   if (pendingTriggers.length === 0) return;
   
-  // Check for triggers that should execute now
+  // Find triggers that should be executed
   const triggersToExecute = [];
-  
-  // Find triggers that should be executed (with a small tolerance for timing)
   const tolerance = 0.005; // 5ms tolerance
+  
   while (pendingTriggers.length > 0 && pendingTriggers[0].executeTime <= currentTime + tolerance) {
     triggersToExecute.push(pendingTriggers.shift());
   }
   
   // Execute the triggers
   for (const trigger of triggersToExecute) {
-    const { x, y, lastAngle, angle, executeTime, worldRot, freq, camera, renderer, key } = trigger;
+    const { note, worldRot, executeTime, camera, renderer, isQuantized } = trigger;
     
-    // Trigger the audio
-    audioCallback(x, y, lastAngle, angle, executeTime);
-    
-    // Create a marker with visual feedback that this is a quantized trigger
-    if (scene && worldRot !== undefined && freq !== undefined) {
-      createMarker(worldRot, x, y, scene, freq, camera, renderer, true);
-    }
-    
-    // For debugging
-    if (freq !== undefined) {
-      console.log(`Executed quantized trigger at ${executeTime.toFixed(3)}s, freq: ${freq.toFixed(1)}Hz`);
+    if (note) {
+      // Make a deep copy of the note to ensure we're not modifying the original
+      const noteCopy = { ...note };
+      noteCopy.time = executeTime;
+      
+      // Log the note details before triggering
+      console.log(`Processing pending trigger: frequency=${noteCopy.frequency}, time=${executeTime}`);
+      
+      // IMPORTANT: Send the complete note object
+      audioCallback(noteCopy);
+      
+      // Create a marker with visual feedback
+      if (scene && worldRot !== undefined && noteCopy.frequency !== undefined) {
+        createMarker(worldRot, noteCopy.coordinates.x, noteCopy.coordinates.y, scene, noteCopy, camera, renderer, isQuantized);
+      }
     }
   }
 }
 
 /**
  * Parse a quantization value and convert to ticks
- * @param {string} quantValue - Quantization value (e.g., "1/4", "1/8T")
+ * @param {string} quantValue - Quantization value (e.g., "1-4", "1-8T")
  * @param {number} measureTicks - Ticks per measure (default: TICKS_PER_MEASURE)
  * @returns {number} Ticks per quantization unit
  */
@@ -225,22 +229,26 @@ function handleQuantizedTrigger(tNow, state, triggerInfo) {
 }
 
 /**
- * Create a marker at the given coordinates with frequency label
+ * Create a marker at the given coordinates with note information
  * @param {number} worldRot Rotation angle in radians
  * @param {number} x X coordinate in local space
  * @param {number} y Y coordinate in local space
  * @param {THREE.Scene} scene Scene to add marker to
- * @param {number} frequency Frequency value for label
+ * @param {Object} note Note object with frequency, duration, velocity info
  * @param {THREE.Camera} camera Camera for label positioning
  * @param {THREE.WebGLRenderer} renderer Renderer for label positioning
  * @param {boolean} isQuantized Whether this is a quantized trigger
  * @returns {Object} Created marker
  */
-function createMarker(worldRot, x, y, scene, frequency = null, camera = null, renderer = null, isQuantized = false) {
+function createMarker(worldRot, x, y, scene, note, camera = null, renderer = null, isQuantized = false) {
   // Check if the scene's userData contains our markers array
   if (!scene.userData.markers) {
     scene.userData.markers = [];
   }
+  
+  const frequency = note.frequency;
+  const duration = note.duration;
+  const velocity = note.velocity;
   
   // Create the marker
   const markerGeom = new THREE.SphereGeometry(8, 8, 8);
@@ -249,12 +257,19 @@ function createMarker(worldRot, x, y, scene, frequency = null, camera = null, re
   // Use a different color for quantized triggers to provide visual feedback
   const markerColor = isQuantized ? 0x00ff00 : 0xff00ff; // Green for quantized, pink for normal
   
+  // Scale marker size based on duration
+  const baseSize = 8;
+  const markerSize = baseSize * (0.5 + duration);
+  
   const markerMat = new THREE.MeshBasicMaterial({
     color: markerColor,
     transparent: true,
-    opacity: 1.0,
+    opacity: velocity, // Set opacity based on velocity
     depthTest: false
   });
+  
+  // Scale the geometry based on note duration
+  markerGeom.scale(markerSize / baseSize, markerSize / baseSize, markerSize / baseSize);
   
   // Create the mesh
   const markerMesh = new THREE.Mesh(markerGeom, markerMat);
@@ -271,22 +286,18 @@ function createMarker(worldRot, x, y, scene, frequency = null, camera = null, re
   let textLabel = null;
   if (frequency !== null && scene.userData.state && scene.userData.state.showAxisFreqLabels && camera && renderer) {
     // Format frequency with appropriate display
-    let freqText;
+    let displayText;
     
     // If equal temperament is enabled, show both the original frequency and the note name
-    if (scene.userData.state.useEqualTemperament) {
-      const refFreq = scene.userData.state.referenceFrequency || 440;
-      const quantizedFreq = quantizeToEqualTemperament(frequency, refFreq);
-      const noteName = getNoteName(quantizedFreq, refFreq);
-      
+    if (scene.userData.state.useEqualTemperament && note.noteName) {
       // Add a "Q" prefix for quantized triggers for visual feedback
       const qPrefix = isQuantized ? "Q " : "";
-      freqText = `${qPrefix}${frequency.toFixed(1)}Hz (${noteName})`;
+      displayText = `${qPrefix}${frequency.toFixed(1)}Hz (${note.noteName}) ${duration.toFixed(2)}s`;
     } else {
       // Just show frequency in free temperament mode
       // Add a "Q" prefix for quantized triggers
       const qPrefix = isQuantized ? "Q " : "";
-      freqText = `${qPrefix}${frequency.toFixed(2)}Hz`;
+      displayText = `${qPrefix}${frequency.toFixed(2)}Hz ${duration.toFixed(2)}s`;
     }
     
     // Create a unique ID for this temporary label
@@ -294,7 +305,7 @@ function createMarker(worldRot, x, y, scene, frequency = null, camera = null, re
     
     // Create axis crossing label
     const worldPosition = new THREE.Vector3(worldX, worldY, 5);
-    textLabel = createAxisLabel(labelId, worldPosition, freqText, camera, renderer);
+    textLabel = createAxisLabel(labelId, worldPosition, displayText, camera, renderer);
   }
   
   // Add to our markers array with life value
@@ -302,7 +313,12 @@ function createMarker(worldRot, x, y, scene, frequency = null, camera = null, re
     mesh: markerMesh,
     textLabel: textLabel,
     life: MARK_LIFE,
-    isQuantized: isQuantized
+    isQuantized: isQuantized,
+    noteInfo: {
+      frequency,
+      duration,
+      velocity
+    }
   };
   
   if (scene.userData.state && scene.userData.state.markers) {
@@ -420,27 +436,37 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
       }
       
       if (hasCrossed) {
-        // Calculate frequency for this point
-        const freq = Math.hypot(x1, y1);
-        
         // Check if this point overlaps with any previously triggered points
         if (!isPointOverlapping(worldX, worldY, triggeredPoints)) {
           // Add this point to the list of triggered points
           triggeredPoints.push({ x: worldX, y: worldY });
           
+          // Prepare trigger data for note creation
+          const triggerData = {
+            x: x1,
+            y: y1,
+            copyIndex: ci,
+            vertexIndex: vi,
+            isIntersection: false,
+            angle,
+            lastAngle
+          };
+          
+          // Create note object with modulo parameters
+          const note = createNote(triggerData, state);
+          
+          // Add pan calculation to the note (based on angle)
+          note.pan = Math.sin(worldRot);
+          
           // Enhanced quantization logic
           if (state && state.useQuantization) {
             // Create trigger info object with all needed data
             const triggerInfo = {
-              x: x1,
-              y: y1,
-              lastAngle,
-              angle,
+              note,
               worldRot,
-              freq,
               camera,
               renderer,
-              key
+              isQuantized: true
             };
             
             // Handle quantized trigger (may schedule for later)
@@ -448,19 +474,23 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
               handleQuantizedTrigger(tNow, state, triggerInfo);
             
             if (shouldTrigger) {
-              // Trigger audio now with possibly quantized time
-              audioCallback(x1, y1, lastAngle, angle, triggerTime);
+              // Set the precise trigger time
+              note.time = triggerTime;
+              
+              // IMPORTANT: We need to pass the entire note object here
+              console.log("About to trigger audio with note frequency:", note.frequency);
+              audioCallback(note);
               
               // Create a marker with visual feedback for quantization
-              createMarker(worldRot, x1, y1, group.parent, freq, camera, renderer, isQuantized);
+              createMarker(worldRot, x1, y1, group.parent, note, camera, renderer, isQuantized);
             }
             
             // Always add to triggered set to prevent re-triggering
             triggeredNow.add(key);
           } else {
             // Regular non-quantized trigger
-            audioCallback(x1, y1, lastAngle, angle, tNow);
-            createMarker(worldRot, x1, y1, group.parent, freq, camera, renderer, false);
+            audioCallback(note);
+            createMarker(worldRot, x1, y1, group.parent, note, camera, renderer, false);
             triggeredNow.add(key);
           }
         } else {
@@ -532,27 +562,36 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
       }
       
       if (hasCrossed) {
-        // Calculate frequency for this point
-        const freq = Math.hypot(localPos.x, localPos.y);
-        
         // Check for overlap with already triggered points
         if (!isPointOverlapping(worldX, worldY, triggeredPoints)) {
           // Add to triggered points
           triggeredPoints.push({ x: worldX, y: worldY });
           
+          // Prepare trigger data for note creation
+          const triggerData = {
+            x: localPos.x,
+            y: localPos.y,
+            isIntersection: true,
+            intersectionIndex: i,
+            angle,
+            lastAngle
+          };
+          
+          // Create note object with modulo parameters
+          const note = createNote(triggerData, state);
+          
+          // Add pan calculation to the note (based on angle)
+          note.pan = Math.sin(angle);
+          
           // Enhanced quantization logic for intersection points
           if (state && state.useQuantization) {
-            // Create trigger info object with all needed data
+            // Create trigger info object with note and visualization parameters
             const triggerInfo = {
-              x: localPos.x,
-              y: localPos.y,
-              lastAngle,
-              angle,
+              note,
               worldRot: angle, // Use global angle since this is not in a copy group
-              freq,
               camera,
               renderer,
-              key
+              isQuantized: true
             };
             
             // Handle quantized trigger (may schedule for later)
@@ -560,19 +599,22 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
               handleQuantizedTrigger(tNow, state, triggerInfo);
             
             if (shouldTrigger) {
-              // Trigger audio now with possibly quantized time
-              audioCallback(localPos.x, localPos.y, lastAngle, angle, triggerTime);
+              // Set the precise trigger time
+              note.time = triggerTime;
+              
+              // Trigger audio now with the complete note
+              audioCallback(note);
               
               // Create a marker with visual feedback for quantization
-              createMarker(angle, localPos.x, localPos.y, group.parent, freq, camera, renderer, isQuantized);
+              createMarker(angle, localPos.x, localPos.y, group.parent, note, camera, renderer, isQuantized);
             }
             
             // Always add to triggered set to prevent re-triggering
             triggeredNow.add(key);
           } else {
             // Regular non-quantized trigger
-            audioCallback(localPos.x, localPos.y, lastAngle, angle, tNow);
-            createMarker(angle, localPos.x, localPos.y, group.parent, freq, camera, renderer, false);
+            audioCallback(note);
+            createMarker(angle, localPos.x, localPos.y, group.parent, note, camera, renderer, false);
             triggeredNow.add(key);
           }
         } else {
@@ -600,7 +642,8 @@ export function clearExpiredMarkers(scene, markers) {
     
     // Update opacity
     if (marker.mesh && marker.mesh.material) {
-      marker.mesh.material.opacity = marker.life / MARK_LIFE;
+      const baseOpacity = marker.noteInfo ? marker.noteInfo.velocity : 0.7;
+      marker.mesh.material.opacity = baseOpacity * (marker.life / MARK_LIFE);
     }
     
     // Remove expired markers

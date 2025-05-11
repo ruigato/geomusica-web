@@ -1,4 +1,4 @@
-// src/geometry/geometry.js - Streamlined version focused on geometry creation and manipulation
+// src/geometry/geometry.js - Updated to visualize note parameters
 import * as THREE from 'three';
 import { 
   VERTEX_CIRCLE_SIZE, 
@@ -12,6 +12,7 @@ import { findAllIntersections } from './intersections.js';
 import { createOrUpdateLabel } from '../ui/domLabels.js';
 // Import the frequency utilities at the top of geometry.js
 import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils.js';
+import { createNote } from '../notes/notes.js';
 
 /**
  * Create a regular polygon outline
@@ -113,18 +114,6 @@ export function calculateBoundingSphere(group, state) {
   
   // Never go below minimum visible distance
   return Math.max(maxDistance, 500);
-}
-
-// Create a circle geometry for vertices
-function createVertexCircleGeometry() {
-  // Use a circle geometry for vertices
-  return new THREE.CircleGeometry(VERTEX_CIRCLE_SIZE, 16);
-}
-
-// Create a circle geometry for intersection points
-function createIntersectionPointGeometry() {
-  // Use a circle geometry for intersection points with a different size
-  return new THREE.CircleGeometry(INTERSECTION_POINT_SIZE, 16);
 }
 
 /**
@@ -275,17 +264,6 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   // Only create markers if we have multiple copies
   const hasEnoughCopiesForIntersections = copies > 1;
 
-  // Create vertex circle geometry (reuse for all vertices)
-  const vertexCircleGeometry = createVertexCircleGeometry();
-  
-  // Create vertex circle material (reuse for all vertices)
-  const vertexCircleMaterial = new THREE.MeshBasicMaterial({ 
-    color: VERTEX_CIRCLE_COLOR,
-    transparent: true,
-    opacity: VERTEX_CIRCLE_OPACITY,
-    depthTest: false
-  });
-  
   // For intersection detection, we'll need to create a temporary group to calculate intersections
   // before they're added to the actual group
   let tempGroup = null;
@@ -414,13 +392,45 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     const positions = baseGeo.getAttribute('position').array;
     const count = baseGeo.getAttribute('position').count;
     
+    // Create vertex circle geometry (reuse for all vertices)
+    const vertexCircleGeometry = new THREE.CircleGeometry(VERTEX_CIRCLE_SIZE, 16);
+    
     // Add circles at each vertex
     for (let v = 0; v < count; v++) {
       const x = positions[v * 3] * finalScale;
       const y = positions[v * 3 + 1] * finalScale;
       
+      // Create trigger data for this vertex
+      const triggerData = {
+        x: x,
+        y: y,
+        copyIndex: i,
+        vertexIndex: v,
+        isIntersection: false
+      };
+      
+      // Create a note object to get duration and velocity parameters
+      const note = createNote(triggerData, state);
+      
+      // Calculate size and opacity for this vertex circle based on note parameters
+      const baseCircleSize = VERTEX_CIRCLE_SIZE;
+      const circleSize = baseCircleSize * (0.5 + note.duration);
+      const circleOpacity = note.velocity;
+      
+      // Scale the geometry based on duration
+      const scaledGeometry = vertexCircleGeometry.clone();
+      scaledGeometry.scale(circleSize / baseCircleSize, circleSize / baseCircleSize, 1);
+      
+      // Create material with opacity based on velocity
+      const vertexCircleMaterial = new THREE.MeshBasicMaterial({ 
+        color: VERTEX_CIRCLE_COLOR,
+        transparent: true,
+        opacity: circleOpacity,
+        depthTest: false
+      });
+      
       // Create a circle at this vertex
-      const vertexCircle = new THREE.Mesh(vertexCircleGeometry, vertexCircleMaterial.clone());
+      const vertexCircle = new THREE.Mesh(scaledGeometry, vertexCircleMaterial);
       
       // Position the circle at the vertex
       vertexCircle.position.set(x, y, 0);
@@ -433,8 +443,13 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         // Calculate frequency for this vertex
         const freq = Math.hypot(x, y);
         
-        // Format frequency with 2 decimal places
-        const freqText = `${freq.toFixed(2)}`;
+        // Format display text
+        let labelText;
+        if (state.useEqualTemperament && note.noteName) {
+          labelText = `${freq.toFixed(1)}Hz (${note.noteName}) ${note.duration.toFixed(2)}s`;
+        } else {
+          labelText = `${freq.toFixed(2)}Hz ${note.duration.toFixed(2)}s`;
+        }
         
         // Create a world position for this vertex in the copy
         const worldPos = new THREE.Vector3(x, y, 0);
@@ -445,7 +460,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         
         // Create a text label for this vertex
         const textLabel = createTextLabel(
-          freqText, 
+          labelText, 
           rotatedPos, 
           copyGroup, // Parent is not really used for DOM labels
           false, // Not an axis label
@@ -525,20 +540,39 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     // Tag this group for identification during audio triggers
     intersectionMarkerGroup.userData.isIntersectionGroup = true;
     
-    // Create a material for intersection points
-    const intersectionMaterial = new THREE.MeshBasicMaterial({
-      color: INTERSECTION_POINT_COLOR,
-      transparent: true,
-      opacity: INTERSECTION_POINT_OPACITY,
-      depthTest: false
-    });
-    
-    // Create a geometry for intersection points
-    const intersectionGeometry = createIntersectionPointGeometry();
-    
     // Add visual representation for each intersection point
-    for (const point of state.intersectionPoints) {
-      const pointMesh = new THREE.Mesh(intersectionGeometry, intersectionMaterial.clone());
+    for (let i = 0; i < state.intersectionPoints.length; i++) {
+      const point = state.intersectionPoints[i];
+      
+      // Create trigger data for this intersection point
+      const triggerData = {
+        x: point.x,
+        y: point.y,
+        isIntersection: true,
+        intersectionIndex: i
+      };
+      
+      // Create a note object to get duration and velocity parameters
+      const note = createNote(triggerData, state);
+      
+      // Calculate size and opacity for this intersection marker based on note parameters
+      const basePointSize = INTERSECTION_POINT_SIZE;
+      const pointSize = basePointSize * (0.5 + note.duration);
+      const pointOpacity = note.velocity;
+      
+      // Create a geometry for this intersection point
+      const intersectionGeometry = new THREE.CircleGeometry(pointSize, 16);
+      
+      // Create a material with velocity-based opacity
+      const intersectionMaterial = new THREE.MeshBasicMaterial({
+        color: INTERSECTION_POINT_COLOR,
+        transparent: true,
+        opacity: pointOpacity,
+        depthTest: false
+      });
+      
+      // Create the mesh
+      const pointMesh = new THREE.Mesh(intersectionGeometry, intersectionMaterial);
       pointMesh.position.copy(point);
       
       // Add to the intersection marker group
@@ -549,12 +583,17 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         // Calculate frequency for this intersection point
         const freq = Math.hypot(point.x, point.y);
         
-        // Format frequency with 2 decimal places
-        const freqText = `${freq.toFixed(2)}`;
+        // Format display text
+        let labelText;
+        if (state.useEqualTemperament && note.noteName) {
+          labelText = `${freq.toFixed(1)}Hz (${note.noteName}) ${note.duration.toFixed(2)}s`;
+        } else {
+          labelText = `${freq.toFixed(2)}Hz ${note.duration.toFixed(2)}s`;
+        }
         
         // Create a text label for this intersection point
         const textLabel = createTextLabel(
-          freqText, 
+          labelText, 
           point, 
           intersectionMarkerGroup, // Parent is not really used for DOM labels
           false, // Not an axis label

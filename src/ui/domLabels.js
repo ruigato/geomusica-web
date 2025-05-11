@@ -1,4 +1,4 @@
-// src/ui/domLabels.js - Optimized version
+// src/ui/domLabels.js - Updated to show note parameters
 import * as THREE from 'three';
 
 // Label containers
