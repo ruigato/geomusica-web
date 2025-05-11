@@ -1,7 +1,6 @@
-// src/geometry/geometry.js - Optimized version with proper modulus, alt scale, and step scale handling
+// src/geometry/geometry.js - Streamlined version focused on geometry creation and manipulation
 import * as THREE from 'three';
 import { 
-  OVERLAP_THRESHOLD, 
   VERTEX_CIRCLE_SIZE, 
   VERTEX_CIRCLE_OPACITY, 
   VERTEX_CIRCLE_COLOR,
@@ -10,9 +9,14 @@ import {
   INTERSECTION_POINT_OPACITY
 } from '../config/constants.js';
 import { findAllIntersections } from './intersections.js';
-import { createOrUpdateLabel, createAxisLabel } from '../ui/domLabels.js';
+import { createOrUpdateLabel } from '../ui/domLabels.js';
 
-// Function to create a regular polygon outline
+/**
+ * Create a regular polygon outline
+ * @param {number} radius - Radius of the polygon
+ * @param {number} segments - Number of sides
+ * @returns {THREE.BufferGeometry} Polygon geometry
+ */
 export function createPolygonGeometry(radius, segments) {
   // Create a BufferGeometry to hold our vertices
   const geometry = new THREE.BufferGeometry();
@@ -42,7 +46,10 @@ export function createPolygonGeometry(radius, segments) {
   return geometry;
 }
 
-// Function to create the vertical axis
+/**
+ * Create the vertical axis
+ * @param {THREE.Scene} scene - Scene to add axis to
+ */
 export function createAxis(scene) {
   const axisGeo = new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(0, 0, 0),
@@ -53,8 +60,8 @@ export function createAxis(scene) {
 
 /**
  * Calculate the bounding sphere radius for all visible geometry
- * @param {THREE.Group} group Group containing all polygon copies
- * @param {Object} state Application state
+ * @param {THREE.Group} group - Group containing all polygon copies
+ * @param {Object} state - Application state
  * @returns {number} Radius needed to contain all geometry
  */
 export function calculateBoundingSphere(group, state) {
@@ -118,7 +125,16 @@ function createIntersectionPointGeometry() {
   return new THREE.CircleGeometry(INTERSECTION_POINT_SIZE, 16);
 }
 
-// Create a frequency label using the DOM approach
+/**
+ * Create a frequency label
+ * @param {string} text - Label text
+ * @param {THREE.Vector3} position - Label position
+ * @param {THREE.Object3D} parent - Parent object
+ * @param {boolean} isAxisLabel - Whether this is an axis label
+ * @param {THREE.Camera} camera - Camera for positioning
+ * @param {THREE.WebGLRenderer} renderer - Renderer for positioning
+ * @returns {Object} Label info object
+ */
 export function createTextLabel(text, position, parent, isAxisLabel = true, camera = null, renderer = null) {
   // For DOM-based labels, we don't actually create a Three.js object
   // Instead, we return an info object that can be used to update the DOM label
@@ -130,17 +146,100 @@ export function createTextLabel(text, position, parent, isAxisLabel = true, came
     domElement: null,
     update: function(camera, renderer) {
       // Create or update the DOM label
-      if (isAxisLabel) {
-        this.domElement = createAxisLabel(this.id, this.position, this.text, camera, renderer);
-      } else {
-        this.domElement = createOrUpdateLabel(this.id, this.position, this.text, camera, renderer);
-      }
+      this.domElement = createOrUpdateLabel(this.id, this.position, this.text, camera, renderer);
       return this;
     }
   };
 }
 
-// Function to update the group of copies
+/**
+ * Clean up intersection markers
+ * @param {THREE.Scene} scene - Scene containing markers
+ */
+export function cleanupIntersectionMarkers(scene) {
+  // Clean up the marker group in the scene
+  if (scene && scene.userData.intersectionMarkerGroup) {
+    const group = scene.userData.intersectionMarkerGroup;
+    const parent = group.parent;
+    
+    if (parent) {
+      parent.remove(group);
+    } else {
+      scene.remove(group);
+    }
+    
+    // Clean up resources
+    group.traverse(child => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    });
+    
+    scene.userData.intersectionMarkerGroup = null;
+  }
+  
+  // Clean up any marker groups in child objects
+  if (scene.children) {
+    scene.children.forEach(child => {
+      if (child.userData && child.userData.intersectionMarkerGroup) {
+        const markerGroup = child.userData.intersectionMarkerGroup;
+        child.remove(markerGroup);
+        
+        markerGroup.traverse(obj => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach(m => m.dispose());
+            } else {
+              obj.material.dispose();
+            }
+          }
+        });
+        
+        child.userData.intersectionMarkerGroup = null;
+      }
+    });
+  }
+  
+  // Clean up individual markers if present
+  if (scene && scene.userData.intersectionMarkers) {
+    for (const marker of scene.userData.intersectionMarkers) {
+      if (marker.parent) {
+        marker.parent.remove(marker);
+      } else {
+        scene.remove(marker);
+      }
+      if (marker.geometry) marker.geometry.dispose();
+      if (marker.material) {
+        if (Array.isArray(marker.material)) {
+          marker.material.forEach(m => m.dispose());
+        } else {
+          marker.material.dispose();
+        }
+      }
+    }
+    scene.userData.intersectionMarkers = [];
+  }
+}
+
+/**
+ * Update the group of polygon copies
+ * @param {THREE.Group} group - Group to update
+ * @param {number} copies - Number of copies
+ * @param {number} stepScale - Scale factor between copies
+ * @param {THREE.BufferGeometry} baseGeo - Base geometry
+ * @param {THREE.Material} mat - Material to use
+ * @param {number} segments - Number of segments
+ * @param {number} angle - Rotation angle between copies
+ * @param {Object} state - Application state
+ * @param {boolean} isLerping - Whether we're currently lerping
+ * @param {boolean} justCalculatedIntersections - Whether we just calculated intersections
+ */
 export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, angle = 0, state = null, isLerping = false, justCalculatedIntersections = false) {
   // Clean up existing point frequency labels if they exist
   if (state && state.pointFreqLabels) {
@@ -462,285 +561,40 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   }
 }
 
-// Calculate the distance between two points in 2D space
-function distanceBetweenPoints(x1, y1, x2, y2) {
-  return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-}
-
-// Check if a point at (x, y) is too close to any existing active points
-function isPointOverlapping(x, y, activePoints) {
-  if (!activePoints || activePoints.length === 0) {
-    return false;
-  }
-  
-  for (const point of activePoints) {
-    const distance = distanceBetweenPoints(x, y, point.x, point.y);
-    if (distance < OVERLAP_THRESHOLD) {
-      return true; // Point is too close to an existing active point
-    }
-  }
-  
-  return false; // No overlap detected
-}
-
-// Function to detect crossings and trigger audio
-export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTrig, tNow, audioCallback) {
-  const triggeredNow = new Set();
-  const triggeredPoints = []; // Store positions of triggered points
-  
-  // Get vertices from buffer geometry
+/**
+ * Get vertex positions for a specific copy
+ * @param {THREE.BufferGeometry} baseGeo - Base geometry
+ * @param {number} scale - Scale factor
+ * @param {number} rotationAngle - Rotation angle in radians
+ * @returns {Array<THREE.Vector3>} Array of vertex positions
+ */
+export function getVertexPositions(baseGeo, scale, rotationAngle) {
   const positions = baseGeo.getAttribute('position').array;
   const count = baseGeo.getAttribute('position').count;
+  const vertices = [];
   
-  // Get camera and renderer for axis labels
-  const camera = group.parent?.userData?.camera;
-  const renderer = group.parent?.userData?.renderer;
-  
-  // First detect crossings for regular vertices
-  for (let ci = 0; ci < copies; ci++) {
-    // Check that we have enough children in the group
-    if (ci >= group.children.length) continue;
+  for (let i = 0; i < count; i++) {
+    const x = positions[i * 3] * scale;
+    const y = positions[i * 3 + 1] * scale;
     
-    // Each copy is a Group containing the LineLoop and vertex circles
-    const copyGroup = group.children[ci];
+    // Apply rotation
+    const cos = Math.cos(rotationAngle);
+    const sin = Math.sin(rotationAngle);
+    const rotX = x * cos - y * sin;
+    const rotY = x * sin + y * cos;
     
-    // Skip the intersection marker group if we encounter it
-    if (copyGroup.userData && copyGroup.userData.isIntersectionGroup) {
-      continue;
-    }
-    
-    // Make sure the copy group has children
-    if (!copyGroup.children || copyGroup.children.length === 0) continue;
-    
-    // The first child is the LineLoop
-    const mesh = copyGroup.children[0];
-    
-    // Use the copy group's local rotation plus the current group rotation for world rotation
-    const localRotation = copyGroup.rotation.z || 0;
-    const lastWorldRot = lastAngle + localRotation;
-    const worldRot = angle + localRotation;
-    
-    const worldScale = mesh.scale.x;
-    
-    // Process each vertex in this copy
-    for (let vi = 0; vi < count; vi++) {
-      const x0 = positions[vi * 3];
-      const y0 = positions[vi * 3 + 1];
-      
-      const x1 = x0 * worldScale;
-      const y1 = y0 * worldScale;
-      
-      // Calculate vertex positions at previous and current angles
-      const prevX = x1 * Math.cos(lastWorldRot) - y1 * Math.sin(lastWorldRot);
-      const prevY = x1 * Math.sin(lastWorldRot) + y1 * Math.cos(lastWorldRot);
-      
-      const currX = x1 * Math.cos(worldRot) - y1 * Math.sin(worldRot);
-      const currY = x1 * Math.sin(worldRot) + y1 * Math.cos(worldRot);
-      
-      // Calculate the world position of the vertex at current angle
-      const worldX = currX;
-      const worldY = currY;
-      
-      const key = `${ci}-${vi}`;
-      
-      // To detect a crossing:
-      // 1. The point must have crossed from right to left (positive X to negative X)
-      // 2. The point must be above the X-axis (positive Y)
-      // 3. The point must not have been triggered last frame
-      
-      // Improved crossing detection handling jumps in angle
-      let hasCrossed = false;
-      
-      // Basic case: point crosses from right to left
-      if (prevX > 0 && currX <= 0 && currY > 0 && !lastTrig.has(key)) {
-        hasCrossed = true;
-      } 
-      // Handle the case where angle change is so large that traditional crossing detection fails
-      // Check if the point's path would have crossed the Y-axis
-      else if (!lastTrig.has(key) && currY > 0) {
-        // Calculate angular displacement relative to Y-axis
-        const prevAngleFromYAxis = Math.atan2(prevX, prevY);
-        const currAngleFromYAxis = Math.atan2(currX, currY);
-        
-        // If the angles are on opposite sides of the Y-axis, and we've moved enough
-        // to cross it, mark as a crossing
-        if (Math.sign(prevAngleFromYAxis) > 0 && Math.sign(currAngleFromYAxis) <= 0) {
-          const angleDiff = Math.abs(prevAngleFromYAxis - currAngleFromYAxis);
-          // Only count it if the angle difference is reasonable (to avoid false positives)
-          if (angleDiff < Math.PI) {
-            hasCrossed = true;
-          }
-        }
-      }
-      
-      if (hasCrossed) {
-        // Calculate frequency for this point
-        const freq = Math.hypot(x1, y1);
-        
-        // Check if this point overlaps with any previously triggered points
-        if (!isPointOverlapping(worldX, worldY, triggeredPoints)) {
-          // No overlap, trigger audio and create marker
-          audioCallback(x1, y1, lastAngle, angle, tNow);
-          triggeredNow.add(key);
-          
-          // Add this point to the list of triggered points
-          triggeredPoints.push({ x: worldX, y: worldY });
-          
-          // Create a marker at the current vertex position (in world space)
-          createMarker(worldRot, x1, y1, group.parent, freq, camera, renderer);
-        } else {
-          // Point is overlapping, still add to triggered set but don't trigger audio
-          triggeredNow.add(key);
-          
-          // Still create visual marker to maintain visual consistency
-          createMarker(worldRot, x1, y1, group.parent, freq, camera, renderer);
-        }
-      }
-    }
+    vertices.push(new THREE.Vector3(rotX, rotY, 0));
   }
   
-  // Now check intersection points if they exist
-  const intersectionGroup = group.children.find(child => 
-    child.userData && child.userData.isIntersectionGroup
-  );
-  
-  if (intersectionGroup && intersectionGroup.children && intersectionGroup.children.length > 0) {
-    // Process each intersection point for possible triggers
-    for (let i = 0; i < intersectionGroup.children.length; i++) {
-      const pointMesh = intersectionGroup.children[i];
-      
-      // Skip if this is a frequency label or a Group
-      if (pointMesh.userData && pointMesh.userData.isFrequencyLabel) {
-        continue;
-      }
-      
-      // Skip if this is a Group (like a text label group)
-      if (pointMesh.type === 'Group') {
-        continue;
-      }
-      
-      const localPos = pointMesh.position.clone();
-      
-      // Calculate previous and current positions
-      const prevX = localPos.x * Math.cos(lastAngle) - localPos.y * Math.sin(lastAngle);
-      const prevY = localPos.x * Math.sin(lastAngle) + localPos.y * Math.cos(lastAngle);
-      
-      const currX = localPos.x * Math.cos(angle) - localPos.y * Math.sin(angle);
-      const currY = localPos.x * Math.sin(angle) + localPos.y * Math.cos(angle);
-      
-      // Calculate world position
-      const worldX = localPos.x * Math.cos(angle) - localPos.y * Math.sin(angle);
-      const worldY = localPos.x * Math.sin(angle) + localPos.y * Math.cos(angle);
-      
-      // Create a unique key for this intersection point
-      const key = `intersection-${i}`;
-      
-      // Similar improved crossing detection logic for intersection points
-      let hasCrossed = false;
-      
-      // Basic case: point crosses from right to left
-      if (prevX > 0 && currX <= 0 && currY > 0 && !lastTrig.has(key)) {
-        hasCrossed = true;
-      }
-      // Handle the case where angle change is so large that traditional crossing detection fails
-      else if (!lastTrig.has(key) && currY > 0) {
-        // Calculate angular displacement relative to Y-axis
-        const prevAngleFromYAxis = Math.atan2(prevX, prevY);
-        const currAngleFromYAxis = Math.atan2(currX, currY);
-        
-        // If the angles are on opposite sides of the Y-axis, and we've moved enough
-        // to cross it, mark as a crossing
-        if (Math.sign(prevAngleFromYAxis) > 0 && Math.sign(currAngleFromYAxis) <= 0) {
-          const angleDiff = Math.abs(prevAngleFromYAxis - currAngleFromYAxis);
-          // Only count it if the angle difference is reasonable (to avoid false positives)
-          if (angleDiff < Math.PI) {
-            hasCrossed = true;
-          }
-        }
-      }
-      
-      if (hasCrossed) {
-        // Calculate frequency for this point
-        const freq = Math.hypot(localPos.x, localPos.y);
-        
-        // Check for overlap with already triggered points
-        if (!isPointOverlapping(worldX, worldY, triggeredPoints)) {
-          // No overlap, trigger audio and create marker
-          audioCallback(localPos.x, localPos.y, lastAngle, angle, tNow);
-          triggeredNow.add(key);
-          
-          // Add to triggered points
-          triggeredPoints.push({ x: worldX, y: worldY });
-          
-          // Create visual marker with frequency label
-          createMarker(angle, localPos.x, localPos.y, group.parent, freq, camera, renderer);
-        } else {
-          // Point is overlapping, just add to triggered set
-          triggeredNow.add(key);
-        }
-      }
-    }
-  }
-  
-  return triggeredNow;
+  return vertices;
 }
 
-// Function to create a marker at the given coordinates with frequency label
-function createMarker(worldRot, x, y, scene, frequency = null, camera = null, renderer = null) {
-  // Check if the scene's userData contains our markers array
-  if (!scene.userData.markers) {
-    scene.userData.markers = [];
-  }
-  
-  // Create the marker
-  const markerGeom = new THREE.SphereGeometry(8, 8, 8);
-  
-  // Create a semi-transparent material for the marker
-  const markerMat = new THREE.MeshBasicMaterial({
-    color: 0xff00ff,
-    transparent: true,
-    opacity: 1.0,
-    depthTest: false
-  });
-  
-  // Create the mesh
-  const markerMesh = new THREE.Mesh(markerGeom, markerMat);
-  
-  // Position in world space - rotate the point
-  const worldX = x * Math.cos(worldRot) - y * Math.sin(worldRot);
-  const worldY = x * Math.sin(worldRot) + y * Math.cos(worldRot);
-  
-  markerMesh.position.set(worldX, worldY, 5); // Slightly in front
-  
-  scene.add(markerMesh);
-  
-  // Create text label if frequency is provided and axis labels are enabled
-  let textLabel = null;
-  if (frequency !== null && scene.userData.state && scene.userData.state.showAxisFreqLabels && camera && renderer) {
-    // Format frequency with 2 decimal places
-    const freqText = `${frequency.toFixed(2)}`;
-    
-    // Create a unique ID for this temporary label
-    const labelId = `axis-${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Create axis crossing label
-    const worldPosition = new THREE.Vector3(worldX, worldY, 5);
-    textLabel = createAxisLabel(labelId, worldPosition, freqText, camera, renderer);
-  }
-  
-  // Add to our markers array with life value
-  const marker = {
-    mesh: markerMesh,
-    textLabel: textLabel,
-    life: 30 // MARK_LIFE value
-  };
-  
-  if (scene.userData.state && scene.userData.state.markers) {
-    scene.userData.state.markers.push(marker);
-  } else {
-    // Fall back to scene's userData if state is not available
-    scene.userData.markers.push(marker);
-  }
-  
-  return marker;
+/**
+ * Get frequency for a point
+ * @param {number} x - X coordinate
+ * @param {number} y - Y coordinate
+ * @returns {number} Frequency value
+ */
+export function getFrequency(x, y) {
+  return Math.hypot(x, y);
 }

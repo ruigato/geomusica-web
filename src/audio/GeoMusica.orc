@@ -97,13 +97,13 @@ instr 1
   amix limit amix, -0.9, 0.9
 
   ; === Delay tipo Roland Echo ===
-  idelay = 0.2        ; tempo de delay em segundos
-  ifeedback = 0.8     ; feedback (quanto do sinal volta a entrar)
-  icutoff = 2000      ; corte do filtro (Hz)
+  ; idelay = 0.2        ; tempo de delay em segundos
+  ; ifeedback = 0.8     ; feedback (quanto do sinal volta a entrar)
+  ; icutoff = 2000      ; corte do filtro (Hz)
 
-  adelay = delay(amix, idelay)
-  afilt  = butlp(adelay, icutoff)
-  amix = amix + (afilt * ifeedback)
+  ; adelay = delay(amix, idelay)
+  ; afilt  = butlp(adelay, icutoff)
+  ;amix = amix + (afilt * ifeedback)
   ; ==============================
 
   ipan = (ipan + 1) * 0.5

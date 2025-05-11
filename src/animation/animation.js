@@ -1,83 +1,12 @@
-// src/animation/animation.js - Reverted to continuous rotation with time subdivision as speed multiplier
+// src/animation/animation.js - Updated to use triggers module
 import * as THREE from 'three';
 import { getCurrentTime } from '../time/time.js';
-import { updateGroup, detectCrossings, createPolygonGeometry, calculateBoundingSphere } from '../geometry/geometry.js';
+// Fix for animation.js - add missing import
+import { updateGroup, calculateBoundingSphere, cleanupIntersectionMarkers, createPolygonGeometry } from '../geometry/geometry.js';
 import { processIntersections } from '../geometry/intersections.js';
-import { MARK_LIFE } from '../config/constants.js';
-import { updateLabelPositions, updateAxisLabels, removeLabel, updateRotatingLabels } from '../ui/domLabels.js';
+import { detectTriggers, clearExpiredMarkers } from '../triggers/triggers.js';
+import { updateLabelPositions, updateAxisLabels, updateRotatingLabels } from '../ui/domLabels.js';
 import { getInstrumentForFrequency, getInstrumentOptions } from '../audio/instruments.js';
-
-// Function to clean up intersection point markers
-function cleanupIntersectionMarkers(scene) {
-  // Clean up the marker group in the scene
-  if (scene && scene.userData.intersectionMarkerGroup) {
-    const group = scene.userData.intersectionMarkerGroup;
-    const parent = group.parent;
-    
-    if (parent) {
-      parent.remove(group);
-    } else {
-      scene.remove(group);
-    }
-    
-    // Clean up resources
-    group.traverse(child => {
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) {
-        if (Array.isArray(child.material)) {
-          child.material.forEach(m => m.dispose());
-        } else {
-          child.material.dispose();
-        }
-      }
-    });
-    
-    scene.userData.intersectionMarkerGroup = null;
-  }
-  
-  // Clean up any marker groups in child objects
-  if (scene.children) {
-    scene.children.forEach(child => {
-      if (child.userData && child.userData.intersectionMarkerGroup) {
-        const markerGroup = child.userData.intersectionMarkerGroup;
-        child.remove(markerGroup);
-        
-        markerGroup.traverse(obj => {
-          if (obj.geometry) obj.geometry.dispose();
-          if (obj.material) {
-            if (Array.isArray(obj.material)) {
-              obj.material.forEach(m => m.dispose());
-            } else {
-              obj.material.dispose();
-            }
-          }
-        });
-        
-        child.userData.intersectionMarkerGroup = null;
-      }
-    });
-  }
-  
-  // Clean up individual markers if present
-  if (scene && scene.userData.intersectionMarkers) {
-    for (const marker of scene.userData.intersectionMarkers) {
-      if (marker.parent) {
-        marker.parent.remove(marker);
-      } else {
-        scene.remove(marker);
-      }
-      if (marker.geometry) marker.geometry.dispose();
-      if (marker.material) {
-        if (Array.isArray(marker.material)) {
-          marker.material.forEach(m => m.dispose());
-        } else {
-          marker.material.dispose();
-        }
-      }
-    }
-    scene.userData.intersectionMarkers = [];
-  }
-}
 
 // Main animation function
 export function animate(params) {
@@ -333,17 +262,17 @@ export function animate(params) {
     state.needsPointFreqLabelsUpdate = false;
   }
 
-// Calculate rotation angle based on BPM with time subdivision
-let dAng = (bpm / 240) * 2 * Math.PI * dt;
+  // Calculate rotation angle based on BPM with time subdivision
+  let dAng = (bpm / 240) * 2 * Math.PI * dt;
 
-// Apply time subdivision as a direct speed multiplier if enabled
-if (state.useTimeSubdivision) {
-  // Use the time subdivision value directly as a multiplier
-  dAng *= state.timeSubdivisionValue;
-}
+  // Apply time subdivision as a direct speed multiplier if enabled
+  if (state.useTimeSubdivision) {
+    // Use the time subdivision value directly as a multiplier
+    dAng *= state.timeSubdivisionValue;
+  }
 
-// Calculate the new angle as an increment from the last angle
-const ang = lastAngle + dAng;
+  // Calculate the new angle as an increment from the last angle
+  const ang = lastAngle + dAng;
 
   // Apply rotation
   group.rotation.z = ang;
@@ -353,8 +282,8 @@ const ang = lastAngle + dAng;
     updateRotatingLabels(group, cam, renderer);
   }
   
-  // Detect vertex crossings and trigger audio
-  const triggeredNow = detectCrossings(
+  // Detect triggers using the new triggers module
+  const triggeredNow = detectTriggers(
     params.baseGeo, 
     lastAngle, 
     ang, 
@@ -398,36 +327,9 @@ const ang = lastAngle + dAng;
     }
   );
 
-  // Handle and fade markers
-  for (let j = markers.length - 1; j >= 0; j--) {
-    const marker = markers[j];
-    marker.life--;
-    
-    // Update opacity
-    if (marker.mesh && marker.mesh.material) {
-      marker.mesh.material.opacity = marker.life / MARK_LIFE;
-    }
-    
-    // Remove expired markers
-    if (marker.life <= 0) {
-      // Clean up mesh
-      if (marker.mesh) {
-        scene.remove(marker.mesh);
-        
-        if (marker.mesh.geometry) marker.mesh.geometry.dispose();
-        if (marker.mesh.material) marker.mesh.material.dispose();
-      }
-      
-      // Clean up text label
-      if (marker.textLabel && marker.textLabel.id) {
-        removeLabel(marker.textLabel.id);
-      }
-      
-      // Remove from array
-      markers.splice(j, 1);
-    }
-  }
-
+  // Handle marker cleanup using the new module
+  clearExpiredMarkers(scene, state.markers);
+  
   // Update state
   state.lastTrig = triggeredNow;
   state.lastAngle = ang;
