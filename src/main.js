@@ -1,4 +1,4 @@
-// src/main.js - Updated to include proper handling of scale mod parameters
+// src/main.js - Updated to include time module integration
 import * as THREE from 'three';
 import Stats from 'stats.js';
 
@@ -28,6 +28,7 @@ import {
   updateUIFromState,
   updateAudioEngineFromState
 } from './state/statePersistence.js';
+import { initializeTime, enableCsoundTiming } from './time/time.js';
 
 // Initialize stats for performance monitoring
 const stats = new Stats();
@@ -184,6 +185,22 @@ function initializeApplication() {
       console.error('Failed to initialize audio. Visualization will run without audio.');
     }
 
+    // Initialize time module with Csound instance
+    if (audioInstance && audioInstance.audioContext) {
+      initializeTime(audioInstance, audioInstance.audioContext);
+      
+      // Enable Csound timing after a short delay to ensure Csound is ready
+      setTimeout(() => {
+        enableCsoundTiming().then(success => {
+          if (success) {
+            console.log("Csound timing enabled successfully");
+          } else {
+            console.warn("Could not enable Csound timing, using audio context time instead");
+          }
+        });
+      }, 1000);
+    }
+
     // Setup synthesizer UI controls after audio is initialized
     synthUIReferences = setupSynthUI(appState, audioInstance);
     
@@ -288,7 +305,9 @@ function initializeApplication() {
     console.log("Current state before animation:", {
       useAltScale: appState.useAltScale,
       altScale: appState.altScale,
-      altStepN: appState.altStepN
+      altStepN: appState.altStepN,
+      useTimeSubdivision: appState.useTimeSubdivision,
+      timeSubdivisionValue: appState.timeSubdivisionValue
     });
     
     // Start animation loop

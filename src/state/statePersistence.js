@@ -28,6 +28,10 @@ export function saveState(state) {
       modulusValue: state.modulusValue,
       useModulus: state.useModulus,
       
+      // Time Subdivision parameters
+      timeSubdivisionValue: state.timeSubdivisionValue,
+      useTimeSubdivision: state.useTimeSubdivision,
+      
       // Scale Mod parameters - Add these to the saved data
       altScale: state.altScale,
       altStepN: state.altStepN,
@@ -107,6 +111,10 @@ export function applyLoadedState(state, loadedState) {
     
     if (loadedState.modulusValue !== undefined) state.setModulusValue(loadedState.modulusValue);
     if (loadedState.useModulus !== undefined) state.setUseModulus(loadedState.useModulus);
+    
+    // Apply time subdivision parameters
+    if (loadedState.timeSubdivisionValue !== undefined) state.setTimeSubdivisionValue(loadedState.timeSubdivisionValue);
+    if (loadedState.useTimeSubdivision !== undefined) state.setUseTimeSubdivision(loadedState.useTimeSubdivision);
     
     // Apply scale mod parameters
     if (loadedState.altScale !== undefined) state.setAltScale(loadedState.altScale);
@@ -217,6 +225,9 @@ export function exportStateToFile(state) {
       angle: state.angle,
       modulusValue: state.modulusValue,
       useModulus: state.useModulus,
+      // Add time subdivision parameters to the export
+      timeSubdivisionValue: state.timeSubdivisionValue,
+      useTimeSubdivision: state.useTimeSubdivision,
       // Add scale mod parameters to the export
       altScale: state.altScale,
       altStepN: state.altStepN,
@@ -367,6 +378,10 @@ export function updateUIFromState(state, uiElements) {
       uiElements.useModulusCheckbox.checked = state.useModulus;
     }
     
+    if (uiElements.useTimeSubdivisionCheckbox && state.useTimeSubdivision !== undefined) {
+      uiElements.useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
+    }
+    
     if (uiElements.useAltScaleCheckbox && state.useAltScale !== undefined) {
       uiElements.useAltScaleCheckbox.checked = state.useAltScale;
     }
@@ -430,6 +445,14 @@ export function updateUIFromState(state, uiElements) {
     // Update modulus radio buttons
     if (state.modulusValue !== undefined && uiElements.modulusRadioGroup) {
       const radioButton = document.querySelector(`#modulus-${state.modulusValue}`);
+      if (radioButton) {
+        radioButton.checked = true;
+      }
+    }
+    
+    // Update time subdivision radio buttons
+    if (state.timeSubdivisionValue !== undefined && uiElements.timeSubdivisionRadioGroup) {
+      const radioButton = document.querySelector(`#timeSubdivision-${state.timeSubdivisionValue}`);
       if (radioButton) {
         radioButton.checked = true;
       }

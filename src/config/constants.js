@@ -23,6 +23,10 @@ export const TEXT_LABEL_COLOR = 0xffffff;
 export const TEXT_LABEL_OFFSET_Y = 20; // Offset to position text above marker
 export const TEXT_LABEL_OPACITY = 0.9;
 
+// Time subdivision constants
+export const TICKS_PER_BEAT = 480;
+export const TICKS_PER_MEASURE = 1920; // In 4/4 time (480 ticks/beat * 4 beats/measure)
+
 // Default values
 export const DEFAULT_VALUES = {
   BPM: 10,
@@ -39,7 +43,9 @@ export const DEFAULT_VALUES = {
   SHOW_POINTS_FREQ_LABELS: false, // Default for point frequency labels
   ALT_SCALE: 1.2, // Default alt scale value
   ALT_STEP_N: 2, // Default apply alt scale every N copies
-  USE_ALT_SCALE: false // Default for alt scale feature
+  USE_ALT_SCALE: false, // Default for alt scale feature
+  TIME_SUBDIVISION_VALUE: 1, // Default time subdivision value (1x normal speed)
+  USE_TIME_SUBDIVISION: false // Default for time subdivision feature (disabled)
 };
 
 // UI ranges
@@ -53,5 +59,6 @@ export const UI_RANGES = {
   LERP_TIME: { MIN: 0.1, MAX: 5.0, STEP: 0.1 },
   MODULUS: { MIN: 1, MAX: 12, STEP: 1 },
   ALT_SCALE: { MIN: 0.1, MAX: 10, STEP: 0.01 }, // Range for alt scale
-  ALT_STEP_N: { MIN: 1, MAX: 32, STEP: 1 } // Range for alt step N
+  ALT_STEP_N: { MIN: 1, MAX: 32, STEP: 1 }, // Range for alt step N
+  TIME_SUBDIVISION: { MIN: 0.5, MAX: 8, STEP: 0.5 } // Range for time subdivision
 };

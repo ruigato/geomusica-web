@@ -515,7 +515,11 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
     // The first child is the LineLoop
     const mesh = copyGroup.children[0];
     
-    const worldRot = angle + copyGroup.rotation.z;
+    // Use the copy group's local rotation plus the current group rotation for world rotation
+    const localRotation = copyGroup.rotation.z || 0;
+    const lastWorldRot = lastAngle + localRotation;
+    const worldRot = angle + localRotation;
+    
     const worldScale = mesh.scale.x;
     
     // Process each vertex in this copy
@@ -526,17 +530,50 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
       const x1 = x0 * worldScale;
       const y1 = y0 * worldScale;
       
-      const prevX = x1 * Math.cos(lastAngle + copyGroup.rotation.z) - y1 * Math.sin(lastAngle + copyGroup.rotation.z);
+      // Calculate vertex positions at previous and current angles
+      const prevX = x1 * Math.cos(lastWorldRot) - y1 * Math.sin(lastWorldRot);
+      const prevY = x1 * Math.sin(lastWorldRot) + y1 * Math.cos(lastWorldRot);
+      
       const currX = x1 * Math.cos(worldRot) - y1 * Math.sin(worldRot);
       const currY = x1 * Math.sin(worldRot) + y1 * Math.cos(worldRot);
       
-      // Calculate the world position of the vertex
-      const worldX = x1 * Math.cos(worldRot) - y1 * Math.sin(worldRot);
-      const worldY = x1 * Math.sin(worldRot) + y1 * Math.cos(worldRot);
+      // Calculate the world position of the vertex at current angle
+      const worldX = currX;
+      const worldY = currY;
       
       const key = `${ci}-${vi}`;
       
+      // To detect a crossing:
+      // 1. The point must have crossed from right to left (positive X to negative X)
+      // 2. The point must be above the X-axis (positive Y)
+      // 3. The point must not have been triggered last frame
+      
+      // Improved crossing detection handling jumps in angle
+      let hasCrossed = false;
+      
+      // Basic case: point crosses from right to left
       if (prevX > 0 && currX <= 0 && currY > 0 && !lastTrig.has(key)) {
+        hasCrossed = true;
+      } 
+      // Handle the case where angle change is so large that traditional crossing detection fails
+      // Check if the point's path would have crossed the Y-axis
+      else if (!lastTrig.has(key) && currY > 0) {
+        // Calculate angular displacement relative to Y-axis
+        const prevAngleFromYAxis = Math.atan2(prevX, prevY);
+        const currAngleFromYAxis = Math.atan2(currX, currY);
+        
+        // If the angles are on opposite sides of the Y-axis, and we've moved enough
+        // to cross it, mark as a crossing
+        if (Math.sign(prevAngleFromYAxis) > 0 && Math.sign(currAngleFromYAxis) <= 0) {
+          const angleDiff = Math.abs(prevAngleFromYAxis - currAngleFromYAxis);
+          // Only count it if the angle difference is reasonable (to avoid false positives)
+          if (angleDiff < Math.PI) {
+            hasCrossed = true;
+          }
+        }
+      }
+      
+      if (hasCrossed) {
         // Calculate frequency for this point
         const freq = Math.hypot(x1, y1);
         
@@ -586,6 +623,8 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
       
       // Calculate previous and current positions
       const prevX = localPos.x * Math.cos(lastAngle) - localPos.y * Math.sin(lastAngle);
+      const prevY = localPos.x * Math.sin(lastAngle) + localPos.y * Math.cos(lastAngle);
+      
       const currX = localPos.x * Math.cos(angle) - localPos.y * Math.sin(angle);
       const currY = localPos.x * Math.sin(angle) + localPos.y * Math.cos(angle);
       
@@ -596,8 +635,31 @@ export function detectCrossings(baseGeo, lastAngle, angle, copies, group, lastTr
       // Create a unique key for this intersection point
       const key = `intersection-${i}`;
       
-      // Check if this point crossed the Y axis from right to left
+      // Similar improved crossing detection logic for intersection points
+      let hasCrossed = false;
+      
+      // Basic case: point crosses from right to left
       if (prevX > 0 && currX <= 0 && currY > 0 && !lastTrig.has(key)) {
+        hasCrossed = true;
+      }
+      // Handle the case where angle change is so large that traditional crossing detection fails
+      else if (!lastTrig.has(key) && currY > 0) {
+        // Calculate angular displacement relative to Y-axis
+        const prevAngleFromYAxis = Math.atan2(prevX, prevY);
+        const currAngleFromYAxis = Math.atan2(currX, currY);
+        
+        // If the angles are on opposite sides of the Y-axis, and we've moved enough
+        // to cross it, mark as a crossing
+        if (Math.sign(prevAngleFromYAxis) > 0 && Math.sign(currAngleFromYAxis) <= 0) {
+          const angleDiff = Math.abs(prevAngleFromYAxis - currAngleFromYAxis);
+          // Only count it if the angle difference is reasonable (to avoid false positives)
+          if (angleDiff < Math.PI) {
+            hasCrossed = true;
+          }
+        }
+      }
+      
+      if (hasCrossed) {
         // Calculate frequency for this point
         const freq = Math.hypot(localPos.x, localPos.y);
         

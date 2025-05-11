@@ -37,6 +37,10 @@ export function setupUI(state) {
   const useModulusCheckbox = document.getElementById('useModulusCheckbox');
   const modulusRadioGroup = document.getElementById('modulusRadioGroup');
   
+  // Time subdivision controls
+  const useTimeSubdivisionCheckbox = document.getElementById('useTimeSubdivisionCheckbox');
+  const timeSubdivisionRadioGroup = document.getElementById('timeSubdivisionRadioGroup');
+  
   // Scale Mod controls
   const altScaleRange = document.getElementById('altScaleRange');
   const altScaleNumber = document.getElementById('altScaleNumber');
@@ -59,6 +63,7 @@ export function setupUI(state) {
   showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;
   showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
   useAltScaleCheckbox.checked = state.useAltScale;
+  useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
   
   // Set initial values for scale mod controls from state
   altScaleRange.value = state.altScale;
@@ -81,10 +86,19 @@ export function setupUI(state) {
   // Initialize modulus radio buttons
   setupModulusRadioButtons(modulusRadioGroup, state);
   
+  // Initialize time subdivision radio buttons
+  setupTimeSubdivisionRadioButtons(timeSubdivisionRadioGroup, state);
+  
   // Setup modulus checkbox
   useModulusCheckbox.checked = state.useModulus;
   useModulusCheckbox.addEventListener('change', e => {
     state.setUseModulus(e.target.checked);
+  });
+  
+  // Setup time subdivision checkbox
+  useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
+  useTimeSubdivisionCheckbox.addEventListener('change', e => {
+    state.setUseTimeSubdivision(e.target.checked);
   });
   
   // Setup alt scale checkbox
@@ -185,6 +199,7 @@ export function setupUI(state) {
     numberRange, numberNumber, numberValue,
     useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
     useModulusCheckbox, modulusRadioGroup,
+    useTimeSubdivisionCheckbox, timeSubdivisionRadioGroup,
     altScaleRange, altScaleNumber, altScaleValue,
     altStepNRange, altStepNNumber, altStepNValue,
     useAltScaleCheckbox,
@@ -220,6 +235,60 @@ function setupModulusRadioButtons(container, state) {
     const radioLabel = document.createElement('label');
     radioLabel.htmlFor = `modulus-${i}`;
     radioLabel.textContent = i;
+    
+    radioItem.appendChild(radioInput);
+    radioItem.appendChild(radioLabel);
+    container.appendChild(radioItem);
+  }
+}
+
+// Function to set up time subdivision radio buttons
+function setupTimeSubdivisionRadioButtons(container, state) {
+  // Clear any existing content
+  container.innerHTML = '';
+  
+  // Create radio buttons for each division option
+  // Format: [displayed value, actual multiplier]
+  const divisions = [
+    // Faster options (>1x)
+    ["8x", 8],
+    ["6x", 6],
+    ["4x", 4],
+    ["3x", 3],
+    ["2x", 2],
+    ["1.5x", 1.5],
+    // Normal speed
+    ["1x", 1],
+    // Slower options (<1x)
+    ["1/1.5x", 1/1.5],
+    ["1/2x", 1/2],
+    ["1/3x", 1/3],
+    ["1/4x", 1/4],
+    ["1/6x", 1/6],
+    ["1/8x", 1/8]
+  ];
+  
+  for (const [label, value] of divisions) {
+    const radioItem = document.createElement('div');
+    radioItem.className = 'radio-item';
+    
+    const radioInput = document.createElement('input');
+    radioInput.type = 'radio';
+    radioInput.id = `timeSubdivision-${value}`;
+    radioInput.name = 'timeSubdivision';
+    radioInput.value = value;
+    radioInput.checked = (Math.abs(value - state.timeSubdivisionValue) < 0.001);
+    
+    // Add event listener
+    radioInput.addEventListener('change', () => {
+      if (radioInput.checked) {
+        state.setTimeSubdivisionValue(parseFloat(value));
+      }
+    });
+    
+    const radioLabel = document.createElement('label');
+    radioLabel.htmlFor = `timeSubdivision-${value}`;
+    radioLabel.textContent = label;
     
     radioItem.appendChild(radioInput);
     radioItem.appendChild(radioLabel);

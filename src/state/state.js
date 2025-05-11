@@ -1,5 +1,5 @@
-// src/state/state.js - Updated with proper handling for altScale and altStepN
-import { Tone } from '../audio/audio.js';
+// src/state/state.js - Updated with time module integration
+import { getCurrentTime } from '../time/time.js';
 import { DEFAULT_VALUES } from '../config/constants.js';
 import { clearLabels } from '../ui/domLabels.js';
 
@@ -26,7 +26,7 @@ export function generateSequence(n) {
 export function createAppState() {
   return {
     // Time and animation related state
-    lastTime: Tone.now(),
+    lastTime: getCurrentTime(),
     lastAngle: 0,
     lastTrig: new Set(),
     markers: [],
@@ -56,7 +56,11 @@ export function createAppState() {
     modulusValue: DEFAULT_VALUES.MODULUS_VALUE,
     useModulus: DEFAULT_VALUES.USE_MODULUS,
     
-    // SCALE MOD related parameters - properly initialized
+    // TIME SUBDIVISION related parameters
+    timeSubdivisionValue: DEFAULT_VALUES.TIME_SUBDIVISION_VALUE,
+    useTimeSubdivision: DEFAULT_VALUES.USE_TIME_SUBDIVISION,
+    
+    // SCALE MOD related parameters
     altScale: DEFAULT_VALUES.ALT_SCALE,
     altStepN: DEFAULT_VALUES.ALT_STEP_N,
     useAltScale: DEFAULT_VALUES.USE_ALT_SCALE,
@@ -176,6 +180,38 @@ export function createAppState() {
     setUseModulus(value) {
       this.useModulus = Boolean(value);
       this.needsIntersectionUpdate = true;
+    },
+    
+    /**
+     * Set time subdivision value
+     * @param {number} value New time subdivision value
+     */
+    setTimeSubdivisionValue(value) {
+      this.timeSubdivisionValue = Number(value);
+    },
+    
+    /**
+     * Toggle time subdivision mode
+     * @param {boolean} value Enable/disable time subdivision
+     */
+    setUseTimeSubdivision(value) {
+      this.useTimeSubdivision = Boolean(value);
+    },
+    
+    /**
+     * Get time subdivision value
+     * @returns {number} Current time subdivision value
+     */
+    getTimeSubdivisionValue() {
+      return this.timeSubdivisionValue;
+    },
+    
+    /**
+     * Check if time subdivision is enabled
+     * @returns {boolean} True if time subdivision is enabled
+     */
+    isUsingTimeSubdivision() {
+      return this.useTimeSubdivision;
     },
     
     /**

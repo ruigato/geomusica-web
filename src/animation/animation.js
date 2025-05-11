@@ -1,6 +1,6 @@
-// src/animation/animation.js - Optimized version
+// src/animation/animation.js - Reverted to continuous rotation with time subdivision as speed multiplier
 import * as THREE from 'three';
-import { getCurrentTime } from '../audio/audio.js';
+import { getCurrentTime } from '../time/time.js';
 import { updateGroup, detectCrossings, createPolygonGeometry, calculateBoundingSphere } from '../geometry/geometry.js';
 import { processIntersections } from '../geometry/intersections.js';
 import { MARK_LIFE } from '../config/constants.js';
@@ -115,7 +115,7 @@ export function animate(params) {
   // Schedule next frame
   requestAnimationFrame(() => animate(params));
 
-  // Get accurate time
+  // Get accurate time from time module
   const tNow = getCurrentTime();
   const dt = tNow - lastTime;
   state.lastTime = tNow;
@@ -333,9 +333,17 @@ export function animate(params) {
     state.needsPointFreqLabelsUpdate = false;
   }
 
-  // Calculate rotation angle based on BPM
-  const dAng = (bpm / 240) * 2 * Math.PI * dt;
-  const ang = lastAngle + dAng;
+// Calculate rotation angle based on BPM with time subdivision
+let dAng = (bpm / 240) * 2 * Math.PI * dt;
+
+// Apply time subdivision as a direct speed multiplier if enabled
+if (state.useTimeSubdivision) {
+  // Use the time subdivision value directly as a multiplier
+  dAng *= state.timeSubdivisionValue;
+}
+
+// Calculate the new angle as an increment from the last angle
+const ang = lastAngle + dAng;
 
   // Apply rotation
   group.rotation.z = ang;

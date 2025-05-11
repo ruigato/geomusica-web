@@ -1,4 +1,4 @@
-// src/audio/audio.js - Updated for single FM bell instrument
+// src/audio/audio.js - Updated for time module integration
 
 import { Csound } from '@csound/browser';
 
@@ -8,8 +8,6 @@ let audioContext = null;
 let csoundStarted = false;
 let startTime = 0;
 let sampleRate = 44100; 
-let isUsingCsoundTiming = false;
-let lastCsoundTime = 0;
 
 // Path to the orchestra file
 const ORC_FILE_PATH = '/src/audio/GeoMusica.orc';
@@ -25,6 +23,22 @@ let activeInstrument = InstrumentType.FM_BELL;
 // Channel for time synchronization with Csound
 const TIME_CHANNEL_NAME = "currentTime";
 
+/**
+ * Get the Csound instance
+ * @returns {Object|null} Csound instance or null if not initialized
+ */
+export function getCsoundInstance() {
+  return csoundInstance;
+}
+
+/**
+ * Check if audio system is ready
+ * @returns {boolean} True if Csound is initialized and started
+ */
+export function isAudioReady() {
+  return csoundInstance !== null && csoundStarted;
+}
+
 // Initialize the Audio Context
 function initAudioContext() {
   if (!audioContext) {
@@ -36,22 +50,6 @@ function initAudioContext() {
     }
   }
   return audioContext;
-}
-
-// Get current time with Csound's internal clock when available
-export function getCurrentTime() {
-  if (csoundInstance && csoundStarted && isUsingCsoundTiming) {
-    try {
-      const csoundTime = csoundInstance.getControlChannel(TIME_CHANNEL_NAME);
-      if (typeof csoundTime === 'number' && !isNaN(csoundTime)) {
-        lastCsoundTime = csoundTime;
-        return csoundTime;
-      }
-    } catch (error) {
-      // Fall back to audio context time on error
-    }
-  }
-  return getAudioContextTime();
 }
 
 // Helper for consistently getting audio context time
@@ -130,18 +128,12 @@ export async function setupAudio() {
             // Play a test note
             playNote(432, 0.7, 0.5);
             
-            // Enable Csound timing
+            // Initialize time channel
             setTimeout(async () => {
               try {
                 await csoundInstance.setControlChannel(TIME_CHANNEL_NAME, 0);
-                const initialTime = await csoundInstance.getControlChannel(TIME_CHANNEL_NAME);
-                
-                if (typeof initialTime === 'number' && !isNaN(initialTime)) {
-                  isUsingCsoundTiming = true;
-                }
               } catch (e) {
-                console.warn("Using AudioContext timing instead of Csound timing");
-                isUsingCsoundTiming = false;
+                console.warn("Could not initialize Csound time channel");
               }
             }, 1000);
             
@@ -342,7 +334,6 @@ export async function cleanupAudio() {
       }
       csoundInstance = null;
       csoundStarted = false;
-      isUsingCsoundTiming = false;
     } catch (error) {
       console.error("Error cleaning up Csound:", error);
     }
@@ -360,7 +351,10 @@ export async function cleanupAudio() {
 
 // Export a minimal Tone stub for compatibility
 export const Tone = {
-  now: getCurrentTime,
+  now: () => {
+    // Use audio context time since getCurrentTime is now in time.js
+    return getAudioContextTime();
+  },
   start: async () => {
     if (audioContext && audioContext.state === 'suspended') {
       await audioContext.resume();
