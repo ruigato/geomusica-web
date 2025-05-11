@@ -208,7 +208,7 @@ function initializeApplication() {
     if (savedState) {
       console.log("Applying loaded state to UI elements:", savedState);
       
-      // Update both UI sets with all loaded values including scale mod parameters
+      // Update both UI sets with all loaded values including equal temperament settings
       updateUIFromState(appState, { ...uiReferences, ...synthUIReferences });
       
       // Apply synth parameters directly with the new approach
@@ -236,7 +236,13 @@ function initializeApplication() {
 
     // Function to handle audio triggers
     const handleAudioTrigger = (x, y, lastAngle, angle, tNow, options = {}) => {
-      return triggerAudio(audioInstance, x, y, lastAngle, angle, tNow, options);
+      // Make sure equal temperament settings are passed through
+      const audioOptions = {
+        ...options,
+        useEqualTemperament: appState.useEqualTemperament,
+        referenceFrequency: appState.referenceFrequency
+      };
+      return triggerAudio(audioInstance, x, y, lastAngle, angle, tNow, audioOptions);
     };
 
     // Three.js setup
@@ -307,7 +313,9 @@ function initializeApplication() {
       altScale: appState.altScale,
       altStepN: appState.altStepN,
       useTimeSubdivision: appState.useTimeSubdivision,
-      timeSubdivisionValue: appState.timeSubdivisionValue
+      timeSubdivisionValue: appState.timeSubdivisionValue,
+      useEqualTemperament: appState.useEqualTemperament,
+      referenceFrequency: appState.referenceFrequency
     });
     
     // Start animation loop

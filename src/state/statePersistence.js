@@ -52,6 +52,9 @@ export function saveState(state) {
       brightness: state.brightness,
       volume: state.volume,
       
+      useEqualTemperament: state.useEqualTemperament,
+      referenceFrequency: state.referenceFrequency,
+
       // Display parameters
       showAxisFreqLabels: state.showAxisFreqLabels,
       showPointsFreqLabels: state.showPointsFreqLabels
@@ -133,6 +136,10 @@ export function applyLoadedState(state, loadedState) {
     if (loadedState.brightness !== undefined) state.setBrightness(loadedState.brightness);
     if (loadedState.volume !== undefined) state.setVolume(loadedState.volume);
     
+    if (loadedState.useEqualTemperament !== undefined) state.setUseEqualTemperament(loadedState.useEqualTemperament);
+    if (loadedState.referenceFrequency !== undefined) state.setReferenceFrequency(loadedState.referenceFrequency);
+  
+
     if (loadedState.showAxisFreqLabels !== undefined) state.setShowAxisFreqLabels(loadedState.showAxisFreqLabels);
     if (loadedState.showPointsFreqLabels !== undefined) state.setShowPointsFreqLabels(loadedState.showPointsFreqLabels);
     
@@ -441,7 +448,17 @@ export function updateUIFromState(state, uiElements) {
       if (uiElements.volumeNumber) uiElements.volumeNumber.value = state.volume;
       if (uiElements.volumeValue) uiElements.volumeValue.textContent = state.volume.toFixed(2);
     }
+
+    if (uiElements.useEqualTemperamentCheckbox && state.useEqualTemperament !== undefined) {
+      uiElements.useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
+    }    
     
+    if (uiElements.referenceFreqRange && state.referenceFrequency !== undefined) {
+      uiElements.referenceFreqRange.value = state.referenceFrequency;
+      if (uiElements.referenceFreqNumber) uiElements.referenceFreqNumber.value = state.referenceFrequency;
+      if (uiElements.referenceFreqValue) uiElements.referenceFreqValue.textContent = state.referenceFrequency;
+    }
+
     // Update modulus radio buttons
     if (state.modulusValue !== undefined && uiElements.modulusRadioGroup) {
       const radioButton = document.querySelector(`#modulus-${state.modulusValue}`);

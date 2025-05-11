@@ -1,6 +1,6 @@
 // src/state/state.js - Updated with time module integration
 import { getCurrentTime } from '../time/time.js';
-import { DEFAULT_VALUES } from '../config/constants.js';
+import { DEFAULT_VALUES, UI_RANGES } from '../config/constants.js';
 import { clearLabels } from '../ui/domLabels.js';
 
 /**
@@ -51,6 +51,10 @@ export function createAppState() {
     release: 1.0,
     brightness: 1.0,
     volume: 0.8,
+    
+    // Equal temperament settings
+    useEqualTemperament: DEFAULT_VALUES.USE_EQUAL_TEMPERAMENT,
+    referenceFrequency: DEFAULT_VALUES.REFERENCE_FREQUENCY,
     
     // MODULUS related parameters
     modulusValue: DEFAULT_VALUES.MODULUS_VALUE,
@@ -340,6 +344,23 @@ export function createAppState() {
      */
     setVolume(value) {
       this.volume = Math.max(0.0, Math.min(1.0, Number(value)));
+    },
+    
+    /**
+     * Toggle equal temperament
+     * @param {boolean} value Enable/disable equal temperament
+     */
+    setUseEqualTemperament(value) {
+      this.useEqualTemperament = Boolean(value);
+    },
+    
+    /**
+     * Set reference frequency for equal temperament
+     * @param {number} value Reference frequency in Hz
+     */
+    setReferenceFrequency(value) {
+      this.referenceFrequency = Math.max(UI_RANGES.REFERENCE_FREQUENCY.MIN, 
+                               Math.min(UI_RANGES.REFERENCE_FREQUENCY.MAX, Number(value)));
     },
     
     /**

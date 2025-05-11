@@ -296,8 +296,12 @@ export function animate(params) {
       // Calculate frequency
       const freq = Math.hypot(x, y);
       const instrumentId = getInstrumentForFrequency(freq);
+    
+      // Add equal temperament options
       const options = getInstrumentOptions(instrumentId, {
-        frequency: freq
+        frequency: freq,
+        useEqualTemperament: state.useEqualTemperament,
+        referenceFrequency: state.referenceFrequency
       });
       
       // Choose instrument based on frequency range
@@ -315,13 +319,15 @@ export function animate(params) {
         instrumentNumber = 5; // Percussion for very high frequencies
       }
       
-      // Trigger audio
-      if (triggerAudioCallback) {
-        triggerAudioCallback(x, y, lastAngle, angle, tNow, {
-          frequency: freq,
-          instrument: instrumentNumber
-        });
-      }
+    // Trigger audio with updated options including equal temperament settings
+    if (triggerAudioCallback) {
+      return triggerAudioCallback(x, y, lastAngle, angle, tNow, {
+        frequency: freq,
+        instrument: instrumentNumber,
+        useEqualTemperament: state.useEqualTemperament,
+        referenceFrequency: state.referenceFrequency
+      });
+    }
       
       return freq;
     }

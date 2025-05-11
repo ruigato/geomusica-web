@@ -59,11 +59,18 @@ export function setupUI(state) {
   const showAxisFreqLabelsCheckbox = document.getElementById('showAxisFreqLabelsCheckbox');
   const showPointsFreqLabelsCheckbox = document.getElementById('showPointsFreqLabelsCheckbox');
   
+  // Equal temperament controls
+  const useEqualTemperamentCheckbox = document.getElementById('useEqualTemperamentCheckbox');
+  const referenceFreqRange = document.getElementById('referenceFreqRange');
+  const referenceFreqNumber = document.getElementById('referenceFreqNumber');
+  const referenceFreqValue = document.getElementById('referenceFreqValue');
+  
   // Initialize checkbox states from app state
   showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;
   showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
   useAltScaleCheckbox.checked = state.useAltScale;
   useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
+  useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
   
   // Set initial values for scale mod controls from state
   altScaleRange.value = state.altScale;
@@ -73,6 +80,11 @@ export function setupUI(state) {
   altStepNRange.value = state.altStepN;
   altStepNNumber.value = state.altStepN;
   altStepNValue.textContent = state.altStepN;
+  
+  // Set initial values for equal temperament controls
+  referenceFreqRange.value = state.referenceFrequency;
+  referenceFreqNumber.value = state.referenceFrequency;
+  referenceFreqValue.textContent = state.referenceFrequency;
   
   // Setup event listeners for new checkboxes
   showAxisFreqLabelsCheckbox.addEventListener('change', e => {
@@ -105,6 +117,12 @@ export function setupUI(state) {
   useAltScaleCheckbox.checked = state.useAltScale;
   useAltScaleCheckbox.addEventListener('change', e => {
     state.setUseAltScale(e.target.checked);
+  });
+  
+  // Setup equal temperament checkbox
+  useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
+  useEqualTemperamentCheckbox.addEventListener('change', e => {
+    state.setUseEqualTemperament(e.target.checked);
   });
   
   // Setup intersections checkbox
@@ -190,6 +208,12 @@ export function setupUI(state) {
     UI_RANGES.ALT_STEP_N.MIN, UI_RANGES.ALT_STEP_N.MAX, 
     Number);
 
+  // Link Equal Temperament reference frequency controls
+  syncPair(referenceFreqRange, referenceFreqNumber, referenceFreqValue,
+    value => state.setReferenceFrequency(Number(value)),
+    UI_RANGES.REFERENCE_FREQUENCY.MIN, UI_RANGES.REFERENCE_FREQUENCY.MAX,
+    Number);
+
   return {
     bpmRange, bpmNumber, bpmValue,
     radiusRange, radiusNumber, radiusValue,
@@ -204,7 +228,9 @@ export function setupUI(state) {
     altStepNRange, altStepNNumber, altStepNValue,
     useAltScaleCheckbox,
     useIntersectionsCheckbox, showAxisFreqLabelsCheckbox,
-    showPointsFreqLabelsCheckbox
+    showPointsFreqLabelsCheckbox,
+    useEqualTemperamentCheckbox,
+    referenceFreqRange, referenceFreqNumber, referenceFreqValue
   };
 }
 

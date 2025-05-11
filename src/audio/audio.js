@@ -1,6 +1,7 @@
 // src/audio/audio.js - Updated for time module integration
 
 import { Csound } from '@csound/browser';
+import { quantizeToEqualTemperament, getNoteName } from './frequencyUtils.js';
 
 // Core audio system variables
 let csoundInstance = null;
@@ -264,8 +265,21 @@ export async function triggerAudio(audioInstance, x, y, lastAngle, angle, tNow, 
   
   try {
     // Calculate frequency from coordinates
-    const freq = Math.hypot(x, y);
-    
+    let freq = Math.hypot(x, y);
+    const originalFreq = freq; // Store the original for return value
+
+    // If equal temperament is enabled, quantize the frequency
+    if (options.useEqualTemperament) {
+      const refFreq = options.referenceFrequency || 440;
+      freq = quantizeToEqualTemperament(freq, refFreq);
+      
+      // If debug logging is enabled, log the original and quantized frequency
+      if (options.debug) {
+        const noteName = getNoteName(freq, refFreq);
+        console.log(`Original freq: ${originalFreq.toFixed(2)} Hz, Quantized: ${freq.toFixed(2)} Hz (${noteName})`);
+      }
+    }    
+
     // Calculate pan based on angle
     const angRad = angle % (2 * Math.PI);
     const pan = Math.sin(angRad);
@@ -276,7 +290,7 @@ export async function triggerAudio(audioInstance, x, y, lastAngle, angle, tNow, 
     // Always use our FM bell instrument
     playNote(freq, 0.7, noteDuration, pan);
     
-    return freq;
+    return originalFreq;
   } catch (error) {
     console.error("Error in triggerAudio:", error);
     return Math.hypot(x, y);

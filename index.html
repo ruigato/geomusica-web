@@ -207,6 +207,20 @@
           <input type="number" id="volumeNumber" min="0.0" max="1.0" step="0.01" value="0.8">
         </div>
       </div>
+      <div class="control">
+        <label for="useEqualTemperamentCheckbox">Equal Temperament:</label>
+        <input type="checkbox" id="useEqualTemperamentCheckbox">
+        <span class="help-text">When enabled, frequencies are quantized to the nearest equal temperament note</span>
+      </div>
+      <div class="control">
+        <label for="referenceFreqRange">Reference Freq (Hz):</label>
+        <div class="slider-container">
+          <input type="range" id="referenceFreqRange" min="415" max="466" step="1" value="440">
+          <span id="referenceFreqValue" class="slider-value">440</span>
+          <input type="number" id="referenceFreqNumber" min="415" max="466" step="1" value="440">
+        </div>
+        <span class="help-text">Reference frequency for equal temperament (standard A4 = 440Hz)</span>
+      </div>
     </section>
     
     <section>

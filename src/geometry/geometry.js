@@ -10,6 +10,8 @@ import {
 } from '../config/constants.js';
 import { findAllIntersections } from './intersections.js';
 import { createOrUpdateLabel } from '../ui/domLabels.js';
+// Import the frequency utilities at the top of geometry.js
+import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils.js';
 
 /**
  * Create a regular polygon outline
@@ -138,8 +140,27 @@ function createIntersectionPointGeometry() {
 export function createTextLabel(text, position, parent, isAxisLabel = true, camera = null, renderer = null) {
   // For DOM-based labels, we don't actually create a Three.js object
   // Instead, we return an info object that can be used to update the DOM label
+  
+  // If the parent has a userData.state with equal temperament settings,
+  // format the text accordingly
+  let displayText = text;
+  if (parent && parent.userData && parent.userData.state) {
+    const state = parent.userData.state;
+    if (state.useEqualTemperament && typeof text === 'number') {
+      // Text is a frequency value
+      const freq = text;
+      const refFreq = state.referenceFrequency || 440;
+      const quantizedFreq = quantizeToEqualTemperament(freq, refFreq);
+      const noteName = getNoteName(quantizedFreq, refFreq);
+      displayText = `${freq.toFixed(1)}Hz (${noteName})`;
+    } else if (typeof text === 'number') {
+      // Text is a frequency value but equal temperament is disabled
+      displayText = `${text.toFixed(2)}Hz`;
+    }
+  }
+  
   return {
-    text,
+    text: displayText,
     position: position.clone ? position.clone() : new THREE.Vector3(position.x, position.y, position.z || 0),
     isAxisLabel,
     id: `label-${Math.random().toString(36).substr(2, 9)}`,

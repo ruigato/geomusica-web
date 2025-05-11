@@ -45,7 +45,9 @@ export const DEFAULT_VALUES = {
   ALT_STEP_N: 2, // Default apply alt scale every N copies
   USE_ALT_SCALE: false, // Default for alt scale feature
   TIME_SUBDIVISION_VALUE: 1, // Default time subdivision value (1x normal speed)
-  USE_TIME_SUBDIVISION: false // Default for time subdivision feature (disabled)
+  USE_TIME_SUBDIVISION: false, // Default for time subdivision feature (disabled)
+  USE_EQUAL_TEMPERAMENT: false, // Default for equal temperament feature (disabled)
+  REFERENCE_FREQUENCY: 440 // Default reference frequency (A4 = 440Hz)
 };
 
 // UI ranges
@@ -60,5 +62,6 @@ export const UI_RANGES = {
   MODULUS: { MIN: 1, MAX: 12, STEP: 1 },
   ALT_SCALE: { MIN: 0.1, MAX: 10, STEP: 0.01 }, // Range for alt scale
   ALT_STEP_N: { MIN: 1, MAX: 32, STEP: 1 }, // Range for alt step N
-  TIME_SUBDIVISION: { MIN: 0.5, MAX: 8, STEP: 0.5 } // Range for time subdivision
+  TIME_SUBDIVISION: { MIN: 0.5, MAX: 8, STEP: 0.5 }, // Range for time subdivision
+  REFERENCE_FREQUENCY: { MIN: 415, MAX: 466, STEP: 1 } // Range for reference frequency
 };

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { MARK_LIFE, OVERLAP_THRESHOLD } from '../config/constants.js';
 import { createOrUpdateLabel, createAxisLabel, removeLabel } from '../ui/domLabels.js';
 import { getFrequency } from '../geometry/geometry.js';
+import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils.js';
 
 /**
  * Calculate distance between two points in 2D space
@@ -80,8 +81,19 @@ function createMarker(worldRot, x, y, scene, frequency = null, camera = null, re
   // Create text label if frequency is provided and axis labels are enabled
   let textLabel = null;
   if (frequency !== null && scene.userData.state && scene.userData.state.showAxisFreqLabels && camera && renderer) {
-    // Format frequency with 2 decimal places
-    const freqText = `${frequency.toFixed(2)}`;
+    // Format frequency with appropriate display
+    let freqText;
+    
+    // If equal temperament is enabled, show both the original frequency and the note name
+    if (scene.userData.state.useEqualTemperament) {
+      const refFreq = scene.userData.state.referenceFrequency || 440;
+      const quantizedFreq = quantizeToEqualTemperament(frequency, refFreq);
+      const noteName = getNoteName(quantizedFreq, refFreq);
+      freqText = `${frequency.toFixed(1)}Hz (${noteName})`;
+    } else {
+      // Just show frequency in free temperament mode
+      freqText = `${frequency.toFixed(2)}Hz`;
+    }
     
     // Create a unique ID for this temporary label
     const labelId = `axis-${Math.random().toString(36).substr(2, 9)}`;
