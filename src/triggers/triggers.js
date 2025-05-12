@@ -1,4 +1,4 @@
-// src/triggers/triggers.js - Updated to use note objects
+// src/triggers/triggers.js - Updated to use note objects with fixes for quantization issues
 import * as THREE from 'three';
 import { MARK_LIFE, OVERLAP_THRESHOLD, TICKS_PER_BEAT, TICKS_PER_MEASURE } from '../config/constants.js';
 import { createOrUpdateLabel, createAxisLabel, removeLabel } from '../ui/domLabels.js';
@@ -55,18 +55,19 @@ function isPointOverlapping(x, y, activePoints) {
  * @param {number} quantizedTime - Time when trigger should execute
  */
 function storePendingTrigger(triggerInfo, quantizedTime) {
-  pendingTriggers.push({
+  // Create deep copy of trigger info to prevent reference issues
+  const storedInfo = {
     ...triggerInfo,
-    executeTime: quantizedTime
-  });
+    executeTime: quantizedTime,
+    note: triggerInfo.note ? {...triggerInfo.note} : null // Make a copy of the note object
+  };
+  
+  pendingTriggers.push(storedInfo);
   
   // Sort pending triggers by execution time
   pendingTriggers.sort((a, b) => a.executeTime - b.executeTime);
   
-  // For debugging
-  if (triggerInfo.note) {
-    console.log(`Scheduled trigger for ${quantizedTime.toFixed(3)}s, freq: ${triggerInfo.note.frequency.toFixed(1)}Hz, pending: ${pendingTriggers.length}`);
-  }
+
 }
 
 /**
@@ -95,10 +96,8 @@ export function processPendingTriggers(currentTime, audioCallback, scene) {
       const noteCopy = { ...note };
       noteCopy.time = executeTime;
       
-      // Log the note details before triggering
-      console.log(`Processing pending trigger: frequency=${noteCopy.frequency}, time=${executeTime}`);
-      
-      // IMPORTANT: Send the complete note object
+
+      // IMPORTANT: Send the complete note object copy
       audioCallback(noteCopy);
       
       // Create a marker with visual feedback
@@ -198,10 +197,16 @@ function handleQuantizedTrigger(tNow, state, triggerInfo) {
     };
   }
   
+  // Create a deep copy of the trigger info to prevent reference issues
+  const triggerInfoCopy = {
+    ...triggerInfo,
+    note: triggerInfo.note ? {...triggerInfo.note} : null
+  };
+  
   // If the quantized time is in the future
   if (quantizedTime > tNow) {
     // Schedule the trigger for the future
-    storePendingTrigger(triggerInfo, quantizedTime);
+    storePendingTrigger(triggerInfoCopy, quantizedTime);
     
     // Don't trigger now
     return {
@@ -217,7 +222,7 @@ function handleQuantizedTrigger(tNow, state, triggerInfo) {
   const nextGridTime = ticksToSeconds(nextGridTicks, bpm);
   
   // Schedule the trigger for the next grid point
-  storePendingTrigger(triggerInfo, nextGridTime);
+  storePendingTrigger(triggerInfoCopy, nextGridTime);
   
   // Don't trigger now
   return {
@@ -460,9 +465,9 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
           
           // Enhanced quantization logic
           if (state && state.useQuantization) {
-            // Create trigger info object with all needed data
+            // Create trigger info object with all needed data - use a copy of the note
             const triggerInfo = {
-              note,
+              note: {...note}, // Create a copy to avoid reference issues
               worldRot,
               camera,
               renderer,
@@ -475,22 +480,24 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
             
             if (shouldTrigger) {
               // Set the precise trigger time
-              note.time = triggerTime;
+              const noteCopy = {...note};
+              noteCopy.time = triggerTime;
               
-              // IMPORTANT: We need to pass the entire note object here
-              console.log("About to trigger audio with note frequency:", note.frequency);
-              audioCallback(note);
+              // IMPORTANT: We need to pass a copy of the entire note object here
+              console.log("About to trigger audio with note frequency:", noteCopy.frequency);
+              audioCallback(noteCopy);
               
               // Create a marker with visual feedback for quantization
-              createMarker(worldRot, x1, y1, group.parent, note, camera, renderer, isQuantized);
+              createMarker(worldRot, x1, y1, group.parent, noteCopy, camera, renderer, isQuantized);
             }
             
             // Always add to triggered set to prevent re-triggering
             triggeredNow.add(key);
           } else {
-            // Regular non-quantized trigger
-            audioCallback(note);
-            createMarker(worldRot, x1, y1, group.parent, note, camera, renderer, false);
+            // Regular non-quantized trigger - use a copy
+            const noteCopy = {...note};
+            audioCallback(noteCopy);
+            createMarker(worldRot, x1, y1, group.parent, noteCopy, camera, renderer, false);
             triggeredNow.add(key);
           }
         } else {
@@ -585,9 +592,9 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
           
           // Enhanced quantization logic for intersection points
           if (state && state.useQuantization) {
-            // Create trigger info object with note and visualization parameters
+            // Create trigger info object with note and visualization parameters - use a copy
             const triggerInfo = {
-              note,
+              note: {...note}, // Create a copy to avoid reference issues
               worldRot: angle, // Use global angle since this is not in a copy group
               camera,
               renderer,
@@ -600,21 +607,23 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
             
             if (shouldTrigger) {
               // Set the precise trigger time
-              note.time = triggerTime;
+              const noteCopy = {...note};
+              noteCopy.time = triggerTime;
               
-              // Trigger audio now with the complete note
-              audioCallback(note);
+              // Trigger audio now with the complete note copy
+              audioCallback(noteCopy);
               
               // Create a marker with visual feedback for quantization
-              createMarker(angle, localPos.x, localPos.y, group.parent, note, camera, renderer, isQuantized);
+              createMarker(angle, localPos.x, localPos.y, group.parent, noteCopy, camera, renderer, isQuantized);
             }
             
             // Always add to triggered set to prevent re-triggering
             triggeredNow.add(key);
           } else {
-            // Regular non-quantized trigger
-            audioCallback(note);
-            createMarker(angle, localPos.x, localPos.y, group.parent, note, camera, renderer, false);
+            // Regular non-quantized trigger - use a copy
+            const noteCopy = {...note};
+            audioCallback(noteCopy);
+            createMarker(angle, localPos.x, localPos.y, group.parent, noteCopy, camera, renderer, false);
             triggeredNow.add(key);
           }
         } else {

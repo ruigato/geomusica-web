@@ -1,4 +1,4 @@
-// src/state/state.js - Updated with Note Parameters
+// src/state/state.js - Updated with comprehensive parameter change tracking
 import { getCurrentTime } from '../time/time.js';
 import { DEFAULT_VALUES, UI_RANGES, TICKS_PER_BEAT, TICKS_PER_MEASURE } from '../config/constants.js';
 import { clearLabels } from '../ui/domLabels.js';
@@ -26,6 +26,29 @@ export function generateSequence(n) {
  */
 export function createAppState() {
   return {
+    // Track parameter changes
+    parameterChanges: {
+      copies: false,
+      segments: false,
+      modulus: false,
+      angle: false,
+      stepScale: false,
+      radius: false,
+      useModulus: false,
+      altScale: false,
+      useAltScale: false,
+      altStepN: false
+    },
+    
+    // Performance and frame tracking
+    frame: 0,
+    lastUpdateTime: 0,
+    performance: {
+      highPerformanceMode: true,   // Enable optimizations
+      skipFramesWhenNeeded: true,  // Allow skipping frames under load
+      updateThreshold: 100         // Minimum ms between heavy updates
+    },
+    
     // Time and animation related state
     lastTime: getCurrentTime(),
     lastAngle: 0,
@@ -123,11 +146,72 @@ export function createAppState() {
     debug: false,
     
     /**
+     * Check if any parameters have changed
+     * @returns {boolean} True if any parameters changed
+     */
+    hasParameterChanged() {
+      return Object.values(this.parameterChanges).some(changed => changed);
+    },
+    
+    /**
+     * Reset all parameter change flags
+     */
+    resetParameterChanges() {
+      for (const key in this.parameterChanges) {
+        this.parameterChanges[key] = false;
+      }
+    },
+    
+    /**
+     * Check if an update is needed based on performance settings
+     * @returns {boolean} True if update is needed
+     */
+    checkIfUpdateNeeded() {
+      const now = performance.now();
+      const timeSinceLastUpdate = now - this.lastUpdateTime;
+      
+      // Did something actually change that requires an update?
+      const hasChanges = 
+        this.needsIntersectionUpdate || 
+        this.needsPointFreqLabelsUpdate ||
+        this.justCalculatedIntersections ||
+        this.hasParameterChanged();
+      
+      // If nothing changed, no update needed
+      if (!hasChanges) return false;
+      
+      // If in high performance mode, limit update frequency
+      if (this.performance.highPerformanceMode && 
+          timeSinceLastUpdate < this.performance.updateThreshold) {
+        return false;
+      }
+      
+      // Update the timestamp and return true
+      this.lastUpdateTime = now;
+      return true;
+    },
+    
+    /**
+     * Determine if lerping is active
+     * @returns {boolean} True if lerping is active
+     */
+    isLerping() {
+      if (!this.useLerp) return false;
+      
+      return Math.abs(this.radius - this.targetRadius) > 0.1 ||
+             Math.abs(this.stepScale - this.targetStepScale) > 0.001 ||
+             Math.abs(this.angle - this.targetAngle) > 0.1;
+    },
+    
+    /**
      * Set BPM value (not affected by lerping)
      * @param {number} value New BPM value
      */
     setBpm(value) {
-      this.bpm = Number(value);
+      const newValue = Number(value);
+      if (this.bpm !== newValue) {
+        this.bpm = newValue;
+      }
     },
     
     /**
@@ -138,6 +222,7 @@ export function createAppState() {
       const newRadius = Number(value);
       if (!isNaN(newRadius)) {
         this.targetRadius = Math.max(20, Math.min(2048, newRadius));
+        this.parameterChanges.radius = true;
         if (!this.useLerp) {
           this.radius = this.targetRadius;
         }
@@ -150,8 +235,12 @@ export function createAppState() {
      * @param {number} value New copies value
      */
     setCopies(value) {
-      this.copies = Number(value);
-      this.needsIntersectionUpdate = true;
+      const newValue = Number(value);
+      if (this.copies !== newValue) {
+        this.copies = newValue;
+        this.parameterChanges.copies = true;
+        this.needsIntersectionUpdate = true;
+      }
     },
     
     /**
@@ -159,8 +248,12 @@ export function createAppState() {
      * @param {number} value New segments value
      */
     setSegments(value) {
-      this.segments = Number(value);
-      this.needsIntersectionUpdate = true;
+      const newValue = Number(value);
+      if (this.segments !== newValue) {
+        this.segments = newValue;
+        this.parameterChanges.segments = true;
+        this.needsIntersectionUpdate = true;
+      }
     },
     
     /**
@@ -168,11 +261,15 @@ export function createAppState() {
      * @param {number} value New step scale value
      */
     setStepScale(value) {
-      this.targetStepScale = Number(value);
-      if (!this.useLerp) {
-        this.stepScale = this.targetStepScale;
+      const newValue = Number(value);
+      if (this.targetStepScale !== newValue) {
+        this.targetStepScale = newValue;
+        this.parameterChanges.stepScale = true;
+        if (!this.useLerp) {
+          this.stepScale = this.targetStepScale;
+        }
+        this.needsIntersectionUpdate = true;
       }
-      this.needsIntersectionUpdate = true;
     },
     
     /**
@@ -180,11 +277,15 @@ export function createAppState() {
      * @param {number} value New angle value
      */
     setAngle(value) {
-      this.targetAngle = Number(value);
-      if (!this.useLerp) {
-        this.angle = this.targetAngle;
+      const newValue = Number(value);
+      if (this.targetAngle !== newValue) {
+        this.targetAngle = newValue;
+        this.parameterChanges.angle = true;
+        if (!this.useLerp) {
+          this.angle = this.targetAngle;
+        }
+        this.needsIntersectionUpdate = true;
       }
-      this.needsIntersectionUpdate = true;
     },
     
     /**
@@ -192,9 +293,13 @@ export function createAppState() {
      * @param {number} value New modulus value
      */
     setModulusValue(value) {
-      this.modulusValue = Number(value);
-      if (this.useModulus) {
-        this.needsIntersectionUpdate = true;
+      const newValue = Number(value);
+      if (this.modulusValue !== newValue) {
+        this.modulusValue = newValue;
+        this.parameterChanges.modulus = true;
+        if (this.useModulus) {
+          this.needsIntersectionUpdate = true;
+        }
       }
     },
     
@@ -203,8 +308,12 @@ export function createAppState() {
      * @param {boolean} value Enable/disable modulus
      */
     setUseModulus(value) {
-      this.useModulus = Boolean(value);
-      this.needsIntersectionUpdate = true;
+      const newValue = Boolean(value);
+      if (this.useModulus !== newValue) {
+        this.useModulus = newValue;
+        this.parameterChanges.useModulus = true;
+        this.needsIntersectionUpdate = true;
+      }
     },
     
     /**
@@ -306,16 +415,19 @@ export function createAppState() {
      */
     setAltScale(value) {
       const newValue = Number(value);
-      this.targetAltScale = newValue;
-      
-      // If lerping is off, update the actual value immediately
-      if (!this.useLerp) {
-        this.altScale = newValue;
-      }
-      
-      // Always mark for intersection update when alt scale is being used
-      if (this.useAltScale) {
-        this.needsIntersectionUpdate = true;
+      if (this.targetAltScale !== newValue) {
+        this.targetAltScale = newValue;
+        this.parameterChanges.altScale = true;
+        
+        // If lerping is off, update the actual value immediately
+        if (!this.useLerp) {
+          this.altScale = newValue;
+        }
+        
+        // Always mark for intersection update when alt scale is being used
+        if (this.useAltScale) {
+          this.needsIntersectionUpdate = true;
+        }
       }
     },
     
@@ -324,9 +436,13 @@ export function createAppState() {
      * @param {number} value New alt step N value
      */
     setAltStepN(value) {
-      this.altStepN = Number(value);
-      if (this.useAltScale) {
-        this.needsIntersectionUpdate = true;
+      const newValue = Number(value);
+      if (this.altStepN !== newValue) {
+        this.altStepN = newValue;
+        this.parameterChanges.altStepN = true;
+        if (this.useAltScale) {
+          this.needsIntersectionUpdate = true;
+        }
       }
     },
     
@@ -335,8 +451,12 @@ export function createAppState() {
      * @param {boolean} value Enable/disable alt scale
      */
     setUseAltScale(value) {
-      this.useAltScale = Boolean(value);
-      this.needsIntersectionUpdate = true;
+      const newValue = Boolean(value);
+      if (this.useAltScale !== newValue) {
+        this.useAltScale = newValue;
+        this.parameterChanges.useAltScale = true;
+        this.needsIntersectionUpdate = true;
+      }
     },
     
     /**

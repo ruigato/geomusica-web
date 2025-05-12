@@ -1,4 +1,4 @@
-// src/main.js - Updated to include time module integration
+// src/main.js - Updated with improved parameter synchronization
 import * as THREE from 'three';
 import Stats from 'stats.js';
 
@@ -44,9 +44,48 @@ stats.dom.style.top = '10px';
 // Create application state
 const appState = createAppState();
 
+// Make state globally accessible for debugging
+window._appState = appState;
+
 // Store UI references globally
 let uiReferences = null;
 let synthUIReferences = null;
+
+// References to core components
+let audioInstance = null;
+let sceneInstance = null;
+let groupInstance = null;
+
+/**
+ * Ensure state is synchronized across all systems
+ * Call this whenever the state changes in important ways
+ */
+function syncStateAcrossSystems() {
+  // Make sure all core components have access to the state
+  if (sceneInstance) {
+    sceneInstance.userData.state = appState;
+  }
+  
+  if (groupInstance) {
+    groupInstance.userData.state = appState;
+  }
+  
+  if (audioInstance) {
+    // Update audio state
+    audioInstance.userData = {
+      ...audioInstance.userData,
+      state: appState
+    };
+  }
+  
+  // Force more immediate intersection update on critical parameter changes
+  if (appState.parameterChanges && 
+      (appState.parameterChanges.copies || 
+       appState.parameterChanges.modulus || 
+       appState.parameterChanges.useModulus)) {
+    appState.needsIntersectionUpdate = true;
+  }
+}
 
 // Add this function to the file
 function addStateControlsToUI(state) {
@@ -105,7 +144,10 @@ function addStateControlsToUI(state) {
             const allUIReferences = { ...uiReferences, ...synthUIReferences };
             updateUIFromState(state, allUIReferences);
             
-            // Update audio engine with imported state values - use new approach
+            // Ensure all systems have updated state
+            syncStateAcrossSystems();
+            
+            // Update audio engine with imported state values
             applySynthParameters({
               attack: state.attack,
               decay: state.decay,
@@ -176,13 +218,23 @@ function initializeApplication() {
   // Add import/export controls to the UI
   addStateControlsToUI(appState);
 
-  // Set up auto save (every 5 seconds)
-  const stopAutoSave = setupAutoSave(appState, 5000);
+  // Set up auto save (every 5 seconds) - COMMENTED OUT FOR PERFORMANCE
+  // const stopAutoSave = setupAutoSave(appState, 5000);
 
   // Setup audio - now with enhanced Csound timing for better precision
-  setupAudio().then(audioInstance => {
+  setupAudio().then(audioEngineInstance => {
+    audioInstance = audioEngineInstance;
+    
     if (!audioInstance) {
       console.error('Failed to initialize audio. Visualization will run without audio.');
+    }
+
+    // Store state reference in audio instance
+    if (audioInstance) {
+      audioInstance.userData = { 
+        ...audioInstance.userData, 
+        state: appState 
+      };
     }
 
     // Initialize time module with Csound instance
@@ -235,18 +287,37 @@ function initializeApplication() {
     }
 
     // Function to handle audio triggers
-    const handleAudioTrigger = (x, y, lastAngle, angle, tNow, options = {}) => {
-      // Make sure equal temperament settings are passed through
-      const audioOptions = {
-        ...options,
-        useEqualTemperament: appState.useEqualTemperament,
-        referenceFrequency: appState.referenceFrequency
-      };
-      return triggerAudio(audioInstance, x, y, lastAngle, angle, tNow, audioOptions);
+    const handleAudioTrigger = (note) => {
+      if (!audioInstance) {
+        return note;
+      }
+    
+      try {
+        // Make sure we're using a clean copy of the note
+        const noteCopy = typeof note === 'object' ? { ...note } : { 
+          frequency: 440, 
+          duration: 0.3, 
+          velocity: 0.7,
+          pan: 0
+        };
+        
+        // Add state reference data to the note
+        if (appState) {
+          noteCopy.useEqualTemperament = appState.useEqualTemperament;
+          noteCopy.referenceFrequency = appState.referenceFrequency;
+        }
+        
+        // Pass the note copy to triggerAudio
+        return triggerAudio(noteCopy);
+      } catch (error) {
+        console.error("Error in handleAudioTrigger:", error);
+        return note;
+      }
     };
 
     // Three.js setup
     const scene = new THREE.Scene();
+    sceneInstance = scene;
     
     // Store the appState in the scene's userData for access in other modules
     scene.userData.state = appState;
@@ -276,6 +347,8 @@ function initializeApplication() {
     const mat = new THREE.LineBasicMaterial({ color: 0x00ffcc });
     
     const group = new THREE.Group();
+    groupInstance = group;
+    group.userData.state = appState;
     scene.add(group);
     createAxis(scene);
 
@@ -336,6 +409,7 @@ function initializeApplication() {
     
     // Setup Three.js anyway without audio
     const scene = new THREE.Scene();
+    sceneInstance = scene;
     
     // Store the appState in the scene's userData for access in other modules
     scene.userData.state = appState;
@@ -365,6 +439,8 @@ function initializeApplication() {
     const mat = new THREE.LineBasicMaterial({ color: 0x00ffcc });
     
     const group = new THREE.Group();
+    groupInstance = group;
+    group.userData.state = appState;
     scene.add(group);
     createAxis(scene);
 
@@ -385,7 +461,9 @@ function initializeApplication() {
     });
 
     // Silent audio trigger function - does nothing but required for animation
-    const silentAudioTrigger = () => {};
+    const silentAudioTrigger = (note) => {
+      return note;
+    };
 
     // Still setup the synth UI even without audio
     synthUIReferences = setupSynthUI(appState, null);
@@ -411,3 +489,45 @@ function initializeApplication() {
     });
   });
 }
+
+// After saving all the original state setters, wrap them to call syncStateAcrossSystems
+// This ensures state is always consistent across all systems
+const originalSetters = {
+  setCopies: appState.setCopies,
+  setModulusValue: appState.setModulusValue,
+  setUseModulus: appState.setUseModulus,
+  setAltScale: appState.setAltScale,
+  setUseAltScale: appState.setUseAltScale,
+  setAltStepN: appState.setAltStepN
+};
+
+// Override key setters to ensure state sync
+appState.setCopies = function(value) {
+  originalSetters.setCopies.call(this, value);
+  syncStateAcrossSystems();
+};
+
+appState.setModulusValue = function(value) {
+  originalSetters.setModulusValue.call(this, value);
+  syncStateAcrossSystems();
+};
+
+appState.setUseModulus = function(value) {
+  originalSetters.setUseModulus.call(this, value);
+  syncStateAcrossSystems();
+};
+
+appState.setAltScale = function(value) {
+  originalSetters.setAltScale.call(this, value);
+  syncStateAcrossSystems();
+};
+
+appState.setUseAltScale = function(value) {
+  originalSetters.setUseAltScale.call(this, value);
+  syncStateAcrossSystems();
+};
+
+appState.setAltStepN = function(value) {
+  originalSetters.setAltStepN.call(this, value);
+  syncStateAcrossSystems();
+};

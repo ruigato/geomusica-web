@@ -87,7 +87,19 @@ export async function setupAudio() {
     
     // Create the Csound instance if not already created
     if (!csoundInstance) {
+
+
+      
       try {
+
+        // Add buffer size options to the Csound initialization
+        const csoundOptions = {
+          audioContext: audioContext,
+          // Increase buffer size - typical values: 1024, 2048, 4096
+          // Larger values reduce glitches but increase latency
+          bufferSize: 4096  
+        };
+          
         csoundInstance = await Csound({ audioContext: audioContext });
       } catch (error) {
         console.error("Failed to create Csound instance:", error);
@@ -196,12 +208,12 @@ export async function applySynthParameters(params) {
  * @param {Object} note - Note object with all parameters
  * @returns {boolean} True if successful
  */
+// Improved playNote function in audio.js
 export function playNote(note) {
   if (!csoundInstance || !csoundStarted) return false;
   
   try {
     // Log the full note object
-    console.log("playNote received:", JSON.stringify(note));
     
     // Extract parameters with proper defaults
     const frequency = note && note.frequency ? note.frequency : 440;
@@ -209,13 +221,10 @@ export function playNote(note) {
     const duration = note && note.duration ? note.duration : 0.3;
     const pan = note && note.pan ? note.pan : 0.0;
     
-    console.log(`Playing note: frequency=${frequency}, velocity=${amplitude}, duration=${duration}, pan=${pan}`);
   
-
     // Apply any pending parameters before playing the note
     if (window.pendingSynthParams) {
-      console.log("Applying pending synth parameters:", window.pendingSynthParams);
-      
+     
       // Apply parameters directly (don't wait for the Promise)
       if (window.pendingSynthParams.attack !== undefined) 
         csoundInstance.setControlChannel("attack", window.pendingSynthParams.attack);
@@ -237,15 +246,10 @@ export function playNote(note) {
     // Limit duration to reasonable values
     const safeDuration = Math.max(0.05, Math.min(10, duration));
     
-    // Log note information for debugging
-    if (note.noteName) {
-      console.log(`Playing note: ${frequency.toFixed(2)}Hz (${note.noteName}), duration: ${safeDuration}s, velocity: ${amplitude}`);
-    } else {
-      console.log(`Playing note: ${frequency.toFixed(2)}Hz, duration: ${safeDuration}s, velocity: ${amplitude}`);
-    }
+
     
     // Build Csound score event with instrument 1 (FM Bell)
-    const scoreEvent = `i 1 0 ${duration} ${frequency} ${amplitude} ${duration} ${pan}`;
+    const scoreEvent = `i 1 0 ${safeDuration} ${frequency} ${amplitude} ${safeDuration} ${pan}`;
     
     // Play the note
     csoundInstance.readScore(scoreEvent);
@@ -282,23 +286,38 @@ export async function setMasterVolume(volume) {
  * @param {Object} note - Complete note object
  * @returns {Object} The same note object for chaining
  */
+// Improved triggerAudio function in audio.js
 export async function triggerAudio(note) {
   if (!csoundInstance || !csoundStarted) return note;
   
   try {
     // Log the received note
-    console.log("triggerAudio received note:", JSON.stringify(note));
     
     // Check if we have a valid note object
-    if (!note || typeof note !== 'object') {
-      console.error("Invalid note object received:", note);
+    if (!note || typeof note !== 'object' || !note.frequency) {
+      console.error("Invalid or incomplete note object received:", note);
+      
+      // If we have a Csound instance object instead of a proper note,
+      // this is a bug. Return a simple valid note object to avoid errors.
+      if (note && note.name && note.name.includes("Csound")) {
+        return playNote({
+          frequency: 440,
+          duration: 0.3,
+          velocity: 0.7,
+          pan: 0
+        });
+      }
+      
       return note;
     }
     
-    // Play the note
-    playNote(note);
+    // Create a fresh copy to avoid reference issues
+    const noteCopy = { ...note };
     
-    return note;
+    // Play the note
+    playNote(noteCopy);
+    
+    return noteCopy;
   } catch (error) {
     console.error("Error in triggerAudio:", error);
     return note;
