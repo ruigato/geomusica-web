@@ -1,4 +1,4 @@
-// src/geometry/geometry.js - Performance-optimized with camera-independent sizing
+// src/geometry/geometry.js - Performance-optimized with camera-independent sizing and fixed segments rounding
 import * as THREE from 'three';
 import { 
   VERTEX_CIRCLE_SIZE, 
@@ -24,15 +24,21 @@ const vertexCircleGeometry = new THREE.CircleGeometry(1, 12); // Fewer segments 
  * @returns {THREE.BufferGeometry} Polygon geometry
  */
 export function createPolygonGeometry(radius, segments) {
-  // Create a BufferGeometry to hold our vertices
+  // Fix for rounding bug: Ensure we have a valid integer number of segments
+  const numSegments = Math.max(2, Math.round(segments));
+  
+  // Log the effective segments value for debugging
+  console.log(`Creating polygon with radius: ${radius}, segments: ${numSegments} (input: ${segments})`);
+  
+  // Always create a completely fresh geometry
   const geometry = new THREE.BufferGeometry();
   
   // Generate vertices for the outline only - no central vertex
   const vertices = [];
-  const step = (Math.PI * 2) / segments;
+  const step = (Math.PI * 2) / numSegments;
   
   // Create vertices in a circular pattern
-  for (let i = 0; i < segments; i++) {
+  for (let i = 0; i < numSegments; i++) {
     const angle = i * step;
     const x = radius * Math.cos(angle);
     const y = radius * Math.sin(angle);
@@ -41,8 +47,8 @@ export function createPolygonGeometry(radius, segments) {
   
   // Create indices for line segments
   const indices = [];
-  for (let i = 0; i < segments; i++) {
-    indices.push(i, (i + 1) % segments); // Connect each vertex to the next, looping back to start
+  for (let i = 0; i < numSegments; i++) {
+    indices.push(i, (i + 1) % numSegments); // Connect each vertex to the next, looping back to start
   }
   
   // Set attributes
@@ -170,8 +176,11 @@ export function createTextLabel(text, position, parent, isAxisLabel = true, came
  * @param {THREE.Scene} scene - Scene containing markers
  */
 export function cleanupIntersectionMarkers(scene) {
+  // Skip if scene doesn't exist
+  if (!scene) return;
+  
   // Clean up the marker group in the scene
-  if (scene && scene.userData.intersectionMarkerGroup) {
+  if (scene.userData && scene.userData.intersectionMarkerGroup) {
     const group = scene.userData.intersectionMarkerGroup;
     const parent = group.parent;
     
@@ -220,7 +229,7 @@ export function cleanupIntersectionMarkers(scene) {
   }
   
   // Clean up individual markers if present
-  if (scene && scene.userData.intersectionMarkers) {
+  if (scene && scene.userData && scene.userData.intersectionMarkers) {
     for (const marker of scene.userData.intersectionMarkers) {
       if (marker.parent) {
         marker.parent.remove(marker);
@@ -230,9 +239,9 @@ export function cleanupIntersectionMarkers(scene) {
       if (marker.geometry) marker.geometry.dispose();
       if (marker.material) {
         if (Array.isArray(marker.material)) {
-          child.material.forEach(m => m.dispose());
+          marker.material.forEach(m => m.dispose());
         } else {
-          child.material.dispose();
+          marker.material.dispose();
         }
       }
     }
@@ -254,11 +263,15 @@ export function cleanupIntersectionMarkers(scene) {
  * @param {boolean} justCalculatedIntersections - Whether we just calculated intersections
  */
 export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, angle = 0, state = null, isLerping = false, justCalculatedIntersections = false) {
+  // Ensure segments is a proper integer
+  const numSegments = Math.round(segments);
+
   // Clean up existing point frequency labels if they exist
   if (state && state.pointFreqLabels) {
     state.cleanupPointFreqLabels();
   }
   
+  // Clean up the group
   group.clear();
   
   // Cache the base radius once to use for all modulus calculations

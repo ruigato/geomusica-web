@@ -1,4 +1,4 @@
-// src/main.js - Updated with improved parameter synchronization
+// src/main.js - Updated with improved DOM loading and parameter handling
 import * as THREE from 'three';
 import Stats from 'stats.js';
 
@@ -178,33 +178,71 @@ function addStateControlsToUI(state) {
   document.body.appendChild(container);
 }
 
+// Check if the DOM is already loaded
+function isDOMLoaded() {
+  return document.readyState === 'complete' || 
+         document.readyState === 'interactive';
+}
+
 // Preload the DOS VGA font before proceeding with setup
-preloadFont('Perfect DOS VGA 437', '/fonts/PerfectDOSVGA437.ttf')
-  .then(() => {
-    console.log('DOS VGA font loaded successfully');
-    
-    // Initialize label system after font is loaded
-    initLabels();
-    
-    // Continue with application setup
-    initializeApplication();
-  })
-  .catch(error => {
-    console.error('Error loading DOS VGA font:', error);
-    
-    // Continue anyway with fallback font
-    console.warn('Using fallback font instead');
-    
-    // Initialize label system with fallback font
-    initLabels();
-    
-    initializeApplication();
-  });
+function loadFontAndInitApp() {
+  preloadFont('Perfect DOS VGA 437', '/fonts/PerfectDOSVGA437.ttf')
+    .then(() => {
+      console.log('DOS VGA font loaded successfully');
+      
+      // Initialize label system after font is loaded
+      initLabels();
+      
+      // Continue with application setup
+      // Make sure we check if DOM is ready
+      if (isDOMLoaded()) {
+        initializeApplication();
+      } else {
+        // Wait for DOM to be fully loaded
+        document.addEventListener('DOMContentLoaded', initializeApplication);
+      }
+    })
+    .catch(error => {
+      console.error('Error loading DOS VGA font:', error);
+      
+      // Continue anyway with fallback font
+      console.warn('Using fallback font instead');
+      
+      // Initialize label system with fallback font
+      initLabels();
+      
+      // Make sure we check if DOM is ready
+      if (isDOMLoaded()) {
+        initializeApplication();
+      } else {
+        // Wait for DOM to be fully loaded
+        document.addEventListener('DOMContentLoaded', initializeApplication);
+      }
+    });
+}
 
 // Function to initialize the application after font loading
 function initializeApplication() {
+  console.log("Initializing application...");
+  
+  // Ensure DOM is fully loaded
+  if (!isDOMLoaded()) {
+    console.warn("DOM not fully loaded. Waiting...");
+    document.addEventListener('DOMContentLoaded', initializeApplication);
+    return;
+  }
+  
+  console.log("DOM loaded. Setting up UI...");
+  
   // Setup UI and bind it to state - STORE the references
   uiReferences = setupUI(appState);
+  
+  if (!uiReferences) {
+    console.error("Failed to set up UI. Retrying...");
+    // Retry after a short delay
+    setTimeout(initializeApplication, 100);
+    return;
+  }
 
   // Load saved state if available
   const savedState = loadState();
@@ -324,7 +362,7 @@ function initializeApplication() {
     
     const cam = new THREE.PerspectiveCamera(
       75, 
-      (window.innerWidth * 0.6) / window.innerHeight, // Updated to account for new UI width
+      (window.innerWidth * 0.5) / window.innerHeight, // Updated to account for 50% UI width
       0.1, 
       100000
     );
@@ -332,15 +370,23 @@ function initializeApplication() {
     cam.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // Updated to account for new UI width
-    document.getElementById('canvas').appendChild(renderer.domElement);
+    renderer.setSize(window.innerWidth * 0.5, window.innerHeight); // Updated to account for 50% UI width
+    
+    const canvasContainer = document.getElementById('canvas');
+    if (canvasContainer) {
+      canvasContainer.appendChild(renderer.domElement);
+    } else {
+      console.error("Canvas container not found in DOM");
+      document.body.appendChild(renderer.domElement);
+    }
 
     // Store camera and renderer in scene's userData for label management
     scene.userData.camera = cam;
     scene.userData.renderer = renderer;
 
     // Initialize geometry - use our new polygon outline geometry
-    const baseGeo = createPolygonGeometry(appState.radius, appState.segments);
+    // Fix for rounding bug: Ensure we pass the exact number of segments
+    const baseGeo = createPolygonGeometry(appState.radius, Math.round(appState.segments));
     appState.baseGeo = baseGeo; // Store reference in state
     
     // Use LineBasicMaterial for lines
@@ -360,9 +406,9 @@ function initializeApplication() {
 
     // Handle window resize
     window.addEventListener('resize', () => {
-      cam.aspect = (window.innerWidth * 0.6) / window.innerHeight; // Updated to account for new UI width
+      cam.aspect = (window.innerWidth * 0.5) / window.innerHeight; // Updated to account for 50% UI width
       cam.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // Updated to account for new UI width
+      renderer.setSize(window.innerWidth * 0.5, window.innerHeight); // Updated to account for 50% UI width
       
       // Update DOM label positions when window resizes
       updateLabelPositions(cam, renderer);
@@ -388,7 +434,8 @@ function initializeApplication() {
       useTimeSubdivision: appState.useTimeSubdivision,
       timeSubdivisionValue: appState.timeSubdivisionValue,
       useEqualTemperament: appState.useEqualTemperament,
-      referenceFrequency: appState.referenceFrequency
+      referenceFrequency: appState.referenceFrequency,
+      segments: appState.segments // Added to debug the segments issue
     });
     
     // Start animation loop
@@ -416,7 +463,7 @@ function initializeApplication() {
     
     const cam = new THREE.PerspectiveCamera(
       75, 
-      (window.innerWidth * 0.6) / window.innerHeight, // Updated to account for new UI width
+      (window.innerWidth * 0.5) / window.innerHeight, // Updated to account for 50% UI width
       0.1, 
       10000
     );
@@ -424,15 +471,22 @@ function initializeApplication() {
     cam.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // Updated to account for new UI width
-    document.getElementById('canvas').appendChild(renderer.domElement);
+    renderer.setSize(window.innerWidth * 0.5, window.innerHeight); // Updated to account for 50% UI width
+    const canvasContainer = document.getElementById('canvas');
+    if (canvasContainer) {
+      canvasContainer.appendChild(renderer.domElement);
+    } else {
+      console.error("Canvas container not found in DOM");
+      document.body.appendChild(renderer.domElement);
+    }
 
     // Store camera and renderer in scene's userData for label management
     scene.userData.camera = cam;
     scene.userData.renderer = renderer;
 
     // Initialize polygon geometry without audio
-    const baseGeo = createPolygonGeometry(appState.radius, appState.segments);
+    // Fix for rounding bug: Ensure we pass the exact number of segments
+    const baseGeo = createPolygonGeometry(appState.radius, Math.round(appState.segments));
     appState.baseGeo = baseGeo;
     
     // Use LineBasicMaterial for lines
@@ -452,9 +506,9 @@ function initializeApplication() {
 
     // Handle window resize with label updates
     window.addEventListener('resize', () => {
-      cam.aspect = (window.innerWidth * 0.6) / window.innerHeight; // Updated to account for new UI width
+      cam.aspect = (window.innerWidth * 0.5) / window.innerHeight; // Updated to account for 50% UI width
       cam.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth * 0.6, window.innerHeight); // Updated to account for new UI width
+      renderer.setSize(window.innerWidth * 0.5, window.innerHeight); // Updated to account for 50% UI width
       
       // Update DOM label positions when window resizes
       updateLabelPositions(cam, renderer);
@@ -488,6 +542,15 @@ function initializeApplication() {
       triggerAudioCallback: silentAudioTrigger
     });
   });
+  // Force initial redraw after a delay to ensure correct segments rendering
+setTimeout(() => {
+  // Force update of segments to redraw geometry
+  if (appState && appState.segments) {
+    const currentSegments = appState.segments;
+    appState.setSegments(currentSegments);
+    console.log("Forcing initial redraw with segments:", currentSegments);
+  }
+}, 500);
 }
 
 // After saving all the original state setters, wrap them to call syncStateAcrossSystems
@@ -498,7 +561,9 @@ const originalSetters = {
   setUseModulus: appState.setUseModulus,
   setAltScale: appState.setAltScale,
   setUseAltScale: appState.setUseAltScale,
-  setAltStepN: appState.setAltStepN
+  setAltStepN: appState.setAltStepN,
+  // Add setSegments to ensure rounding is properly applied
+  setSegments: appState.setSegments
 };
 
 // Override key setters to ensure state sync
@@ -531,3 +596,18 @@ appState.setAltStepN = function(value) {
   originalSetters.setAltStepN.call(this, value);
   syncStateAcrossSystems();
 };
+
+// Override setSegments to ensure proper rounding
+appState.setSegments = function(value) {
+  // Ensure value is properly rounded to an integer
+  const roundedValue = Math.round(Number(value));
+  originalSetters.setSegments.call(this, roundedValue);
+  syncStateAcrossSystems();
+};
+
+// Start the application initialization process
+if (isDOMLoaded()) {
+  loadFontAndInitApp();
+} else {
+  document.addEventListener('DOMContentLoaded', loadFontAndInitApp);
+}

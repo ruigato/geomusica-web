@@ -1,9 +1,11 @@
-// src/ui/ui.js - Updated with Note Parameters and fixed function order
+// src/ui/ui.js - Updated with Number parameter rounding fix
 import { UI_RANGES, QUANTIZATION_VALUES } from '../config/constants.js';
 import { ParameterMode } from '../notes/notes.js';
 
 // Function to set up modulus radio buttons - MOVED TO TOP OF FILE
 function setupModulusRadioButtons(container, state, type = null) {
+  if (!container) return; // Null check
+  
   // Clear any existing content
   container.innerHTML = '';
   
@@ -58,6 +60,8 @@ function setupModulusRadioButtons(container, state, type = null) {
 
 // Function to set up time subdivision radio buttons - MOVED TO TOP OF FILE
 function setupTimeSubdivisionRadioButtons(container, state) {
+  if (!container) return; // Null check
+  
   // Clear any existing content
   container.innerHTML = '';
   
@@ -115,6 +119,8 @@ function setupTimeSubdivisionRadioButtons(container, state) {
 
 // Function to set up quantization radio buttons - MOVED TO TOP OF FILE
 function setupQuantizationRadioButtons(container, state) {
+  if (!container) return; // Null check
+  
   // Clear any existing content
   container.innerHTML = '';
   
@@ -154,7 +160,7 @@ function setupQuantizationRadioButtons(container, state) {
 }
 
 export function setupUI(state) {
-  // Get all UI elements
+  // Get all UI elements with null checks
   const bpmRange = document.getElementById('bpmRange');
   const bpmNumber = document.getElementById('bpmNumber');
   const bpmValue = document.getElementById('bpmValue');
@@ -230,9 +236,6 @@ export function setupUI(state) {
   const maxDurationRange = document.getElementById('maxDurationRange');
   const maxDurationNumber = document.getElementById('maxDurationNumber');
   const maxDurationValue = document.getElementById('maxDurationValue');
-  const durationPhaseRange = document.getElementById('durationPhaseRange');
-  const durationPhaseNumber = document.getElementById('durationPhaseNumber');
-  const durationPhaseValue = document.getElementById('durationPhaseValue');
   
   // Note parameter controls - Velocity
   const velocityModeRadios = document.querySelectorAll('input[name="velocityMode"]');
@@ -243,148 +246,194 @@ export function setupUI(state) {
   const maxVelocityRange = document.getElementById('maxVelocityRange');
   const maxVelocityNumber = document.getElementById('maxVelocityNumber');
   const maxVelocityValue = document.getElementById('maxVelocityValue');
-  const velocityPhaseRange = document.getElementById('velocityPhaseRange');
-  const velocityPhaseNumber = document.getElementById('velocityPhaseNumber');
-  const velocityPhaseValue = document.getElementById('velocityPhaseValue');
   
-  // Initialize checkbox states from app state
-  showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;
-  showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
-  useAltScaleCheckbox.checked = state.useAltScale;
-  useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
-  useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
-  useQuantizationCheckbox.checked = state.useQuantization;
+  // Check if required elements exist before proceeding
+  if (!numberRange || !numberNumber || !numberValue) {
+    console.warn('Required UI elements for Number parameter are missing');
+    // Continue with other elements that are available
+  }
   
-  // Set initial values for scale mod controls from state
-  altScaleRange.value = state.altScale;
-  altScaleNumber.value = state.altScale;
-  altScaleValue.textContent = state.altScale.toFixed(2);
+  // Initialize checkbox states from app state with null checks
+  if (showAxisFreqLabelsCheckbox) showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;
+  if (showPointsFreqLabelsCheckbox) showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
+  if (useAltScaleCheckbox) useAltScaleCheckbox.checked = state.useAltScale;
+  if (useTimeSubdivisionCheckbox) useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
+  if (useEqualTemperamentCheckbox) useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
+  if (useQuantizationCheckbox) useQuantizationCheckbox.checked = state.useQuantization;
   
-  altStepNRange.value = state.altStepN;
-  altStepNNumber.value = state.altStepN;
-  altStepNValue.textContent = state.altStepN;
+  // Set initial values for scale mod controls from state with null checks
+  if (altScaleRange && altScaleNumber && altScaleValue) {
+    altScaleRange.value = state.altScale;
+    altScaleNumber.value = state.altScale;
+    altScaleValue.textContent = state.altScale.toFixed(2);
+  }
   
-  // Set initial values for equal temperament controls
-  referenceFreqRange.value = state.referenceFrequency;
-  referenceFreqNumber.value = state.referenceFrequency;
-  referenceFreqValue.textContent = state.referenceFrequency;
+  if (altStepNRange && altStepNNumber && altStepNValue) {
+    altStepNRange.value = state.altStepN;
+    altStepNNumber.value = state.altStepN;
+    altStepNValue.textContent = state.altStepN;
+  }
   
-  // Set initial values for duration controls
-  minDurationRange.value = state.minDuration;
-  minDurationNumber.value = state.minDuration;
-  minDurationValue.textContent = state.minDuration.toFixed(2);
+  // Set initial values for equal temperament controls with null checks
+  if (referenceFreqRange && referenceFreqNumber && referenceFreqValue) {
+    referenceFreqRange.value = state.referenceFrequency;
+    referenceFreqNumber.value = state.referenceFrequency;
+    referenceFreqValue.textContent = state.referenceFrequency;
+  }
   
-  maxDurationRange.value = state.maxDuration;
-  maxDurationNumber.value = state.maxDuration;
-  maxDurationValue.textContent = state.maxDuration.toFixed(2);
+  // Set initial values for duration controls with null checks
+  if (minDurationRange && minDurationNumber && minDurationValue) {
+    minDurationRange.value = state.minDuration;
+    minDurationNumber.value = state.minDuration;
+    minDurationValue.textContent = state.minDuration.toFixed(2);
+  }
   
-  durationPhaseRange.value = state.durationPhase;
-  durationPhaseNumber.value = state.durationPhase;
-  durationPhaseValue.textContent = state.durationPhase.toFixed(2);
+  if (maxDurationRange && maxDurationNumber && maxDurationValue) {
+    maxDurationRange.value = state.maxDuration;
+    maxDurationNumber.value = state.maxDuration;
+    maxDurationValue.textContent = state.maxDuration.toFixed(2);
+  }
   
-  // Set initial values for velocity controls
-  minVelocityRange.value = state.minVelocity;
-  minVelocityNumber.value = state.minVelocity;
-  minVelocityValue.textContent = state.minVelocity.toFixed(2);
+  // Set initial values for velocity controls with null checks
+  if (minVelocityRange && minVelocityNumber && minVelocityValue) {
+    minVelocityRange.value = state.minVelocity;
+    minVelocityNumber.value = state.minVelocity;
+    minVelocityValue.textContent = state.minVelocity.toFixed(2);
+  }
   
-  maxVelocityRange.value = state.maxVelocity;
-  maxVelocityNumber.value = state.maxVelocity;
-  maxVelocityValue.textContent = state.maxVelocity.toFixed(2);
+  if (maxVelocityRange && maxVelocityNumber && maxVelocityValue) {
+    maxVelocityRange.value = state.maxVelocity;
+    maxVelocityNumber.value = state.maxVelocity;
+    maxVelocityValue.textContent = state.maxVelocity.toFixed(2);
+  }
   
-  velocityPhaseRange.value = state.velocityPhase;
-  velocityPhaseNumber.value = state.velocityPhase;
-  velocityPhaseValue.textContent = state.velocityPhase.toFixed(2);
-  
-  // Setup event listeners for new checkboxes
-  showAxisFreqLabelsCheckbox.addEventListener('change', e => {
-    state.setShowAxisFreqLabels(e.target.checked);
-  });
+  // Setup event listeners for new checkboxes with null checks
+  if (showAxisFreqLabelsCheckbox) {
+    showAxisFreqLabelsCheckbox.addEventListener('change', e => {
+      state.setShowAxisFreqLabels(e.target.checked);
+    });
+  }
 
-  showPointsFreqLabelsCheckbox.addEventListener('change', e => {
-    state.setShowPointsFreqLabels(e.target.checked);
-  });
+  if (showPointsFreqLabelsCheckbox) {
+    showPointsFreqLabelsCheckbox.addEventListener('change', e => {
+      state.setShowPointsFreqLabels(e.target.checked);
+    });
+  }
   
   // Initialize modulus radio buttons
-  setupModulusRadioButtons(modulusRadioGroup, state);
+  if (modulusRadioGroup) {
+    setupModulusRadioButtons(modulusRadioGroup, state);
+  }
   
   // Initialize time subdivision radio buttons
-  setupTimeSubdivisionRadioButtons(timeSubdivisionRadioGroup, state);
+  if (timeSubdivisionRadioGroup) {
+    setupTimeSubdivisionRadioButtons(timeSubdivisionRadioGroup, state);
+  }
   
   // Initialize quantization radio buttons
-  setupQuantizationRadioButtons(quantizationRadioGroup, state);
+  if (quantizationRadioGroup) {
+    setupQuantizationRadioButtons(quantizationRadioGroup, state);
+  }
   
   // Initialize duration and velocity modulo radio buttons
-  setupModulusRadioButtons(durationModuloRadioGroup, state, 'duration');
-  setupModulusRadioButtons(velocityModuloRadioGroup, state, 'velocity');
+  if (durationModuloRadioGroup) {
+    setupModulusRadioButtons(durationModuloRadioGroup, state, 'duration');
+  }
   
-  // Setup modulus checkbox
-  useModulusCheckbox.checked = state.useModulus;
-  useModulusCheckbox.addEventListener('change', e => {
-    state.setUseModulus(e.target.checked);
-  });
+  if (velocityModuloRadioGroup) {
+    setupModulusRadioButtons(velocityModuloRadioGroup, state, 'velocity');
+  }
   
-  // Setup time subdivision checkbox
-  useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
-  useTimeSubdivisionCheckbox.addEventListener('change', e => {
-    state.setUseTimeSubdivision(e.target.checked);
-  });
+  // Setup modulus checkbox with null check
+  if (useModulusCheckbox) {
+    useModulusCheckbox.checked = state.useModulus;
+    useModulusCheckbox.addEventListener('change', e => {
+      state.setUseModulus(e.target.checked);
+    });
+  }
   
-  // Setup quantization checkbox
-  useQuantizationCheckbox.checked = state.useQuantization;
-  useQuantizationCheckbox.addEventListener('change', e => {
-    state.setUseQuantization(e.target.checked);
-  });
+  // Setup time subdivision checkbox with null check
+  if (useTimeSubdivisionCheckbox) {
+    useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
+    useTimeSubdivisionCheckbox.addEventListener('change', e => {
+      state.setUseTimeSubdivision(e.target.checked);
+    });
+  }
   
-  // Setup alt scale checkbox
-  useAltScaleCheckbox.checked = state.useAltScale;
-  useAltScaleCheckbox.addEventListener('change', e => {
-    state.setUseAltScale(e.target.checked);
-  });
+  // Setup quantization checkbox with null check
+  if (useQuantizationCheckbox) {
+    useQuantizationCheckbox.checked = state.useQuantization;
+    useQuantizationCheckbox.addEventListener('change', e => {
+      state.setUseQuantization(e.target.checked);
+    });
+  }
   
-  // Setup equal temperament checkbox
-  useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
-  useEqualTemperamentCheckbox.addEventListener('change', e => {
-    state.setUseEqualTemperament(e.target.checked);
-  });
+  // Setup alt scale checkbox with null check
+  if (useAltScaleCheckbox) {
+    useAltScaleCheckbox.checked = state.useAltScale;
+    useAltScaleCheckbox.addEventListener('change', e => {
+      state.setUseAltScale(e.target.checked);
+    });
+  }
   
-  // Setup intersections checkbox
-  useIntersectionsCheckbox.checked = state.useIntersections;
-  useIntersectionsCheckbox.addEventListener('change', e => {
-    state.setUseIntersections(e.target.checked);
-  });
+  // Setup equal temperament checkbox with null check
+  if (useEqualTemperamentCheckbox) {
+    useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
+    useEqualTemperamentCheckbox.addEventListener('change', e => {
+      state.setUseEqualTemperament(e.target.checked);
+    });
+  }
+  
+  // Setup intersections checkbox with null check
+  if (useIntersectionsCheckbox) {
+    useIntersectionsCheckbox.checked = state.useIntersections;
+    useIntersectionsCheckbox.addEventListener('change', e => {
+      state.setUseIntersections(e.target.checked);
+    });
+  }
 
-  // Setup duration mode radio buttons
-  durationModeRadios.forEach(radio => {
-    // Check the one that matches the current state
-    if (radio.value === state.durationMode) {
-      radio.checked = true;
-    }
-    
-    // Add event listener
-    radio.addEventListener('change', e => {
-      if (e.target.checked) {
-        state.setDurationMode(e.target.value);
+  // Setup duration mode radio buttons with null check
+  if (durationModeRadios && durationModeRadios.length > 0) {
+    durationModeRadios.forEach(radio => {
+      // Check the one that matches the current state
+      if (radio.value === state.durationMode) {
+        radio.checked = true;
       }
+      
+      // Add event listener
+      radio.addEventListener('change', e => {
+        if (e.target.checked) {
+          state.setDurationMode(e.target.value);
+        }
+      });
     });
-  });
+  }
   
-  // Setup velocity mode radio buttons
-  velocityModeRadios.forEach(radio => {
-    // Check the one that matches the current state
-    if (radio.value === state.velocityMode) {
-      radio.checked = true;
-    }
-    
-    // Add event listener
-    radio.addEventListener('change', e => {
-      if (e.target.checked) {
-        state.setVelocityMode(e.target.value);
+  // Setup velocity mode radio buttons with null check
+  if (velocityModeRadios && velocityModeRadios.length > 0) {
+    velocityModeRadios.forEach(radio => {
+      // Check the one that matches the current state
+      if (radio.value === state.velocityMode) {
+        radio.checked = true;
       }
+      
+      // Add event listener
+      radio.addEventListener('change', e => {
+        if (e.target.checked) {
+          state.setVelocityMode(e.target.value);
+        }
+      });
     });
-  });
+  }
 
   // Sync control values with the UI
   const syncPair = (rangeEl, numEl, spanEl, setter, min, max, parser = v => parseFloat(v)) => {
+    // Skip if any elements are missing
+    if (!rangeEl || !numEl || !spanEl) {
+      console.warn('UI elements not found, skipping syncPair setup');
+      return;
+    }
+    
     // Initialize UI elements with state values
     const initialValue = parser === parseFloat ? 
       parseFloat(spanEl.textContent) : 
@@ -393,112 +442,142 @@ export function setupUI(state) {
     // Setup event listeners
     rangeEl.addEventListener('input', e => {
       let v = parser(e.target.value);
+      
+      // Special case for Number parameter - always round to integers
+      if (rangeEl.id === 'numberRange') {
+        v = Math.round(v);
+      }
+      
       v = Math.min(Math.max(v, min), max);
       setter(v);
-      spanEl.textContent = parser === parseFloat ? v.toFixed(2) : v;
+      spanEl.textContent = parser === parseFloat ? v.toFixed(1) : v;
       numEl.value = v;
     });
     
     numEl.addEventListener('input', e => {
       let v = parser(e.target.value);
+      
+      // Special case for Number parameter - always round to integers
+      if (numEl.id === 'numberNumber') {
+        v = Math.round(v);
+      }
+      
       v = Math.min(Math.max(v || min, min), max);
       setter(v);
-      spanEl.textContent = parser === parseFloat ? v.toFixed(2) : v;
+      spanEl.textContent = parser === parseFloat ? v.toFixed(1) : v;
       rangeEl.value = v;
     });
   };
   
-  // Setup checkbox event listener for lerp toggle
-  useLerpCheckbox.addEventListener('change', e => {
-    state.setUseLerp(e.target.checked);
-  });
+  // Setup checkbox event listener for lerp toggle with null check
+  if (useLerpCheckbox) {
+    useLerpCheckbox.addEventListener('change', e => {
+      state.setUseLerp(e.target.checked);
+    });
+  }
 
-  // Link UI controls to state with specific Number type conversions
-  syncPair(bpmRange, bpmNumber, bpmValue, 
-    value => state.setBpm(Number(value)), 
-    UI_RANGES.BPM.MIN, UI_RANGES.BPM.MAX, 
-    Number);
+  // Link UI controls to state with specific Number type conversions and null checks
+  if (bpmRange && bpmNumber && bpmValue) {
+    syncPair(bpmRange, bpmNumber, bpmValue, 
+      value => state.setBpm(Number(value)), 
+      UI_RANGES.BPM.MIN, UI_RANGES.BPM.MAX, 
+      Number);
+  }
   
-  syncPair(radiusRange, radiusNumber, radiusValue, 
-    value => state.setRadius(Number(value)), 
-    UI_RANGES.RADIUS.MIN, UI_RANGES.RADIUS.MAX, 
-    Number);
+  if (radiusRange && radiusNumber && radiusValue) {
+    syncPair(radiusRange, radiusNumber, radiusValue, 
+      value => state.setRadius(Number(value)), 
+      UI_RANGES.RADIUS.MIN, UI_RANGES.RADIUS.MAX, 
+      Number);
+  }
   
-  syncPair(copiesRange, copiesNumber, copiesValue, 
-    value => state.setCopies(Number(value)), 
-    UI_RANGES.COPIES.MIN, UI_RANGES.COPIES.MAX, 
-    Number);
+  if (copiesRange && copiesNumber && copiesValue) {
+    syncPair(copiesRange, copiesNumber, copiesValue, 
+      value => state.setCopies(Number(value)), 
+      UI_RANGES.COPIES.MIN, UI_RANGES.COPIES.MAX, 
+      Number);
+  }
   
-  syncPair(stepScaleRange, stepScaleNumber, stepScaleValue, 
-    value => state.setStepScale(Number(value)), 
-    UI_RANGES.STEP_SCALE.MIN, UI_RANGES.STEP_SCALE.MAX, 
-    Number);
+  if (stepScaleRange && stepScaleNumber && stepScaleValue) {
+    syncPair(stepScaleRange, stepScaleNumber, stepScaleValue, 
+      value => state.setStepScale(Number(value)), 
+      UI_RANGES.STEP_SCALE.MIN, UI_RANGES.STEP_SCALE.MAX, 
+      Number);
+  }
   
-  syncPair(angleRange, angleNumber, angleValue, 
-    value => state.setAngle(Number(value)), 
-    UI_RANGES.ANGLE.MIN, UI_RANGES.ANGLE.MAX, 
-    Number);
+  if (angleRange && angleNumber && angleValue) {
+    syncPair(angleRange, angleNumber, angleValue, 
+      value => state.setAngle(Number(value)), 
+      UI_RANGES.ANGLE.MIN, UI_RANGES.ANGLE.MAX, 
+      Number);
+  }
   
-  syncPair(numberRange, numberNumber, numberValue, 
-    value => state.setSegments(Number(value)), 
-    UI_RANGES.NUMBER.MIN, UI_RANGES.NUMBER.MAX, 
-    Number);
+  if (numberRange && numberNumber && numberValue) {
+    syncPair(numberRange, numberNumber, numberValue, 
+      value => state.setSegments(Math.round(Number(value))), // FIX: Always round the number parameter 
+      UI_RANGES.NUMBER.MIN, UI_RANGES.NUMBER.MAX, 
+      Number);
+  }
     
-  syncPair(lerpTimeRange, lerpTimeNumber, lerpTimeValue, 
-    value => state.setLerpTime(Number(value)), 
-    UI_RANGES.LERP_TIME.MIN, UI_RANGES.LERP_TIME.MAX, 
-    Number);
+  if (lerpTimeRange && lerpTimeNumber && lerpTimeValue) {
+    syncPair(lerpTimeRange, lerpTimeNumber, lerpTimeValue, 
+      value => state.setLerpTime(Number(value)), 
+      UI_RANGES.LERP_TIME.MIN, UI_RANGES.LERP_TIME.MAX, 
+      Number);
+  }
     
   // Link Scale Mod UI controls to state with proper formatting
-  syncPair(altScaleRange, altScaleNumber, altScaleValue, 
-    value => state.setAltScale(Number(value)), 
-    UI_RANGES.ALT_SCALE.MIN, UI_RANGES.ALT_SCALE.MAX, 
-    Number);
+  if (altScaleRange && altScaleNumber && altScaleValue) {
+    syncPair(altScaleRange, altScaleNumber, altScaleValue, 
+      value => state.setAltScale(Number(value)), 
+      UI_RANGES.ALT_SCALE.MIN, UI_RANGES.ALT_SCALE.MAX, 
+      Number);
+  }
   
-  syncPair(altStepNRange, altStepNNumber, altStepNValue, 
-    value => state.setAltStepN(Number(value)), 
-    UI_RANGES.ALT_STEP_N.MIN, UI_RANGES.ALT_STEP_N.MAX, 
-    Number);
+  if (altStepNRange && altStepNNumber && altStepNValue) {
+    syncPair(altStepNRange, altStepNNumber, altStepNValue, 
+      value => state.setAltStepN(Number(value)), 
+      UI_RANGES.ALT_STEP_N.MIN, UI_RANGES.ALT_STEP_N.MAX, 
+      Number);
+  }
 
   // Link Equal Temperament reference frequency controls
-  syncPair(referenceFreqRange, referenceFreqNumber, referenceFreqValue,
-    value => state.setReferenceFrequency(Number(value)),
-    UI_RANGES.REFERENCE_FREQUENCY.MIN, UI_RANGES.REFERENCE_FREQUENCY.MAX,
-    Number);
+  if (referenceFreqRange && referenceFreqNumber && referenceFreqValue) {
+    syncPair(referenceFreqRange, referenceFreqNumber, referenceFreqValue,
+      value => state.setReferenceFrequency(Number(value)),
+      UI_RANGES.REFERENCE_FREQUENCY.MIN, UI_RANGES.REFERENCE_FREQUENCY.MAX,
+      Number);
+  }
     
   // Link duration controls
-  syncPair(minDurationRange, minDurationNumber, minDurationValue,
-    value => state.setMinDuration(Number(value)),
-    0.01, 2.0,
-    Number);
+  if (minDurationRange && minDurationNumber && minDurationValue) {
+    syncPair(minDurationRange, minDurationNumber, minDurationValue,
+      value => state.setMinDuration(Number(value)),
+      0.05, 1.0,
+      Number);
+  }
     
-  syncPair(maxDurationRange, maxDurationNumber, maxDurationValue,
-    value => state.setMaxDuration(Number(value)),
-    0.01, 2.0,
-    Number);
-    
-  // Link duration phase control
-  syncPair(durationPhaseRange, durationPhaseNumber, durationPhaseValue,
-    value => state.setDurationPhase(Number(value)),
-    0, 1,
-    Number);
+  if (maxDurationRange && maxDurationNumber && maxDurationValue) {
+    syncPair(maxDurationRange, maxDurationNumber, maxDurationValue,
+      value => state.setMaxDuration(Number(value)),
+      0.1, 2.0,
+      Number);
+  }
     
   // Link velocity controls
-  syncPair(minVelocityRange, minVelocityNumber, minVelocityValue,
-    value => state.setMinVelocity(Number(value)),
-    0.0, 1.0,
-    Number);
+  if (minVelocityRange && minVelocityNumber && minVelocityValue) {
+    syncPair(minVelocityRange, minVelocityNumber, minVelocityValue,
+      value => state.setMinVelocity(Number(value)),
+      0.1, 0.9,
+      Number);
+  }
     
-  syncPair(maxVelocityRange, maxVelocityNumber, maxVelocityValue,
-    value => state.setMaxVelocity(Number(value)),
-    0.0, 1.0,
-    Number);
-    
-  // Link velocity phase control
-  syncPair(velocityPhaseRange, velocityPhaseNumber, velocityPhaseValue,
-    value => state.setVelocityPhase(Number(value)),
-    0, 1,
-    Number);
+  if (maxVelocityRange && maxVelocityNumber && maxVelocityValue) {
+    syncPair(maxVelocityRange, maxVelocityNumber, maxVelocityValue,
+      value => state.setMaxVelocity(Number(value)),
+      0.2, 1.0,
+      Number);
+  }
 
   return {
     bpmRange, bpmNumber, bpmValue,
@@ -524,11 +603,9 @@ export function setupUI(state) {
     durationModeRadios, durationModuloRadioGroup,
     minDurationRange, minDurationNumber, minDurationValue,
     maxDurationRange, maxDurationNumber, maxDurationValue,
-    durationPhaseRange, durationPhaseNumber, durationPhaseValue,
     
     velocityModeRadios, velocityModuloRadioGroup,
     minVelocityRange, minVelocityNumber, minVelocityValue,
-    maxVelocityRange, maxVelocityNumber, maxVelocityValue,
-    velocityPhaseRange, velocityPhaseNumber, velocityPhaseValue
+    maxVelocityRange, maxVelocityNumber, maxVelocityValue
   };
 }
