@@ -230,6 +230,9 @@ export function setupUI(state) {
   const maxDurationRange = document.getElementById('maxDurationRange');
   const maxDurationNumber = document.getElementById('maxDurationNumber');
   const maxDurationValue = document.getElementById('maxDurationValue');
+  const durationPhaseRange = document.getElementById('durationPhaseRange');
+  const durationPhaseNumber = document.getElementById('durationPhaseNumber');
+  const durationPhaseValue = document.getElementById('durationPhaseValue');
   
   // Note parameter controls - Velocity
   const velocityModeRadios = document.querySelectorAll('input[name="velocityMode"]');
@@ -240,6 +243,9 @@ export function setupUI(state) {
   const maxVelocityRange = document.getElementById('maxVelocityRange');
   const maxVelocityNumber = document.getElementById('maxVelocityNumber');
   const maxVelocityValue = document.getElementById('maxVelocityValue');
+  const velocityPhaseRange = document.getElementById('velocityPhaseRange');
+  const velocityPhaseNumber = document.getElementById('velocityPhaseNumber');
+  const velocityPhaseValue = document.getElementById('velocityPhaseValue');
   
   // Initialize checkbox states from app state
   showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;
@@ -272,6 +278,10 @@ export function setupUI(state) {
   maxDurationNumber.value = state.maxDuration;
   maxDurationValue.textContent = state.maxDuration.toFixed(2);
   
+  durationPhaseRange.value = state.durationPhase;
+  durationPhaseNumber.value = state.durationPhase;
+  durationPhaseValue.textContent = state.durationPhase.toFixed(2);
+  
   // Set initial values for velocity controls
   minVelocityRange.value = state.minVelocity;
   minVelocityNumber.value = state.minVelocity;
@@ -280,6 +290,10 @@ export function setupUI(state) {
   maxVelocityRange.value = state.maxVelocity;
   maxVelocityNumber.value = state.maxVelocity;
   maxVelocityValue.textContent = state.maxVelocity.toFixed(2);
+  
+  velocityPhaseRange.value = state.velocityPhase;
+  velocityPhaseNumber.value = state.velocityPhase;
+  velocityPhaseValue.textContent = state.velocityPhase.toFixed(2);
   
   // Setup event listeners for new checkboxes
   showAxisFreqLabelsCheckbox.addEventListener('change', e => {
@@ -381,7 +395,7 @@ export function setupUI(state) {
       let v = parser(e.target.value);
       v = Math.min(Math.max(v, min), max);
       setter(v);
-      spanEl.textContent = parser === parseFloat ? v.toFixed(1) : v;
+      spanEl.textContent = parser === parseFloat ? v.toFixed(2) : v;
       numEl.value = v;
     });
     
@@ -389,7 +403,7 @@ export function setupUI(state) {
       let v = parser(e.target.value);
       v = Math.min(Math.max(v || min, min), max);
       setter(v);
-      spanEl.textContent = parser === parseFloat ? v.toFixed(1) : v;
+      spanEl.textContent = parser === parseFloat ? v.toFixed(2) : v;
       rangeEl.value = v;
     });
   };
@@ -455,23 +469,35 @@ export function setupUI(state) {
   // Link duration controls
   syncPair(minDurationRange, minDurationNumber, minDurationValue,
     value => state.setMinDuration(Number(value)),
-    0.05, 1.0,
+    0.01, 2.0,
     Number);
     
   syncPair(maxDurationRange, maxDurationNumber, maxDurationValue,
     value => state.setMaxDuration(Number(value)),
-    0.1, 2.0,
+    0.01, 2.0,
+    Number);
+    
+  // Link duration phase control
+  syncPair(durationPhaseRange, durationPhaseNumber, durationPhaseValue,
+    value => state.setDurationPhase(Number(value)),
+    0, 1,
     Number);
     
   // Link velocity controls
   syncPair(minVelocityRange, minVelocityNumber, minVelocityValue,
     value => state.setMinVelocity(Number(value)),
-    0.1, 0.9,
+    0.0, 1.0,
     Number);
     
   syncPair(maxVelocityRange, maxVelocityNumber, maxVelocityValue,
     value => state.setMaxVelocity(Number(value)),
-    0.2, 1.0,
+    0.0, 1.0,
+    Number);
+    
+  // Link velocity phase control
+  syncPair(velocityPhaseRange, velocityPhaseNumber, velocityPhaseValue,
+    value => state.setVelocityPhase(Number(value)),
+    0, 1,
     Number);
 
   return {
@@ -498,9 +524,11 @@ export function setupUI(state) {
     durationModeRadios, durationModuloRadioGroup,
     minDurationRange, minDurationNumber, minDurationValue,
     maxDurationRange, maxDurationNumber, maxDurationValue,
+    durationPhaseRange, durationPhaseNumber, durationPhaseValue,
     
     velocityModeRadios, velocityModuloRadioGroup,
     minVelocityRange, minVelocityNumber, minVelocityValue,
-    maxVelocityRange, maxVelocityNumber, maxVelocityValue
+    maxVelocityRange, maxVelocityNumber, maxVelocityValue,
+    velocityPhaseRange, velocityPhaseNumber, velocityPhaseValue
   };
 }

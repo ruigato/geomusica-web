@@ -1,4 +1,4 @@
-// src/notes/notes.js - Updated with global sequential index
+// src/notes/notes.js - Updated with phase shifting and min/max independence
 
 import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils.js';
 
@@ -88,23 +88,31 @@ export function createNote(triggerData, state) {
  * @returns {number} Duration in seconds
  */
 function calculateDuration(pointIndex, state) {
-  const min = state.minDuration || 0.1;
+  const min = state.minDuration || 0.01;
   const max = state.maxDuration || 0.5;
   const modulo = state.durationModulo || 3;
   const mode = state.durationMode || ParameterMode.MODULO;
+  const phase = state.durationPhase || 0;
+  
+  // Apply phase shift - shift the index by phase * modulo (scaled to index space)
+  let phaseShiftedIndex = pointIndex;
+  if (phase > 0) {
+    const phaseOffset = Math.floor(phase * modulo);
+    phaseShiftedIndex = (pointIndex + phaseOffset) % Number.MAX_SAFE_INTEGER;
+  }
   
   switch (mode) {
     case ParameterMode.MODULO:
-      return calculateModuloValue(pointIndex, modulo, min, max);
+      return calculateModuloValue(phaseShiftedIndex, modulo, min, max);
     
     case ParameterMode.RANDOM:
-      return calculateRandomValue(pointIndex, min, max);
+      return calculateRandomValue(phaseShiftedIndex, min, max);
     
     case ParameterMode.INTERPOLATION:
-      return calculateInterpolatedValue(pointIndex, modulo, min, max);
+      return calculateInterpolatedValue(phaseShiftedIndex, modulo, min, max);
       
     default:
-      return (min + max) / 2;
+      return Math.min(min, max) + Math.abs(max - min) / 2;
   }
 }
 
@@ -115,23 +123,31 @@ function calculateDuration(pointIndex, state) {
  * @returns {number} Velocity (0-1)
  */
 function calculateVelocity(pointIndex, state) {
-  const min = state.minVelocity || 0.3;
-  const max = state.maxVelocity || 0.9;
+  const min = state.minVelocity != undefined ? state.minVelocity : 0.3;
+  const max = state.maxVelocity != undefined ? state.maxVelocity : 0.9;
   const modulo = state.velocityModulo || 4;
   const mode = state.velocityMode || ParameterMode.MODULO;
+  const phase = state.velocityPhase || 0;
+  
+  // Apply phase shift - shift the index by phase * modulo (scaled to index space)
+  let phaseShiftedIndex = pointIndex;
+  if (phase > 0) {
+    const phaseOffset = Math.floor(phase * modulo);
+    phaseShiftedIndex = (pointIndex + phaseOffset) % Number.MAX_SAFE_INTEGER;
+  }
   
   switch (mode) {
     case ParameterMode.MODULO:
-      return calculateModuloValue(pointIndex, modulo, min, max);
+      return calculateModuloValue(phaseShiftedIndex, modulo, min, max);
     
     case ParameterMode.RANDOM:
-      return calculateRandomValue(pointIndex, min, max);
+      return calculateRandomValue(phaseShiftedIndex, min, max);
     
     case ParameterMode.INTERPOLATION:
-      return calculateInterpolatedValue(pointIndex, modulo, min, max);
+      return calculateInterpolatedValue(phaseShiftedIndex, modulo, min, max);
       
     default:
-      return (min + max) / 2;
+      return Math.min(min, max) + Math.abs(max - min) / 2;
   }
 }
 
@@ -146,12 +162,22 @@ function calculateVelocity(pointIndex, state) {
 function calculateModuloValue(pointIndex, modulo, min, max) {
   // Handle special case for index 0
   if (pointIndex === 0) {
-    return max;
+    return Math.max(min, max);
   }
+  
+  // Support for min > max (swapping) by calculating actual low/high values
+  const actualMin = Math.min(min, max);
+  const actualMax = Math.max(min, max);
+  
+  // Determine if we need to invert (when min > max)
+  const invert = min > max;
   
   // Modified modulo calculation to be more intuitive
   // Use the pattern [max, min, min, ...] that repeats every 'modulo' points
-  return (pointIndex % modulo === 0) ? max : min;
+  const patternValue = (pointIndex % modulo === 0) ? actualMax : actualMin;
+  
+  // Invert if min > max
+  return invert ? (actualMin + actualMax - patternValue) : patternValue;
 }
 
 /**
@@ -165,8 +191,17 @@ function calculateRandomValue(pointIndex, min, max) {
   // Use seeded random based on point index for deterministic results
   const random = seededRandom(pointIndex);
   
-  // Scale random value to the range [min, max]
-  return min + random * (max - min);
+  // Support for min > max (swapping) by calculating actual low/high values
+  const actualMin = Math.min(min, max);
+  const actualMax = Math.max(min, max);
+  const range = actualMax - actualMin;
+  
+  // If min > max, invert the mapping
+  if (min > max) {
+    return actualMax - (random * range);
+  } else {
+    return actualMin + (random * range);
+  }
 }
 
 /**
@@ -180,8 +215,13 @@ function calculateRandomValue(pointIndex, min, max) {
 function calculateInterpolatedValue(pointIndex, modulo, min, max) {
   // Handle special case for index 0
   if (pointIndex === 0) {
-    return max;
+    return Math.max(min, max);
   }
+  
+  // Support for min > max (swapping) by calculating actual low/high values
+  const actualMin = Math.min(min, max);
+  const actualMax = Math.max(min, max);
+  const range = actualMax - actualMin;
   
   // Find the position within the current modulo cycle
   const cycle = Math.floor(pointIndex / modulo);
@@ -194,8 +234,15 @@ function calculateInterpolatedValue(pointIndex, modulo, min, max) {
   // sin ranges from -1 to 1, so adjust to range 0 to 1
   const oscillation = (Math.sin(normalizedPosition * Math.PI * 2) + 1) / 2;
   
-  // Interpolate between min and max based on oscillation value
-  return min + oscillation * (max - min);
+  // Calculate the base value
+  const baseValue = actualMin + oscillation * range;
+  
+  // If min > max, invert the mapping
+  if (min > max) {
+    return actualMin + actualMax - baseValue;
+  } else {
+    return baseValue;
+  }
 }
 
 /**

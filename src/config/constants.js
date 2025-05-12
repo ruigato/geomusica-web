@@ -57,11 +57,13 @@ export const DEFAULT_VALUES = {
   DURATION_MODULO: 3,        // Default duration modulo value
   MIN_DURATION: 0.1,         // Default minimum duration (seconds)
   MAX_DURATION: 0.5,         // Default maximum duration (seconds)
+  DURATION_PHASE: 0,         // Default duration phase (0-1)
   
   VELOCITY_MODE: 'modulo',   // Default to modulo mode
   VELOCITY_MODULO: 4,        // Default velocity modulo value
   MIN_VELOCITY: 0.3,         // Default minimum velocity (0-1)
-  MAX_VELOCITY: 0.9          // Default maximum velocity (0-1)
+  MAX_VELOCITY: 0.9,          // Default maximum velocity (0-1)
+  VELOCITY_PHASE: 0         // Default velocity phase (0-1)
 };
 
 // UI ranges

@@ -68,11 +68,13 @@ export function saveState(state) {
       durationModulo: state.durationModulo,
       minDuration: state.minDuration, 
       maxDuration: state.maxDuration,
+      durationPhase: state.durationPhase,
       
       velocityMode: state.velocityMode,
       velocityModulo: state.velocityModulo,
       minVelocity: state.minVelocity,
-      maxVelocity: state.maxVelocity
+      maxVelocity: state.maxVelocity,
+      velocityPhase: state.velocityPhase
     };
     
     // Convert to string and save
@@ -166,11 +168,13 @@ export function applyLoadedState(state, loadedState) {
     if (loadedState.durationModulo !== undefined) state.setDurationModulo(loadedState.durationModulo);
     if (loadedState.minDuration !== undefined) state.setMinDuration(loadedState.minDuration);
     if (loadedState.maxDuration !== undefined) state.setMaxDuration(loadedState.maxDuration);
+    if (loadedState.durationPhase !== undefined) state.setDurationPhase(loadedState.durationPhase);
     
     if (loadedState.velocityMode !== undefined) state.setVelocityMode(loadedState.velocityMode);
     if (loadedState.velocityModulo !== undefined) state.setVelocityModulo(loadedState.velocityModulo);
     if (loadedState.minVelocity !== undefined) state.setMinVelocity(loadedState.minVelocity);
     if (loadedState.maxVelocity !== undefined) state.setMaxVelocity(loadedState.maxVelocity);
+    if (loadedState.velocityPhase !== undefined) state.setVelocityPhase(loadedState.velocityPhase);
     
     console.log('State applied successfully');
     return true;
@@ -290,11 +294,13 @@ export function exportStateToFile(state) {
       durationModulo: state.durationModulo,
       minDuration: state.minDuration, 
       maxDuration: state.maxDuration,
+      durationPhase: state.durationPhase,
       
       velocityMode: state.velocityMode,
       velocityModulo: state.velocityModulo,
       minVelocity: state.minVelocity,
-      maxVelocity: state.maxVelocity
+      maxVelocity: state.maxVelocity,
+      velocityPhase: state.velocityPhase
     };
     
     // Add timestamp
@@ -530,6 +536,13 @@ export function updateUIFromState(state, uiElements) {
       if (uiElements.maxDurationValue) uiElements.maxDurationValue.textContent = state.maxDuration.toFixed(2);
     }
     
+    // Update Duration Phase
+    if (uiElements.durationPhaseRange && state.durationPhase !== undefined) {
+      uiElements.durationPhaseRange.value = state.durationPhase;
+      if (uiElements.durationPhaseNumber) uiElements.durationPhaseNumber.value = state.durationPhase;
+      if (uiElements.durationPhaseValue) uiElements.durationPhaseValue.textContent = state.durationPhase.toFixed(2);
+    }
+    
     // Update Velocity Mode radio buttons
     if (uiElements.velocityModeRadios && state.velocityMode !== undefined) {
       uiElements.velocityModeRadios.forEach(radio => {
@@ -548,6 +561,13 @@ export function updateUIFromState(state, uiElements) {
       uiElements.maxVelocityRange.value = state.maxVelocity;
       if (uiElements.maxVelocityNumber) uiElements.maxVelocityNumber.value = state.maxVelocity;
       if (uiElements.maxVelocityValue) uiElements.maxVelocityValue.textContent = state.maxVelocity.toFixed(2);
+    }
+    
+    // Update Velocity Phase
+    if (uiElements.velocityPhaseRange && state.velocityPhase !== undefined) {
+      uiElements.velocityPhaseRange.value = state.velocityPhase;
+      if (uiElements.velocityPhaseNumber) uiElements.velocityPhaseNumber.value = state.velocityPhase;
+      if (uiElements.velocityPhaseValue) uiElements.velocityPhaseValue.textContent = state.velocityPhase.toFixed(2);
     }
 
     // Update modulus radio buttons
