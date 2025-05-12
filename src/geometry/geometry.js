@@ -1,4 +1,4 @@
-// src/geometry/geometry.js - Updated to visualize note parameters
+// src/geometry/geometry.js - Updated with camera-independent sprites
 import * as THREE from 'three';
 import { 
   VERTEX_CIRCLE_SIZE, 
@@ -13,6 +13,60 @@ import { createOrUpdateLabel } from '../ui/domLabels.js';
 // Import the frequency utilities at the top of geometry.js
 import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils.js';
 import { createNote } from '../notes/notes.js';
+
+/**
+ * Create a vertex sprite that maintains constant screen size
+ * @param {number} size Base size of the sprite
+ * @param {string|number} color Color of the sprite
+ * @param {number} opacity Opacity of the sprite (0-1)
+ * @returns {THREE.Sprite} The created sprite
+ */
+function createVertexSprite(size, color, opacity) {
+  // Create a canvas for the sprite texture
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Set canvas size (higher for better quality)
+  canvas.width = 64;
+  canvas.height = 64;
+  
+  // Draw a circle on the canvas
+  ctx.beginPath();
+  ctx.arc(32, 32, 30, 0, Math.PI * 2);
+  ctx.closePath();
+  
+  // Convert THREE.js color to CSS string if needed
+  let colorStr;
+  if (typeof color === 'number') {
+    colorStr = '#' + color.toString(16).padStart(6, '0');
+  } else {
+    colorStr = color;
+  }
+  
+  // Fill with specified color and opacity
+  ctx.fillStyle = colorStr;
+  ctx.globalAlpha = opacity;
+  ctx.fill();
+  
+  // Create a texture from the canvas
+  const texture = new THREE.CanvasTexture(canvas);
+  
+  // Create a SpriteMaterial with the texture
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    opacity: opacity,
+    sizeAttenuation: false // This is key - prevents size attenuation with distance
+  });
+  
+  // Create a sprite with the material
+  const sprite = new THREE.Sprite(material);
+  
+  // Set sprite scale (this will be a constant screen size)
+  sprite.scale.set(size, size, 1);
+  
+  return sprite;
+}
 
 /**
  * Create a regular polygon outline
@@ -351,6 +405,9 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   // Get camera and renderer from scene's userData (assuming they're stored there)
   const camera = group.parent?.userData?.camera;
   const renderer = group.parent?.userData?.renderer;
+
+  // Calculate global sequential index for vertex indexing
+  let globalVertexIndex = 0;
   
   // Now create the actual group based on the updated geometry
   for (let i = 0; i < copies; i++) {
@@ -392,9 +449,6 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     const positions = baseGeo.getAttribute('position').array;
     const count = baseGeo.getAttribute('position').count;
     
-    // Create vertex circle geometry (reuse for all vertices)
-    const vertexCircleGeometry = new THREE.CircleGeometry(VERTEX_CIRCLE_SIZE, 16);
-    
     // Add circles at each vertex
     for (let v = 0; v < count; v++) {
       const x = positions[v * 3] * finalScale;
@@ -406,33 +460,28 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         y: y,
         copyIndex: i,
         vertexIndex: v,
-        isIntersection: false
+        isIntersection: false,
+        globalIndex: globalVertexIndex
       };
+      
+      // Increment the global vertex index
+      globalVertexIndex++;
       
       // Create a note object to get duration and velocity parameters
       const note = createNote(triggerData, state);
       
-      // Calculate size and opacity for this vertex circle based on note parameters
+      // Calculate size and opacity for this vertex
       const baseCircleSize = VERTEX_CIRCLE_SIZE;
-      const circleSize = baseCircleSize * (0.5 + note.duration);
-      const circleOpacity = note.velocity;
+      const durationScaleFactor = 0.5 + note.duration;
       
-      // Scale the geometry based on duration
-      const scaledGeometry = vertexCircleGeometry.clone();
-      scaledGeometry.scale(circleSize / baseCircleSize, circleSize / baseCircleSize, 1);
+      // Create a sprite for this vertex that maintains constant screen size
+      const vertexCircle = createVertexSprite(
+        baseCircleSize * durationScaleFactor / 25, // Size factor, smaller divisor = larger sprite
+        VERTEX_CIRCLE_COLOR,
+        note.velocity // Use velocity directly for opacity
+      );
       
-      // Create material with opacity based on velocity
-      const vertexCircleMaterial = new THREE.MeshBasicMaterial({ 
-        color: VERTEX_CIRCLE_COLOR,
-        transparent: true,
-        opacity: circleOpacity,
-        depthTest: false
-      });
-      
-      // Create a circle at this vertex
-      const vertexCircle = new THREE.Mesh(scaledGeometry, vertexCircleMaterial);
-      
-      // Position the circle at the vertex
+      // Position the sprite at the vertex
       vertexCircle.position.set(x, y, 0);
       
       // Add to the copy group
@@ -549,30 +598,27 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         x: point.x,
         y: point.y,
         isIntersection: true,
-        intersectionIndex: i
+        intersectionIndex: i,
+        globalIndex: globalVertexIndex
       };
+      
+      // Increment the global vertex index
+      globalVertexIndex++;
       
       // Create a note object to get duration and velocity parameters
       const note = createNote(triggerData, state);
       
-      // Calculate size and opacity for this intersection marker based on note parameters
+      // Calculate size factors for this intersection marker
       const basePointSize = INTERSECTION_POINT_SIZE;
-      const pointSize = basePointSize * (0.5 + note.duration);
-      const pointOpacity = note.velocity;
+      const durationScaleFactor = 0.5 + note.duration;
       
-      // Create a geometry for this intersection point
-      const intersectionGeometry = new THREE.CircleGeometry(pointSize, 16);
+      // Create a sprite for this intersection point
+      const pointMesh = createVertexSprite(
+        basePointSize * durationScaleFactor / 25, // Size factor, smaller divisor = larger sprite
+        INTERSECTION_POINT_COLOR,
+        note.velocity // Use velocity directly for opacity
+      );
       
-      // Create a material with velocity-based opacity
-      const intersectionMaterial = new THREE.MeshBasicMaterial({
-        color: INTERSECTION_POINT_COLOR,
-        transparent: true,
-        opacity: pointOpacity,
-        depthTest: false
-      });
-      
-      // Create the mesh
-      const pointMesh = new THREE.Mesh(intersectionGeometry, intersectionMaterial);
       pointMesh.position.copy(point);
       
       // Add to the intersection marker group

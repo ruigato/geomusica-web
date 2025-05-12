@@ -32,6 +32,24 @@
       min-width: 40px;
       text-align: right;
     }
+    /* Added fixes for radio buttons */
+    .radio-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .radio-item {
+      display: flex;
+      align-items: center;
+      margin-right: 8px;
+      min-width: 80px; /* Increase minimum width */
+    }
+    /* Specific fix for parameter mode radio buttons */
+    input[name="durationMode"] + label,
+    input[name="velocityMode"] + label {
+      display: inline-block;
+      min-width: 60px; /* Ensure enough width for the label text */
+    }
   </style>
 </head>
 <body>

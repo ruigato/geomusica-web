@@ -1,4 +1,4 @@
-// src/notes/notes.js
+// src/notes/notes.js - Updated with global sequential index
 
 import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils.js';
 
@@ -18,7 +18,7 @@ export const ParameterMode = {
  * @returns {Object} Complete note object
  */
 export function createNote(triggerData, state) {
-  const { x, y, copyIndex, vertexIndex, isIntersection, angle, lastAngle } = triggerData;
+  const { x, y, copyIndex, vertexIndex, isIntersection, angle, lastAngle, globalIndex } = triggerData;
   
   // Calculate base frequency from coordinates
   let frequency = Math.hypot(x, y);
@@ -34,7 +34,10 @@ export function createNote(triggerData, state) {
   // Determine point index for parameter calculations
   let pointIndex = 0;
   
-  if (isIntersection) {
+  // Use globalIndex if provided (new sequential approach)
+  if (globalIndex !== undefined) {
+    pointIndex = globalIndex;
+  } else if (isIntersection) {
     // For intersection points, use point index from intersection array
     const intersectionIndex = triggerData.intersectionIndex || 0;
     const totalRegularPoints = state.copies * state.segments;
@@ -146,7 +149,8 @@ function calculateModuloValue(pointIndex, modulo, min, max) {
     return max;
   }
   
-  // If pointIndex is divisible by modulo, use max value, otherwise min
+  // Modified modulo calculation to be more intuitive
+  // Use the pattern [max, min, min, ...] that repeats every 'modulo' points
   return (pointIndex % modulo === 0) ? max : min;
 }
 

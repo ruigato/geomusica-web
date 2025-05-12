@@ -7,12 +7,12 @@ export const MARK_LIFE = 30;
 export const OVERLAP_THRESHOLD = 20;
 
 // Vertex visualization
-export const VERTEX_CIRCLE_SIZE = 8;
+export const VERTEX_CIRCLE_SIZE = 1;
 export const VERTEX_CIRCLE_OPACITY = 0.7;
 export const VERTEX_CIRCLE_COLOR = 0x33ccff;
 
 // Intersection visualization
-export const INTERSECTION_POINT_SIZE = 10;
+export const INTERSECTION_POINT_SIZE = 16;
 export const INTERSECTION_POINT_COLOR = 0xff3366;
 export const INTERSECTION_POINT_OPACITY = 0.8;
 export const INTERSECTION_MERGE_THRESHOLD = 5; // Distance threshold for merging intersection points
@@ -29,7 +29,7 @@ export const TICKS_PER_MEASURE = 1920; // In 4/4 time (480 ticks/beat * 4 beats/
 
 // Default values
 export const DEFAULT_VALUES = {
-  BPM: 10,
+  BPM: 120,
   RADIUS: 432,
   COPIES: 1,
   SEGMENTS: 4,
@@ -47,7 +47,7 @@ export const DEFAULT_VALUES = {
   TIME_SUBDIVISION_VALUE: 1, // Default time subdivision value (1x normal speed)
   USE_TIME_SUBDIVISION: false, // Default for time subdivision feature (disabled)
   USE_EQUAL_TEMPERAMENT: false, // Default for equal temperament feature (disabled)
-  REFERENCE_FREQUENCY: 440, // Default reference frequency (A4 = 440Hz)
+  REFERENCE_FREQUENCY: 432, // Default reference frequency (A4 = 440Hz)
   // New quantization parameters
   QUANTIZATION_VALUE: "1/4", // Default to quarter notes
   USE_QUANTIZATION: false,    // Off by default

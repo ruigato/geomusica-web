@@ -1,4 +1,4 @@
-// src/animation/animation.js - Fixed version with proper rendering
+// src/animation/animation.js - Fixed version with proper rendering and vertex update on camera change
 import * as THREE from 'three';
 import { 
   getCurrentTime, 
@@ -17,7 +17,8 @@ import { processIntersections } from '../geometry/intersections.js';
 import { 
   detectTriggers, 
   clearExpiredMarkers, 
-  processPendingTriggers 
+  processPendingTriggers,
+  resetGlobalSequentialIndex
 } from '../triggers/triggers.js';
 import { 
   updateLabelPositions, 
@@ -26,6 +27,24 @@ import {
 } from '../ui/domLabels.js';
 import { getInstrumentForFrequency } from '../audio/instruments.js';
 import { triggerAudio } from '../audio/audio.js';
+
+/**
+ * Check if any note parameters have changed
+ * @param {Object} state Application state
+ * @returns {boolean} True if any note parameters have changed
+ */
+function haveNoteParametersChanged(state) {
+  if (!state || !state.parameterChanges) return false;
+  
+  return state.parameterChanges.durationMode ||
+         state.parameterChanges.durationModulo ||
+         state.parameterChanges.minDuration ||
+         state.parameterChanges.maxDuration ||
+         state.parameterChanges.velocityMode ||
+         state.parameterChanges.velocityModulo ||
+         state.parameterChanges.minVelocity ||
+         state.parameterChanges.maxVelocity;
+}
 
 // Main animation function
 export function animate(params) {
@@ -45,6 +64,9 @@ export function animate(params) {
 
   // Store the last angle for trigger detection
   let lastAngle = state.lastAngle || 0;
+  
+  // Store the last camera position to detect significant changes
+  let lastCameraDistance = cam.position.z;
   
   // Make sure frame counter is initialized
   if (!state.frame) {
@@ -66,6 +88,9 @@ export function animate(params) {
       false, 
       false
     );
+    
+    // Initialize the global sequential index
+    resetGlobalSequentialIndex();
   }
   
   // Main animation function that will be called recursively
@@ -98,6 +123,7 @@ export function animate(params) {
       params.baseGeo = createPolygonGeometry(state.radius, state.segments);
       state.baseGeo = params.baseGeo;
       needsNewGeometry = true;
+      resetGlobalSequentialIndex(); // Reset the global sequential index
     } else {
       const currentSegments = baseGeo.getAttribute('position').count;
       
@@ -109,6 +135,7 @@ export function animate(params) {
       // Check if radius or segments have changed significantly
       if (currentSegments !== state.segments || Math.abs(state.currentGeometryRadius - state.radius) > 0.1) {
         needsNewGeometry = true;
+        resetGlobalSequentialIndex(); // Reset the global sequential index when geometry changes
       }
     }
     
@@ -135,6 +162,15 @@ export function animate(params) {
         cleanupIntersectionMarkers(scene);
       }
     }
+    
+    // Check if camera distance has changed significantly
+    const cameraDistanceChanged = Math.abs(cam.position.z - lastCameraDistance) > 100;
+    if (cameraDistanceChanged) {
+      lastCameraDistance = cam.position.z;
+    }
+    
+    // Check if any note parameters have changed
+    const noteParamsChanged = haveNoteParametersChanged(state);
     
     // Track parameter changes that affect geometry or intersections
     const paramsChanged = 
@@ -273,10 +309,12 @@ export function animate(params) {
     // Determine when we need to update the group
     const shouldUpdateGroup = 
       paramsChanged || 
+      noteParamsChanged || // Add note parameters change detection
       state.parameterChanges.copies || 
       state.justCalculatedIntersections || 
       state.needsPointFreqLabelsUpdate ||
       needsNewGeometry ||
+      cameraDistanceChanged || // Update when camera changes significantly
       state.frame < 5 || // Always update first few frames
       group.children.length === 0; // Always update if group is empty
 
@@ -390,31 +428,3 @@ export function animate(params) {
   // Start the animation loop
   animationLoop();
 }
-
-// Audio trigger handler optimized for note objects
-const handleAudioTrigger = (note) => {
-  if (!csound) {
-    return note;
-  }
-  
-  try {
-    // Ensure we're not passing the csound instance
-    if (!note || typeof note !== 'object' || note === csound) {
-      return {
-        frequency: 440,
-        duration: 0.3,
-        velocity: 0.7,
-        pan: 0
-      };
-    }
-    
-    // Make a clean copy of the note to avoid reference issues
-    const noteCopy = { ...note };
-    
-    // Pass the note copy to triggerAudio
-    return triggerAudio(noteCopy);
-  } catch (error) {
-    console.error("Error in handleAudioTrigger:", error);
-    return note;
-  }
-};

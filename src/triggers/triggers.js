@@ -1,4 +1,4 @@
-// src/triggers/triggers.js - Updated to use note objects with fixes for quantization issues
+// src/triggers/triggers.js - Updated to use global sequential index approach
 import * as THREE from 'three';
 import { MARK_LIFE, OVERLAP_THRESHOLD, TICKS_PER_BEAT, TICKS_PER_MEASURE } from '../config/constants.js';
 import { createOrUpdateLabel, createAxisLabel, removeLabel } from '../ui/domLabels.js';
@@ -14,6 +14,9 @@ import { createNote } from '../notes/notes.js';
 
 // Store for pending triggers
 let pendingTriggers = [];
+
+// Global sequential index counter for trigger events
+let globalSequentialIndex = 0;
 
 /**
  * Calculate distance between two points in 2D space
@@ -66,8 +69,6 @@ function storePendingTrigger(triggerInfo, quantizedTime) {
   
   // Sort pending triggers by execution time
   pendingTriggers.sort((a, b) => a.executeTime - b.executeTime);
-  
-
 }
 
 /**
@@ -337,6 +338,14 @@ function createMarker(worldRot, x, y, scene, note, camera = null, renderer = nul
 }
 
 /**
+ * Reset the global sequential index
+ * This should be called when significant changes happen to the geometry
+ */
+export function resetGlobalSequentialIndex() {
+  globalSequentialIndex = 0;
+}
+
+/**
  * Detect axis crossings and trigger audio
  * @param {THREE.BufferGeometry} baseGeo Base geometry
  * @param {number} lastAngle Previous rotation angle
@@ -362,6 +371,15 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
   // Get camera and renderer for axis labels
   const camera = group.parent?.userData?.camera;
   const renderer = group.parent?.userData?.renderer;
+  
+  // Check if geometry has changed significantly (reset sequential index)
+  if (state && state.parameterChanges && 
+      (state.parameterChanges.segments || 
+       state.parameterChanges.copies || 
+       state.parameterChanges.modulus || 
+       state.parameterChanges.useModulus)) {
+    resetGlobalSequentialIndex();
+  }
   
   // First detect crossings for regular vertices
   for (let ci = 0; ci < copies; ci++) {
@@ -446,6 +464,9 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
           // Add this point to the list of triggered points
           triggeredPoints.push({ x: worldX, y: worldY });
           
+          // Calculate global sequential index
+          const globalIndex = (ci * count) + vi;
+          
           // Prepare trigger data for note creation
           const triggerData = {
             x: x1,
@@ -454,7 +475,8 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
             vertexIndex: vi,
             isIntersection: false,
             angle,
-            lastAngle
+            lastAngle,
+            globalIndex // Pass the global sequential index
           };
           
           // Create note object with modulo parameters
@@ -484,7 +506,6 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
               noteCopy.time = triggerTime;
               
               // IMPORTANT: We need to pass a copy of the entire note object here
-              console.log("About to trigger audio with note frequency:", noteCopy.frequency);
               audioCallback(noteCopy);
               
               // Create a marker with visual feedback for quantization
@@ -574,6 +595,10 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
           // Add to triggered points
           triggeredPoints.push({ x: worldX, y: worldY });
           
+          // Calculate global sequential index for intersection point
+          // Comes after all regular vertices
+          const globalIndex = (copies * count) + i;
+          
           // Prepare trigger data for note creation
           const triggerData = {
             x: localPos.x,
@@ -581,7 +606,8 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
             isIntersection: true,
             intersectionIndex: i,
             angle,
-            lastAngle
+            lastAngle,
+            globalIndex // Pass the global sequential index
           };
           
           // Create note object with modulo parameters

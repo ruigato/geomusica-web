@@ -37,7 +37,15 @@ export function createAppState() {
       useModulus: false,
       altScale: false,
       useAltScale: false,
-      altStepN: false
+      altStepN: false,
+      durationMode: false,
+      durationModulo: false,
+      minDuration: false,
+      maxDuration: false,
+      velocityMode: false,
+      velocityModulo: false,
+      minVelocity: false,
+      maxVelocity: false
     },
     
     // Performance and frame tracking
@@ -639,6 +647,8 @@ export function createAppState() {
     setDurationMode(mode) {
       if (Object.values(ParameterMode).includes(mode)) {
         this.durationMode = mode;
+        this.parameterChanges.durationMode = true;
+        this.needsPointFreqLabelsUpdate = true;        
       }
     },
     
@@ -647,7 +657,12 @@ export function createAppState() {
      * @param {number} value New modulo value (1-12)
      */
     setDurationModulo(value) {
-      this.durationModulo = Math.max(1, Math.min(12, Number(value)));
+      const newValue = Math.max(1, Math.min(12, Number(value)));
+      if (this.durationModulo !== newValue) {
+        this.durationModulo = newValue;
+        this.parameterChanges.durationModulo = true;
+        this.needsPointFreqLabelsUpdate = true;
+      }
     },
     
     /**
@@ -655,7 +670,12 @@ export function createAppState() {
      * @param {number} value New min duration in seconds
      */
     setMinDuration(value) {
-      this.minDuration = Math.max(0.05, Math.min(this.maxDuration, Number(value)));
+      const newValue = Math.max(0.05, Math.min(this.maxDuration, Number(value)));
+      if (this.minDuration !== newValue) {
+        this.minDuration = newValue;
+        this.parameterChanges.minDuration = true;
+        this.needsPointFreqLabelsUpdate = true;
+      }
     },
     
     /**
@@ -663,7 +683,12 @@ export function createAppState() {
      * @param {number} value New max duration in seconds
      */
     setMaxDuration(value) {
-      this.maxDuration = Math.max(this.minDuration, Math.min(2.0, Number(value)));
+      const newValue = Math.max(this.minDuration, Math.min(2.0, Number(value)));
+      if (this.maxDuration !== newValue) {
+        this.maxDuration = newValue;
+        this.parameterChanges.maxDuration = true;
+        this.needsPointFreqLabelsUpdate = true;
+      }
     },
     
     /**
@@ -671,8 +696,10 @@ export function createAppState() {
      * @param {string} mode Parameter mode (modulo, random, interpolation)
      */
     setVelocityMode(mode) {
-      if (Object.values(ParameterMode).includes(mode)) {
+      if (Object.values(ParameterMode).includes(mode) && this.velocityMode !== mode) {
         this.velocityMode = mode;
+        this.parameterChanges.velocityMode = true;
+        this.needsPointFreqLabelsUpdate = true;
       }
     },
     
@@ -681,7 +708,12 @@ export function createAppState() {
      * @param {number} value New modulo value (1-12)
      */
     setVelocityModulo(value) {
-      this.velocityModulo = Math.max(1, Math.min(12, Number(value)));
+      const newValue = Math.max(1, Math.min(12, Number(value)));
+      if (this.velocityModulo !== newValue) {
+        this.velocityModulo = newValue;
+        this.parameterChanges.velocityModulo = true;
+        this.needsPointFreqLabelsUpdate = true;
+      }
     },
     
     /**
@@ -689,7 +721,12 @@ export function createAppState() {
      * @param {number} value New min velocity (0-1)
      */
     setMinVelocity(value) {
-      this.minVelocity = Math.max(0.1, Math.min(this.maxVelocity, Number(value)));
+      const newValue = Math.max(0.1, Math.min(this.maxVelocity, Number(value)));
+      if (this.minVelocity !== newValue) {
+        this.minVelocity = newValue;
+        this.parameterChanges.minVelocity = true;
+        this.needsPointFreqLabelsUpdate = true;
+      }
     },
     
     /**
@@ -697,13 +734,13 @@ export function createAppState() {
      * @param {number} value New max velocity (0-1)
      */
     setMaxVelocity(value) {
-      this.maxVelocity = Math.max(this.minVelocity, Math.min(1.0, Number(value)));
+      const newValue = Math.max(this.minVelocity, Math.min(1.0, Number(value)));
+      if (this.maxVelocity !== newValue) {
+        this.maxVelocity = newValue;
+        this.parameterChanges.maxVelocity = true;
+        this.needsPointFreqLabelsUpdate = true;
+      }
     },
-    
-    /**
-     * Get total point count in the current geometry
-     * @returns {number} Total number of points (vertices and intersections)
-     */
     getTotalPointCount() {
       let count = this.segments * this.copies; // Regular vertices
       
