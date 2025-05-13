@@ -701,6 +701,19 @@ setSegments(value) {
     },
     
     /**
+     * Set duration phase value
+     * @param {number} value New duration phase (0-1)
+     */
+    setDurationPhase(value) {
+      const newValue = Math.max(0, Math.min(1, Number(value)));
+      if (this.durationPhase !== newValue) {
+        this.durationPhase = newValue;
+        this.parameterChanges.durationPhase = true;
+        this.needsPointFreqLabelsUpdate = true;
+      }
+    },
+    
+    /**
      * Set velocity mode
      * @param {string} mode Parameter mode (modulo, random, interpolation)
      */
@@ -747,6 +760,19 @@ setSegments(value) {
       if (this.maxVelocity !== newValue) {
         this.maxVelocity = newValue;
         this.parameterChanges.maxVelocity = true;
+        this.needsPointFreqLabelsUpdate = true;
+      }
+    },
+    
+    /**
+     * Set velocity phase value
+     * @param {number} value New velocity phase (0-1)
+     */
+    setVelocityPhase(value) {
+      const newValue = Math.max(0, Math.min(1, Number(value)));
+      if (this.velocityPhase !== newValue) {
+        this.velocityPhase = newValue;
+        this.parameterChanges.velocityPhase = true;
         this.needsPointFreqLabelsUpdate = true;
       }
     },

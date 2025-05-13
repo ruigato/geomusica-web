@@ -224,6 +224,7 @@
   </div>
 </section>
     
+<!-- Added new NOTE PARAMETERS section -->
 <section>
   <h2 class="section-title">INTERSECTIONS</h2>
   <div class="section-content">
@@ -285,6 +286,16 @@
         <input type="number" id="maxDurationNumber" min="0.1" max="2.0" step="0.01" value="0.5">
       </div>
     </div>
+
+    <div class="control">
+      <label for="durationPhaseRange">Duration Phase:</label>
+      <div class="slider-container">
+        <input type="range" id="durationPhaseRange" min="0" max="1" step="0.01" value="0">
+        <span id="durationPhaseValue" class="slider-value">0.00</span>
+        <input type="number" id="durationPhaseNumber" min="0" max="1" step="0.01" value="0">
+      </div>
+      <div class="help-text">Offsets the starting point in the pattern (0-1)</div>
+    </div>
     
     <!-- Velocity Controls -->
     <h3>Velocity</h3>
@@ -332,10 +343,21 @@
         <input type="number" id="maxVelocityNumber" min="0.2" max="1.0" step="0.01" value="0.9">
       </div>
     </div>
+
+    <!-- Add these controls after the min/max velocity controls in the Velocity section -->
+    <div class="control">
+      <label for="velocityPhaseRange">Velocity Phase:</label>
+      <div class="slider-container">
+        <input type="range" id="velocityPhaseRange" min="0" max="1" step="0.01" value="0">
+        <span id="velocityPhaseValue" class="slider-value">0.00</span>
+        <input type="number" id="velocityPhaseNumber" min="0" max="1" step="0.01" value="0">
+      </div>
+      <div class="help-text">Offsets the starting point in the pattern (0-1)</div>
+    </div>
   </div>
 </section>
-
-<!-- SYNTH section after NOTE PARAMETERS -->
+    
+<!-- New SYNTH section with ADSR controls -->
 <section>
   <h2 class="section-title">SYNTH</h2>
   <div class="section-content">
@@ -436,61 +458,6 @@
   <div id="canvas"></div>
   <!-- Labels container -->
   <div id="labels-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden;"></div>
-  
-  <!-- Add JavaScript for collapsible sections -->
-  <script>
-    // Function to initialize collapsible sections
-    function initCollapsibleSections() {
-      const sectionTitles = document.querySelectorAll('.section-title');
-      
-      sectionTitles.forEach(title => {
-        title.addEventListener('click', () => {
-          // Toggle collapsed class for title
-          title.classList.toggle('collapsed');
-          
-          // Toggle collapsed class for content
-          const content = title.nextElementSibling;
-          content.classList.toggle('collapsed');
-          
-          // Save state to localStorage
-          saveSectionStates();
-        });
-      });
-      
-      // Load saved states from localStorage
-      loadSectionStates();
-    }
-    
-    // Save the collapsed/expanded state of sections
-    function saveSectionStates() {
-      const states = {};
-      document.querySelectorAll('.section-title').forEach(title => {
-        states[title.textContent] = title.classList.contains('collapsed');
-      });
-      localStorage.setItem('geomusica_section_states', JSON.stringify(states));
-    }
-    
-    // Load saved section states
-    function loadSectionStates() {
-      try {
-        const savedStates = JSON.parse(localStorage.getItem('geomusica_section_states'));
-        if (savedStates) {
-          document.querySelectorAll('.section-title').forEach(title => {
-            const isCollapsed = savedStates[title.textContent];
-            if (isCollapsed) {
-              title.classList.add('collapsed');
-              title.nextElementSibling.classList.add('collapsed');
-            }
-          });
-        }
-      } catch (e) {
-        console.warn('Failed to load saved section states', e);
-      }
-    }
-    
-    // Initialize collapsible sections when DOM is loaded
-    document.addEventListener('DOMContentLoaded', initCollapsibleSections);
-  </script>
   
   <script type="module" src="/src/main.js"></script>
 </body>

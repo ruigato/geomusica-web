@@ -178,10 +178,55 @@ function addStateControlsToUI(state) {
   document.body.appendChild(container);
 }
 
-// Check if the DOM is already loaded
+/**
+ * Check if the DOM is fully loaded
+ * @returns {boolean} True if DOM is fully loaded, false otherwise
+ */
 function isDOMLoaded() {
-  return document.readyState === 'complete' || 
-         document.readyState === 'interactive';
+  return document.readyState === 'complete' || document.readyState === 'interactive';
+}
+
+// Function to setup collapsible sections
+function setupCollapsibleSections() {
+  const sections = document.querySelectorAll('section');
+  
+  sections.forEach(section => {
+    const header = section.querySelector('h2');
+    const content = section.querySelector('.section-content');
+    
+    if (header && content) {
+      // Add click event to h2 headers
+      header.addEventListener('click', () => {
+        // Toggle the collapsed class on the section (for our original implementation)
+        section.classList.toggle('collapsed');
+        
+        // Toggle the collapsed class on the header and content (for the inline JS implementation)
+        if (header.classList.contains('section-title')) {
+          header.classList.toggle('collapsed');
+          content.classList.toggle('collapsed');
+        }
+        
+        // Save the collapsed state to localStorage
+        const sectionId = header.textContent.trim().replace(/\s+/g, '_').toLowerCase();
+        localStorage.setItem(`section_${sectionId}_collapsed`, section.classList.contains('collapsed'));
+      });
+      
+      // Check if there's a saved state for this section
+      const sectionId = header.textContent.trim().replace(/\s+/g, '_').toLowerCase();
+      const isCollapsed = localStorage.getItem(`section_${sectionId}_collapsed`) === 'true';
+      
+      // Apply saved state
+      if (isCollapsed) {
+        section.classList.add('collapsed');
+        
+        // Also add it to the title and content if we're using that approach
+        if (header.classList.contains('section-title')) {
+          header.classList.add('collapsed');
+          content.classList.add('collapsed');
+        }
+      }
+    }
+  });
 }
 
 // Preload the DOS VGA font before proceeding with setup
@@ -255,6 +300,9 @@ function initializeApplication() {
 
   // Add import/export controls to the UI
   addStateControlsToUI(appState);
+
+  // Setup collapsible sections
+  setupCollapsibleSections();
 
   // Set up auto save (every 5 seconds) - COMMENTED OUT FOR PERFORMANCE
   // const stopAutoSave = setupAutoSave(appState, 5000);

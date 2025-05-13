@@ -247,6 +247,20 @@ export function setupUI(state) {
   const maxVelocityNumber = document.getElementById('maxVelocityNumber');
   const maxVelocityValue = document.getElementById('maxVelocityValue');
   
+  // Add the missing UI elements for the duration phase slider
+
+  // Get UI elements with null checks
+  const durationPhaseRange = document.getElementById('durationPhaseRange');
+  const durationPhaseNumber = document.getElementById('durationPhaseNumber');
+  const durationPhaseValue = document.getElementById('durationPhaseValue');
+  
+  // Set initial values for duration phase with null checks
+  if (durationPhaseRange && durationPhaseNumber && durationPhaseValue) {
+    durationPhaseRange.value = state.durationPhase || 0;
+    durationPhaseNumber.value = state.durationPhase || 0;
+    durationPhaseValue.textContent = (state.durationPhase || 0).toFixed(2);
+  }
+  
   // Check if required elements exist before proceeding
   if (!numberRange || !numberNumber || !numberValue) {
     console.warn('Required UI elements for Number parameter are missing');
@@ -579,6 +593,34 @@ export function setupUI(state) {
       Number);
   }
 
+  // Add this in the appropriate place in the function (right before or after the other duration controls)
+  if (durationPhaseRange && durationPhaseNumber && durationPhaseValue) {
+    syncPair(durationPhaseRange, durationPhaseNumber, durationPhaseValue,
+      value => state.setDurationPhase(Number(value)),
+      0, 1.0,
+      Number);
+  }
+
+  // Add velocity phase UI elements
+  const velocityPhaseRange = document.getElementById('velocityPhaseRange');
+  const velocityPhaseNumber = document.getElementById('velocityPhaseNumber');
+  const velocityPhaseValue = document.getElementById('velocityPhaseValue');
+  
+  // Set initial values for velocity phase with null checks
+  if (velocityPhaseRange && velocityPhaseNumber && velocityPhaseValue) {
+    velocityPhaseRange.value = state.velocityPhase || 0;
+    velocityPhaseNumber.value = state.velocityPhase || 0;
+    velocityPhaseValue.textContent = (state.velocityPhase || 0).toFixed(2);
+  }
+
+  // Add this alongside the other velocity controls
+  if (velocityPhaseRange && velocityPhaseNumber && velocityPhaseValue) {
+    syncPair(velocityPhaseRange, velocityPhaseNumber, velocityPhaseValue,
+      value => state.setVelocityPhase(Number(value)),
+      0, 1.0,
+      Number);
+  }
+
   return {
     bpmRange, bpmNumber, bpmValue,
     radiusRange, radiusNumber, radiusValue,
@@ -603,6 +645,7 @@ export function setupUI(state) {
     durationModeRadios, durationModuloRadioGroup,
     minDurationRange, minDurationNumber, minDurationValue,
     maxDurationRange, maxDurationNumber, maxDurationValue,
+    durationPhaseRange, durationPhaseNumber, durationPhaseValue,
     
     velocityModeRadios, velocityModuloRadioGroup,
     minVelocityRange, minVelocityNumber, minVelocityValue,
