@@ -10,6 +10,14 @@ body {
   overflow: hidden;
 }
 
+/* Make all UI elements non-selectable to improve clickability */
+#ui, #ui * {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
 #ui {
   width: 40%; /* Expanded from 20% to 40% */
   max-height: 100vh;

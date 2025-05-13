@@ -52,6 +52,16 @@
       padding-top: 0;
       padding-bottom: 0;
     }
+    /* Make all text and controls non-selectable */
+    #ui * {
+      user-select: none;
+    }
+    label, .help-text, h3, span, .slider-value {
+      user-select: none;
+    }
+    .radio-group, .radio-item, .radio-item label {
+      user-select: none;
+    }
     /* Existing styles */
     .slider-container {
       display: flex;
