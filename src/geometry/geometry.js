@@ -39,8 +39,17 @@ export function createPolygonGeometry(radius, segments, state = null) {
   
   // If a valid skip is specified and stars are enabled, create a star polygon
   if (useStars && starSkip > 1 && starSkip < numSegments) {
-    console.log(`Creating star polygon with: useStars=${useStars}, starSkip=${starSkip}, segments=${numSegments}`);
-    return createStarPolygonGeometry(radius, numSegments, starSkip, useFractal, fractalValue);
+    // Calculate GCD to determine if this creates a proper star
+    const gcd = calculateGCD(numSegments, starSkip);
+    console.log(`Creating star polygon with: useStars=${useStars}, starSkip=${starSkip}, segments=${numSegments}, gcd=${gcd}`);
+    
+    // Only use star pattern when gcd=1 (ensures a single connected path)
+    if (gcd === 1 || starSkip === 1) {
+      return createStarPolygonGeometry(radius, numSegments, starSkip, useFractal, fractalValue);
+    } else {
+      console.log(`Warning: Skip ${starSkip} with ${numSegments} segments has gcd=${gcd}, would create multiple disconnected shapes`);
+      // Fall through to create a regular polygon instead
+    }
   }
   
   // Otherwise create a standard polygon
@@ -100,6 +109,11 @@ function createStarPolygonGeometry(radius, n, k, useFractal, fractalValue) {
   const geometry = new THREE.BufferGeometry();
   const vertices = [];
   
+  // Calculate GCD to determine if we'll get a single star or multiple shapes
+  const gcd = calculateGCD(n, k);
+  
+  console.log(`Creating star polygon {${n}/${k}} - GCD: ${gcd}`);
+  
   // Collect base vertices of the polygon in a circle
   const baseVertices = [];
   for (let i = 0; i < n; i++) {
@@ -109,15 +123,24 @@ function createStarPolygonGeometry(radius, n, k, useFractal, fractalValue) {
     baseVertices.push(new THREE.Vector3(x, y, 0));
   }
   
+  // If gcd > 1, we'll get multiple disconnected figures
+  // The figure will repeat after visiting n/gcd vertices
+  const verticesPerFigure = n / gcd;
+  console.log(`This will create ${gcd} separate figure(s) with ${verticesPerFigure} vertices each`);
+  
   // If fractal subdivision is enabled and value > 1, subdivide each line segment
   if (useFractal && fractalValue > 1) {
     const subdivisions = fractalValue;
     
-    // For star polygons with fractal subdivision, traverse in star pattern order
-    let currentIndex = 0;  // Start at vertex 0
+    // For star polygons with fractal subdivision
+    let visited = new Set();  // Track visited vertices
+    let currentIndex = 0;     // Start at vertex 0
     
-    for (let i = 0; i < n; i++) {
+    // Continue until we've visited all vertices or completed a cycle
+    while (visited.size < n && !visited.has(currentIndex)) {
+      visited.add(currentIndex);
       const startVertex = baseVertices[currentIndex];
+      
       // Calculate next vertex based on skip pattern
       const nextIndex = (currentIndex + k) % n;
       const endVertex = baseVertices[nextIndex];
@@ -138,25 +161,40 @@ function createStarPolygonGeometry(radius, n, k, useFractal, fractalValue) {
     }
   } else {
     // For standard star polygon with no subdivision
-    // Vertices must be in correct star pattern order
-    let currentIndex = 0;  // Start at vertex 0
+    let visited = new Set();  // Track visited vertices
+    let currentIndex = 0;     // Start at vertex 0
     
-    for (let i = 0; i < n; i++) {
+    // Continue until we've visited all vertices or completed a cycle
+    while (visited.size < n && !visited.has(currentIndex)) {
+      visited.add(currentIndex);
       const vertex = baseVertices[currentIndex];
       vertices.push(vertex.x, vertex.y, vertex.z);
       
       // Calculate next vertex based on skip pattern
       currentIndex = (currentIndex + k) % n;
     }
+    
+    // Add the first vertex again to close the loop if we didn't already
+    if (vertices.length > 0 && currentIndex === 0) {
+      const firstVertex = baseVertices[0];
+      vertices.push(firstVertex.x, firstVertex.y, firstVertex.z);
+    }
   }
   
   // Set up the attributes
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
   
-  // Debug log to help verify the star calculation
-  console.log(`Creating star polygon {${n}/${k}}`);
-  
   return geometry;
+}
+
+// Helper function to calculate Greatest Common Divisor
+function calculateGCD(a, b) {
+  while (b) {
+    const temp = b;
+    b = a % b;
+    a = temp;
+  }
+  return a;
 }
 
 /**

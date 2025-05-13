@@ -917,19 +917,23 @@ export function createAppState() {
       // Check each potential skip value
       for (let k = 1; k < n; k++) {
         // Only include if k and n are coprime (gcd(k, n) = 1)
-        if (this.gcd(k, n) === 1) {
+        // This ensures we get a single continuous path through all vertices
+        const gcdValue = this.gcd(k, n);
+        if (gcdValue === 1) {
           // To avoid duplicates (since {n/k} is the same as {n/(n-k)})
           // only include k up to n/2
           if (k <= Math.floor(n/2)) {
             validSkips.push(k);
-            console.log(`Valid skip: k=${k} for n=${n} (gcd=${this.gcd(k, n)})`);
+            console.log(`Valid skip: k=${k} for n=${n} (gcd=${gcdValue})`);
           }
+        } else {
+          console.log(`Skip ${k} rejected: forms ${gcdValue} separate figure(s) instead of a single star`);
         }
       }
       
-      // Always include at least skip 1 (regular polygon)
-      if (validSkips.length === 0) {
-        validSkips.push(1);
+      // Always include skip 1 (regular polygon)
+      if (!validSkips.includes(1)) {
+        validSkips.unshift(1);
       }
       
       console.log(`Valid skips for n=${n}: ${validSkips.join(', ')}`);
