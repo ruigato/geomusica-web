@@ -615,7 +615,10 @@ const originalSetters = {
   setUseAltScale: appState.setUseAltScale,
   setAltStepN: appState.setAltStepN,
   // Add setSegments to ensure rounding is properly applied
-  setSegments: appState.setSegments
+  setSegments: appState.setSegments,
+  // Add fractal setters
+  setFractalValue: appState.setFractalValue,
+  setUseFractal: appState.setUseFractal
 };
 
 // Override key setters to ensure state sync
@@ -654,6 +657,17 @@ appState.setSegments = function(value) {
   // Ensure value is properly rounded to an integer
   const roundedValue = Math.round(Number(value));
   originalSetters.setSegments.call(this, roundedValue);
+  syncStateAcrossSystems();
+};
+
+// Override fractal setters
+appState.setFractalValue = function(value) {
+  originalSetters.setFractalValue.call(this, value);
+  syncStateAcrossSystems();
+};
+
+appState.setUseFractal = function(value) {
+  originalSetters.setUseFractal.call(this, value);
   syncStateAcrossSystems();
 };
 

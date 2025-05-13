@@ -117,29 +117,29 @@ export function animate(params) {
     // Check if geometry needs updating
     let needsNewGeometry = false;
     
-// Always check if baseGeo exists and is valid
-if (!baseGeo || !baseGeo.getAttribute) {
-  console.error("Invalid baseGeo - creating new one");
-  params.baseGeo = createPolygonGeometry(state.radius, state.segments);
-  state.baseGeo = params.baseGeo;
-  needsNewGeometry = true;
-  resetGlobalSequentialIndex(); // Reset the global sequential index
-} else {
-  const currentSegments = baseGeo.getAttribute('position').count;
-  
-  // Initialize current geometry radius if not set
-  if (!state.currentGeometryRadius) {
-    state.currentGeometryRadius = state.radius;
-  }
-  
-  // Check if radius or segments have changed significantly
-  if (currentSegments !== state.segments || Math.abs(state.currentGeometryRadius - state.radius) > 0.1 || state.segmentsChanged) {
-    needsNewGeometry = true;
-    resetGlobalSequentialIndex(); // Reset the global sequential index when geometry changes
-    // Clear segments changed flag
-    state.segmentsChanged = false;
-  }
-}
+    // Always check if baseGeo exists and is valid
+    if (!baseGeo || !baseGeo.getAttribute) {
+      console.error("Invalid baseGeo - creating new one");
+      params.baseGeo = createPolygonGeometry(state.radius, state.segments, state);
+      state.baseGeo = params.baseGeo;
+      needsNewGeometry = true;
+      resetGlobalSequentialIndex(); // Reset the global sequential index
+    } else {
+      const currentSegments = baseGeo.getAttribute('position').count;
+      
+      // Initialize current geometry radius if not set
+      if (!state.currentGeometryRadius) {
+        state.currentGeometryRadius = state.radius;
+      }
+      
+      // Check if radius or segments have changed significantly
+      if (currentSegments !== state.segments || Math.abs(state.currentGeometryRadius - state.radius) > 0.1 || state.segmentsChanged) {
+        needsNewGeometry = true;
+        resetGlobalSequentialIndex(); // Reset the global sequential index when geometry changes
+        // Clear segments changed flag
+        state.segmentsChanged = false;
+      }
+    }
     
     // Create new geometry if needed
     if (needsNewGeometry) {
@@ -149,7 +149,7 @@ if (!baseGeo || !baseGeo.getAttribute) {
       }
       
       // Create new polygon geometry
-      const newGeo = createPolygonGeometry(state.radius, state.segments);
+      const newGeo = createPolygonGeometry(state.radius, state.segments, state);
       
       // Update references
       state.baseGeo = newGeo;

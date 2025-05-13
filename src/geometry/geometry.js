@@ -21,9 +21,10 @@ const vertexCircleGeometry = new THREE.CircleGeometry(1, 12); // Fewer segments 
  * Create a regular polygon outline
  * @param {number} radius - Radius of the polygon
  * @param {number} segments - Number of sides
+ * @param {Object} state - Application state for additional parameters
  * @returns {THREE.BufferGeometry} Polygon geometry
  */
-export function createPolygonGeometry(radius, segments) {
+export function createPolygonGeometry(radius, segments, state = null) {
   // Fix for rounding bug: Ensure we have a valid integer number of segments
   const numSegments = Math.max(2, Math.round(segments));
   
@@ -33,22 +34,61 @@ export function createPolygonGeometry(radius, segments) {
   // Always create a completely fresh geometry
   const geometry = new THREE.BufferGeometry();
   
+  // Check if we should apply fractal subdivision
+  const useFractal = state && state.useFractal;
+  const fractalValue = state && state.fractalValue ? state.fractalValue : 1;
+  
   // Generate vertices for the outline only - no central vertex
   const vertices = [];
   const step = (Math.PI * 2) / numSegments;
   
-  // Create vertices in a circular pattern
+  // Create initial vertices in a circular pattern
+  const baseVertices = [];
   for (let i = 0; i < numSegments; i++) {
     const angle = i * step;
     const x = radius * Math.cos(angle);
     const y = radius * Math.sin(angle);
-    vertices.push(x, y, 0);
+    baseVertices.push(new THREE.Vector3(x, y, 0));
   }
+  
+  // If fractal subdivision is enabled and value > 1, subdivide each line segment
+  if (useFractal && fractalValue > 1) {
+    const subdivisions = fractalValue;
+    
+    console.log(`Applying fractal subdivision with value: ${fractalValue}`);
+    
+    for (let i = 0; i < numSegments; i++) {
+      const startVertex = baseVertices[i];
+      const endVertex = baseVertices[(i + 1) % numSegments];
+      
+      // Add the start vertex
+      vertices.push(startVertex.x, startVertex.y, startVertex.z);
+      
+      // Create subdivision points between start and end
+      for (let j = 1; j < subdivisions; j++) {
+        const t = j / subdivisions;
+        const x = startVertex.x + (endVertex.x - startVertex.x) * t;
+        const y = startVertex.y + (endVertex.y - startVertex.y) * t;
+        vertices.push(x, y, 0);
+      }
+    }
+  } else {
+    // No subdivision, just use the base vertices
+    for (let i = 0; i < numSegments; i++) {
+      const vertex = baseVertices[i];
+      vertices.push(vertex.x, vertex.y, vertex.z);
+    }
+  }
+  
+  // Calculate the total number of vertices after subdivision
+  const totalVertices = useFractal && fractalValue > 1 ? 
+                        numSegments * fractalValue : 
+                        numSegments;
   
   // Create indices for line segments
   const indices = [];
-  for (let i = 0; i < numSegments; i++) {
-    indices.push(i, (i + 1) % numSegments); // Connect each vertex to the next, looping back to start
+  for (let i = 0; i < totalVertices; i++) {
+    indices.push(i, (i + 1) % totalVertices); // Connect each vertex to the next, looping back to start
   }
   
   // Set attributes

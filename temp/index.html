@@ -218,6 +218,25 @@
     </section>
     
     <section>
+      <h2 class="section-title">SHAPE MOD</h2>
+      <div class="section-content">
+        <div class="control">
+          <label for="fractalRange">Fractal:</label>
+          <div class="slider-container">
+            <input type="range" id="fractalRange" min="1" max="9" step="1" value="1">
+            <span id="fractalValue" class="slider-value">1</span>
+            <input type="number" id="fractalNumber" min="1" max="9" step="1" value="1">
+          </div>
+          <div class="help-text">Subdivides line segments, creating new vertices. 1 = no subdivision.</div>
+        </div>
+        <div class="control">
+          <label for="useFractalCheckbox">Use Fractal Subdivision:</label>
+          <input type="checkbox" id="useFractalCheckbox">
+        </div>
+      </div>
+    </section>
+    
+    <section>
       <h2 class="section-title">MODULUS</h2>
       <div class="section-content">
         <div class="control">

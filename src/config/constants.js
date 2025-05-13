@@ -63,7 +63,11 @@ export const DEFAULT_VALUES = {
   VELOCITY_MODULO: 4,        // Default velocity modulo value
   MIN_VELOCITY: 0.3,         // Default minimum velocity (0-1)
   MAX_VELOCITY: 0.9,          // Default maximum velocity (0-1)
-  VELOCITY_PHASE: 0         // Default velocity phase (0-1)
+  VELOCITY_PHASE: 0,         // Default velocity phase (0-1)
+  
+  // Fractal subdivision defaults
+  FRACTAL_VALUE: 1,          // Default fractal subdivision value (1 = no subdivision)
+  USE_FRACTAL: false          // Default to off
 };
 
 // UI ranges
@@ -85,7 +89,10 @@ export const UI_RANGES = {
   MIN_DURATION: { MIN: 0.05, MAX: 1.0, STEP: 0.01 },
   MAX_DURATION: { MIN: 0.1, MAX: 2.0, STEP: 0.01 },
   MIN_VELOCITY: { MIN: 0.1, MAX: 0.9, STEP: 0.01 },
-  MAX_VELOCITY: { MIN: 0.2, MAX: 1.0, STEP: 0.01 }
+  MAX_VELOCITY: { MIN: 0.2, MAX: 1.0, STEP: 0.01 },
+  
+  // Fractal subdivision range
+  FRACTAL: { MIN: 1, MAX: 9, STEP: 1 }
 };
 
 // Add this list of valid quantization values for reference

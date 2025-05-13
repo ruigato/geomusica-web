@@ -227,6 +227,12 @@ export function setupUI(state) {
   const referenceFreqNumber = document.getElementById('referenceFreqNumber');
   const referenceFreqValue = document.getElementById('referenceFreqValue');
   
+  // Fractal controls
+  const fractalRange = document.getElementById('fractalRange');
+  const fractalNumber = document.getElementById('fractalNumber');
+  const fractalValue = document.getElementById('fractalValue');
+  const useFractalCheckbox = document.getElementById('useFractalCheckbox');
+  
   // Note parameter controls - Duration
   const durationModeRadios = document.querySelectorAll('input[name="durationMode"]');
   const durationModuloRadioGroup = document.getElementById('durationModuloRadioGroup');
@@ -274,6 +280,7 @@ export function setupUI(state) {
   if (useTimeSubdivisionCheckbox) useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
   if (useEqualTemperamentCheckbox) useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
   if (useQuantizationCheckbox) useQuantizationCheckbox.checked = state.useQuantization;
+  if (useFractalCheckbox) useFractalCheckbox.checked = state.useFractal;
   
   // Set initial values for scale mod controls from state with null checks
   if (altScaleRange && altScaleNumber && altScaleValue) {
@@ -395,6 +402,14 @@ export function setupUI(state) {
     useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
     useEqualTemperamentCheckbox.addEventListener('change', e => {
       state.setUseEqualTemperament(e.target.checked);
+    });
+  }
+  
+  // Setup fractal checkbox with null check
+  if (useFractalCheckbox) {
+    useFractalCheckbox.checked = state.useFractal;
+    useFractalCheckbox.addEventListener('change', e => {
+      state.setUseFractal(e.target.checked);
     });
   }
   
@@ -562,6 +577,14 @@ export function setupUI(state) {
       UI_RANGES.REFERENCE_FREQUENCY.MIN, UI_RANGES.REFERENCE_FREQUENCY.MAX,
       Number);
   }
+  
+  // Link fractal controls
+  if (fractalRange && fractalNumber && fractalValue) {
+    syncPair(fractalRange, fractalNumber, fractalValue,
+      value => state.setFractalValue(Number(value)),
+      1, 9,
+      Number);
+  }
     
   // Link duration controls
   if (minDurationRange && minDurationNumber && minDurationValue) {
@@ -640,6 +663,8 @@ export function setupUI(state) {
     showPointsFreqLabelsCheckbox,
     useEqualTemperamentCheckbox,
     referenceFreqRange, referenceFreqNumber, referenceFreqValue,
+    fractalRange, fractalNumber, fractalValue,
+    useFractalCheckbox,
     
     // Note parameter controls
     durationModeRadios, durationModuloRadioGroup,

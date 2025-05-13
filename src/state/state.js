@@ -45,7 +45,9 @@ export function createAppState() {
       velocityMode: false,
       velocityModulo: false,
       minVelocity: false,
-      maxVelocity: false
+      maxVelocity: false,
+      fractal: false,
+      useFractal: false
     },
     
     // Performance and frame tracking
@@ -153,6 +155,10 @@ export function createAppState() {
     // Debug mode flag
     debug: false,
     
+    // SHAPE MOD Fractal parameters
+    fractalValue: 1, // Default to 1 (no subdivision)
+    useFractal: false, // Default to off
+    
     /**
      * Check if any parameters have changed
      * @returns {boolean} True if any parameters changed
@@ -255,23 +261,23 @@ export function createAppState() {
      * Set segments count (not affected by lerping)
      * @param {number} value New segments value
      */
-setSegments(value) {
-  // Fix for the rounding bug - ensure we use Math.round to get whole numbers
-  const newValue = Math.round(Number(value));
-  
-  // ALWAYS mark as changed and force geometry update regardless of previous value
-  this.segments = newValue;
-  this.parameterChanges.segments = true;
-  this.needsIntersectionUpdate = true;
-  
-  // Force update of geometry by invalidating cached values
-  this.currentGeometryRadius = null;
-  
-  // Add a specific flag for segments change
-  this.segmentsChanged = true;
-  
-  console.log(`Segments updated to ${newValue}`);
-},
+    setSegments(value) {
+      // Fix for the rounding bug - ensure we use Math.round to get whole numbers
+      const newValue = Math.round(Number(value));
+      
+      // ALWAYS mark as changed and force geometry update regardless of previous value
+      this.segments = newValue;
+      this.parameterChanges.segments = true;
+      this.needsIntersectionUpdate = true;
+      
+      // Force update of geometry by invalidating cached values
+      this.currentGeometryRadius = null;
+      
+      // Add a specific flag for segments change
+      this.segmentsChanged = true;
+      
+      console.log(`Segments updated to ${newValue}`);
+    },
     
     /**
      * Set step scale value (affected by lerping if enabled)
@@ -838,6 +844,32 @@ setSegments(value) {
      */
     lerp(start, end, t) {
       return start + (end - start) * t;
-    }
+    },
+    
+    /**
+     * Set fractal value
+     * @param {number} value Fractal subdivision value (1-9)
+     */
+    setFractalValue(value) {
+      const newValue = Math.max(1, Math.min(9, Math.round(Number(value))));
+      if (this.fractalValue !== newValue) {
+        this.fractalValue = newValue;
+        this.parameterChanges.fractal = true;
+        this.needsIntersectionUpdate = true;
+      }
+    },
+    
+    /**
+     * Toggle fractal subdivision
+     * @param {boolean} value Enable/disable fractal subdivision
+     */
+    setUseFractal(value) {
+      const newValue = Boolean(value);
+      if (this.useFractal !== newValue) {
+        this.useFractal = newValue;
+        this.parameterChanges.useFractal = true;
+        this.needsIntersectionUpdate = true;
+      }
+    },
   };
 }

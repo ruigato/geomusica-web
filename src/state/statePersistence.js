@@ -41,6 +41,10 @@ export function saveState(state) {
       altStepN: state.altStepN,
       useAltScale: state.useAltScale,
       
+      // Fractal parameters
+      fractalValue: state.fractalValue,
+      useFractal: state.useFractal,
+      
       // Intersection parameters
       useIntersections: state.useIntersections,
       
@@ -144,6 +148,10 @@ export function applyLoadedState(state, loadedState) {
     if (loadedState.altScale !== undefined) state.setAltScale(loadedState.altScale);
     if (loadedState.altStepN !== undefined) state.setAltStepN(loadedState.altStepN);
     if (loadedState.useAltScale !== undefined) state.setUseAltScale(loadedState.useAltScale);
+    
+    // Apply fractal parameters
+    if (loadedState.fractalValue !== undefined) state.setFractalValue(loadedState.fractalValue);
+    if (loadedState.useFractal !== undefined) state.setUseFractal(loadedState.useFractal);
     
     if (loadedState.useIntersections !== undefined) state.setUseIntersections(loadedState.useIntersections);
     
@@ -275,9 +283,14 @@ export function exportStateToFile(state) {
       altScale: state.altScale,
       altStepN: state.altStepN,
       useAltScale: state.useAltScale,
+      
+      fractalValue: state.fractalValue,
+      useFractal: state.useFractal,
+      
       useIntersections: state.useIntersections,
       useLerp: state.useLerp,
       lerpTime: state.lerpTime,
+      
       attack: state.attack,
       decay: state.decay,
       sustain: state.sustain,
@@ -427,6 +440,13 @@ export function updateUIFromState(state, uiElements) {
       if (uiElements.altStepNValue) uiElements.altStepNValue.textContent = state.altStepN;
     }
     
+    // Update Fractal controls
+    if (uiElements.fractalRange && state.fractalValue !== undefined) {
+      uiElements.fractalRange.value = state.fractalValue;
+      if (uiElements.fractalNumber) uiElements.fractalNumber.value = state.fractalValue;
+      if (uiElements.fractalValue) uiElements.fractalValue.textContent = state.fractalValue;
+    }
+    
     // Update checkbox states
     if (uiElements.useLerpCheckbox && state.useLerp !== undefined) {
       uiElements.useLerpCheckbox.checked = state.useLerp;
@@ -446,6 +466,10 @@ export function updateUIFromState(state, uiElements) {
     
     if (uiElements.useAltScaleCheckbox && state.useAltScale !== undefined) {
       uiElements.useAltScaleCheckbox.checked = state.useAltScale;
+    }
+    
+    if (uiElements.useFractalCheckbox && state.useFractal !== undefined) {
+      uiElements.useFractalCheckbox.checked = state.useFractal;
     }
     
     if (uiElements.useIntersectionsCheckbox && state.useIntersections !== undefined) {
