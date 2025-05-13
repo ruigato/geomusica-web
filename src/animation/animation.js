@@ -117,10 +117,19 @@ export function animate(params) {
     // Check if geometry needs updating
     let needsNewGeometry = false;
     
-    // Check if fractal parameters changed 
+    // Check if fractal or star parameters changed 
     const fractalParamsChanged = 
         state.parameterChanges && 
         (state.parameterChanges.fractal || state.parameterChanges.useFractal);
+        
+    const starParamsChanged = 
+        state.parameterChanges && 
+        (state.parameterChanges.starSkip || state.parameterChanges.useStars);
+    
+    if (fractalParamsChanged || starParamsChanged) {
+      console.log("Fractal or star parameters changed, forcing geometry recreation");
+      needsNewGeometry = true;
+    }
     
     // Always check if baseGeo exists and is valid
     if (!baseGeo || !baseGeo.getAttribute) {

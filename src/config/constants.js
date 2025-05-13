@@ -47,52 +47,91 @@ export const DEFAULT_VALUES = {
   TIME_SUBDIVISION_VALUE: 1, // Default time subdivision value (1x normal speed)
   USE_TIME_SUBDIVISION: false, // Default for time subdivision feature (disabled)
   USE_EQUAL_TEMPERAMENT: false, // Default for equal temperament feature (disabled)
-  REFERENCE_FREQUENCY: 432, // Default reference frequency (A4 = 440Hz)
-  // New quantization parameters
-  QUANTIZATION_VALUE: "1/4", // Default to quarter notes
-  USE_QUANTIZATION: false,    // Off by default
-  
-  // Note parameter defaults
-  DURATION_MODE: 'modulo',   // Default to modulo mode
-  DURATION_MODULO: 3,        // Default duration modulo value
-  MIN_DURATION: 0.1,         // Default minimum duration (seconds)
-  MAX_DURATION: 0.5,         // Default maximum duration (seconds)
-  DURATION_PHASE: 0,         // Default duration phase (0-1)
-  
-  VELOCITY_MODE: 'modulo',   // Default to modulo mode
-  VELOCITY_MODULO: 4,        // Default velocity modulo value
-  MIN_VELOCITY: 0.3,         // Default minimum velocity (0-1)
-  MAX_VELOCITY: 0.9,          // Default maximum velocity (0-1)
-  VELOCITY_PHASE: 0,         // Default velocity phase (0-1)
-  
-  // Fractal subdivision defaults
-  FRACTAL_VALUE: 1,          // Default fractal subdivision value (1 = no subdivision)
-  USE_FRACTAL: false          // Default to off
+  REFERENCE_FREQ: 440, // Default for reference frequency (A4 = 440Hz)
+  FRACTAL_VALUE: 1, // Default fractal value (no subdivision)
+  USE_FRACTAL: false, // Default for fractal feature
+  STAR_SKIP: 1, // Default for star skip value
+  USE_STARS: false // Default for star polygon feature
 };
 
-// UI ranges
+// UI Ranges
 export const UI_RANGES = {
-  BPM: { MIN: 0, MAX: 240, STEP: 1 },
+  BPM: [20, 300],
+  RADIUS: [20, 2048],
+  COPIES: [0, 32],
+  SEGMENTS: [3, 32],
+  STEP_SCALE: [0.01, 10],
+  ANGLE: [0, 90],
+  MODULUS_VALUE: [2, 16],
+  ALT_SCALE: [0.1, 10],
+  ALT_STEP_N: [1, 32],
+  TIME_SUBDIVISION_VALUE: [0.125, 8],
+  QUANTIZATION_VALUE: [0, 8],
+  REFERENCE_FREQ: [220, 880],
+  FRACTAL_VALUE: [1, 9],
+  STAR_SKIP: [1, 5] // UI range for star skip value
+};
+
+// Parameter ranges (min/max)
+export const PARAMETER_RANGES = {
+  // BPM range
+  BPM: { MIN: 20, MAX: 300, STEP: 1 },
+  
+  // Shape parameter ranges
   RADIUS: { MIN: 20, MAX: 2048, STEP: 1 },
   COPIES: { MIN: 0, MAX: 32, STEP: 1 },
-  STEP_SCALE: { MIN: 0.1, MAX: 2, STEP: 0.01 },
-  ANGLE: { MIN: -180, MAX: 180, STEP: 0.1 },
-  NUMBER: { MIN: 2, MAX: 12, STEP: 1 },
-  LERP_TIME: { MIN: 0.1, MAX: 5.0, STEP: 0.1 },
-  MODULUS: { MIN: 1, MAX: 12, STEP: 1 },
-  ALT_SCALE: { MIN: 0.1, MAX: 10, STEP: 0.01 }, // Range for alt scale
-  ALT_STEP_N: { MIN: 1, MAX: 32, STEP: 1 }, // Range for alt step N
-  TIME_SUBDIVISION: { MIN: 0.5, MAX: 8, STEP: 0.5 }, // Range for time subdivision
-  REFERENCE_FREQUENCY: { MIN: 415, MAX: 466, STEP: 1 }, // Range for reference frequency
+  SEGMENTS: { MIN: 3, MAX: 32, STEP: 1 },
+  STEP_SCALE: { MIN: 0.01, MAX: 10, STEP: 0.01 },
+  ANGLE: { MIN: 0, MAX: 90, STEP: 0.1 },
   
-  // Note parameter ranges
-  MIN_DURATION: { MIN: 0.05, MAX: 1.0, STEP: 0.01 },
-  MAX_DURATION: { MIN: 0.1, MAX: 2.0, STEP: 0.01 },
-  MIN_VELOCITY: { MIN: 0.1, MAX: 0.9, STEP: 0.01 },
-  MAX_VELOCITY: { MIN: 0.2, MAX: 1.0, STEP: 0.01 },
+  // Modulus parameter ranges
+  MODULUS_VALUE: { MIN: 2, MAX: 16, STEP: 1 },
+  USE_MODULUS: { MIN: false, MAX: true, STEP: null },
+  
+  // Scale mod parameter ranges
+  ALT_SCALE: { MIN: 0.1, MAX: 10, STEP: 0.01 },
+  ALT_STEP_N: { MIN: 1, MAX: 32, STEP: 1 },
+  USE_ALT_SCALE: { MIN: false, MAX: true, STEP: null },
+  
+  // Intersection ranges
+  USE_INTERSECTIONS: { MIN: false, MAX: true, STEP: null },
+  
+  // Frequency label ranges
+  SHOW_AXIS_FREQ_LABELS: { MIN: false, MAX: true, STEP: null },
+  SHOW_POINTS_FREQ_LABELS: { MIN: false, MAX: true, STEP: null },
+  
+  // Time subdivision ranges
+  TIME_SUBDIVISION_VALUE: { MIN: 0.125, MAX: 8, STEP: 0.125 },
+  USE_TIME_SUBDIVISION: { MIN: false, MAX: true, STEP: null },
+  
+  // Equal temperament ranges
+  USE_EQUAL_TEMPERAMENT: { MIN: false, MAX: true, STEP: null },
+  REFERENCE_FREQ: { MIN: 220, MAX: 880, STEP: 1 },
   
   // Fractal subdivision range
-  FRACTAL: { MIN: 1, MAX: 9, STEP: 1 }
+  FRACTAL_VALUE: { MIN: 1, MAX: 9, STEP: 1 },
+  USE_FRACTAL: { MIN: false, MAX: true, STEP: null },
+  
+  // Star polygon parameters
+  STAR_SKIP: { MIN: 1, MAX: 5, STEP: 1 },
+  USE_STARS: { MIN: false, MAX: true, STEP: null },
+  
+  // New quantization parameters
+  QUANTIZATION_VALUE: { MIN: 0, MAX: 8, STEP: 1 },
+  USE_QUANTIZATION: { MIN: false, MAX: true, STEP: null },
+  
+  // Note parameter ranges
+  DURATION_MODE: { MIN: 'modulo', MAX: 'fixed', STEP: null },
+  DURATION_MODULO: { MIN: 1, MAX: 12, STEP: 1 },
+  MIN_DURATION: { MIN: 0.1, MAX: 1.0, STEP: 0.01 },
+  MAX_DURATION: { MIN: 0.1, MAX: 2.0, STEP: 0.01 },
+  DURATION_PHASE: { MIN: 0, MAX: 1, STEP: 0.01 },
+  
+  VELOCITY_MODE: { MIN: 'modulo', MAX: 'fixed', STEP: null },
+  VELOCITY_MODULO: { MIN: 1, MAX: 12, STEP: 1 },
+  MIN_VELOCITY: { MIN: 0.1, MAX: 0.9, STEP: 0.01 },
+  MAX_VELOCITY: { MIN: 0.2, MAX: 1.0, STEP: 0.01 },
+  VELOCITY_PHASE: { MIN: 0, MAX: 1, STEP: 0.01 }
 };
 
 // Add this list of valid quantization values for reference

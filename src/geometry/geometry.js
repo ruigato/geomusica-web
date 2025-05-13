@@ -28,26 +28,30 @@ export function createPolygonGeometry(radius, segments, state = null) {
   // Fix for rounding bug: Ensure we have a valid integer number of segments
   const numSegments = Math.max(2, Math.round(segments));
   
-  // Log the effective segments value for debugging
-  console.log(`Creating polygon with radius: ${radius}, segments: ${numSegments} (input: ${segments})`);
+  // Get state parameters with defaults
+  const useFractal = state?.useFractal || false;
+  const fractalValue = state?.fractalValue || 1;
+  const useStars = state?.useStars || false;
+  const starSkip = state?.starSkip || 1;
   
   // Always create a completely fresh geometry
   const geometry = new THREE.BufferGeometry();
   
-  // Check if we should apply fractal subdivision
-  const useFractal = state && state.useFractal;
-  const fractalValue = state && state.fractalValue ? state.fractalValue : 1;
+  // If a valid skip is specified and stars are enabled, create a star polygon
+  if (useStars && starSkip > 1 && starSkip < numSegments) {
+    console.log(`Creating star polygon with: useStars=${useStars}, starSkip=${starSkip}, segments=${numSegments}`);
+    return createStarPolygonGeometry(radius, numSegments, starSkip, useFractal, fractalValue);
+  }
   
-  // Generate vertices for the outline only - no central vertex
+  // Otherwise create a standard polygon
   const vertices = [];
-  const step = (Math.PI * 2) / numSegments;
   
-  // Create initial vertices in a circular pattern
+  // Collect base vertices of the polygon
   const baseVertices = [];
   for (let i = 0; i < numSegments; i++) {
-    const angle = i * step;
-    const x = radius * Math.cos(angle);
-    const y = radius * Math.sin(angle);
+    const angle = (i / numSegments) * Math.PI * 2;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
     baseVertices.push(new THREE.Vector3(x, y, 0));
   }
   
@@ -71,27 +75,86 @@ export function createPolygonGeometry(radius, segments, state = null) {
       }
     }
   } else {
-    // No subdivision, just use the base vertices
+    // No subdivision - just use base vertices
     for (let i = 0; i < numSegments; i++) {
       const vertex = baseVertices[i];
       vertices.push(vertex.x, vertex.y, vertex.z);
     }
   }
   
-  // Calculate the total number of vertices after subdivision
-  const totalVertices = useFractal && fractalValue > 1 ? 
-                        numSegments * fractalValue : 
-                        numSegments;
+  // Set up the attributes
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  return geometry;
+}
+
+/**
+ * Create a star polygon geometry {n/k}
+ * @param {number} radius - Radius of the polygon
+ * @param {number} n - Number of vertices
+ * @param {number} k - Skip value (step size)
+ * @param {boolean} useFractal - Whether to use fractal subdivision
+ * @param {number} fractalValue - Fractal subdivision level
+ * @returns {THREE.BufferGeometry} Star polygon geometry
+ */
+function createStarPolygonGeometry(radius, n, k, useFractal, fractalValue) {
+  const geometry = new THREE.BufferGeometry();
+  const vertices = [];
   
-  // Create indices for line segments
-  const indices = [];
-  for (let i = 0; i < totalVertices; i++) {
-    indices.push(i, (i + 1) % totalVertices); // Connect each vertex to the next, looping back to start
+  // Collect base vertices of the polygon in a circle
+  const baseVertices = [];
+  for (let i = 0; i < n; i++) {
+    const angle = (i / n) * Math.PI * 2;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    baseVertices.push(new THREE.Vector3(x, y, 0));
   }
   
-  // Set attributes
+  // If fractal subdivision is enabled and value > 1, subdivide each line segment
+  if (useFractal && fractalValue > 1) {
+    const subdivisions = fractalValue;
+    
+    // For star polygons with fractal subdivision, traverse in star pattern order
+    let currentIndex = 0;  // Start at vertex 0
+    
+    for (let i = 0; i < n; i++) {
+      const startVertex = baseVertices[currentIndex];
+      // Calculate next vertex based on skip pattern
+      const nextIndex = (currentIndex + k) % n;
+      const endVertex = baseVertices[nextIndex];
+      
+      // Add the start vertex
+      vertices.push(startVertex.x, startVertex.y, startVertex.z);
+      
+      // Create subdivision points between start and end
+      for (let j = 1; j < subdivisions; j++) {
+        const t = j / subdivisions;
+        const x = startVertex.x + (endVertex.x - startVertex.x) * t;
+        const y = startVertex.y + (endVertex.y - startVertex.y) * t;
+        vertices.push(x, y, 0);
+      }
+      
+      // Move to the next vertex in the star pattern
+      currentIndex = nextIndex;
+    }
+  } else {
+    // For standard star polygon with no subdivision
+    // Vertices must be in correct star pattern order
+    let currentIndex = 0;  // Start at vertex 0
+    
+    for (let i = 0; i < n; i++) {
+      const vertex = baseVertices[currentIndex];
+      vertices.push(vertex.x, vertex.y, vertex.z);
+      
+      // Calculate next vertex based on skip pattern
+      currentIndex = (currentIndex + k) % n;
+    }
+  }
+  
+  // Set up the attributes
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.setIndex(indices);
+  
+  // Debug log to help verify the star calculation
+  console.log(`Creating star polygon {${n}/${k}}`);
   
   return geometry;
 }

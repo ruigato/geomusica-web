@@ -78,7 +78,11 @@ export function saveState(state) {
       velocityModulo: state.velocityModulo,
       minVelocity: state.minVelocity,
       maxVelocity: state.maxVelocity,
-      velocityPhase: state.velocityPhase
+      velocityPhase: state.velocityPhase,
+      
+      // Star polygon parameters
+      starSkip: state.starSkip,
+      useStars: state.useStars
     };
     
     // Convert to string and save
@@ -183,6 +187,10 @@ export function applyLoadedState(state, loadedState) {
     if (loadedState.minVelocity !== undefined) state.setMinVelocity(loadedState.minVelocity);
     if (loadedState.maxVelocity !== undefined) state.setMaxVelocity(loadedState.maxVelocity);
     if (loadedState.velocityPhase !== undefined) state.setVelocityPhase(loadedState.velocityPhase);
+    
+    // Star polygon parameters
+    if (loadedState.starSkip !== undefined) state.setStarSkip(loadedState.starSkip);
+    if (loadedState.useStars !== undefined) state.setUseStars(loadedState.useStars);
     
     console.log('State applied successfully');
     return true;
@@ -313,7 +321,11 @@ export function exportStateToFile(state) {
       velocityModulo: state.velocityModulo,
       minVelocity: state.minVelocity,
       maxVelocity: state.maxVelocity,
-      velocityPhase: state.velocityPhase
+      velocityPhase: state.velocityPhase,
+      
+      // Star polygon parameters
+      starSkip: state.starSkip,
+      useStars: state.useStars
     };
     
     // Add timestamp

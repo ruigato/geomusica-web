@@ -47,7 +47,9 @@ export function createAppState() {
       minVelocity: false,
       maxVelocity: false,
       fractal: false,
-      useFractal: false
+      useFractal: false,
+      starSkip: false,
+      useStars: false
     },
     
     // Performance and frame tracking
@@ -88,7 +90,7 @@ export function createAppState() {
     
     // Equal temperament settings
     useEqualTemperament: DEFAULT_VALUES.USE_EQUAL_TEMPERAMENT,
-    referenceFrequency: DEFAULT_VALUES.REFERENCE_FREQUENCY,
+    referenceFrequency: DEFAULT_VALUES.REFERENCE_FREQ,
     
     // MODULUS related parameters
     modulusValue: DEFAULT_VALUES.MODULUS_VALUE,
@@ -158,6 +160,10 @@ export function createAppState() {
     // SHAPE MOD Fractal parameters
     fractalValue: 1, // Default to 1 (no subdivision)
     useFractal: false, // Default to off
+    
+    // STARS parameters
+    starSkip: 1, // Default skip value
+    useStars: false, // Default to off
     
     /**
      * Check if any parameters have changed
@@ -584,8 +590,8 @@ export function createAppState() {
      * @param {number} value Reference frequency in Hz
      */
     setReferenceFrequency(value) {
-      this.referenceFrequency = Math.max(UI_RANGES.REFERENCE_FREQUENCY.MIN, 
-                               Math.min(UI_RANGES.REFERENCE_FREQUENCY.MAX, Number(value)));
+      this.referenceFrequency = Math.max(UI_RANGES.REFERENCE_FREQ[0], 
+                               Math.min(UI_RANGES.REFERENCE_FREQ[1], Number(value)));
     },
     
     /**
@@ -870,6 +876,80 @@ export function createAppState() {
         this.parameterChanges.useFractal = true;
         this.needsIntersectionUpdate = true;
       }
+    },
+    
+    /**
+     * Set star skip value
+     * @param {number} value Star polygon skip value
+     */
+    setStarSkip(value) {
+      const newValue = Math.max(1, Math.round(Number(value)));
+      if (this.starSkip !== newValue) {
+        this.starSkip = newValue;
+        this.parameterChanges.starSkip = true;
+        this.needsIntersectionUpdate = true;
+      }
+    },
+    
+    /**
+     * Toggle star polygons
+     * @param {boolean} value Enable/disable star polygons
+     */
+    setUseStars(value) {
+      const newValue = Boolean(value);
+      if (this.useStars !== newValue) {
+        this.useStars = newValue;
+        this.parameterChanges.useStars = true;
+        this.needsIntersectionUpdate = true;
+      }
+    },
+    
+    /**
+     * Calculate valid skip values for current number of segments
+     * @returns {Array<number>} Array of valid skip values
+     */
+    getValidStarSkips() {
+      const n = this.segments;
+      const validSkips = [];
+      
+      console.log(`Calculating valid star skips for n=${n}`);
+      
+      // Check each potential skip value
+      for (let k = 1; k < n; k++) {
+        // Only include if k and n are coprime (gcd(k, n) = 1)
+        if (this.gcd(k, n) === 1) {
+          // To avoid duplicates (since {n/k} is the same as {n/(n-k)})
+          // only include k up to n/2
+          if (k <= Math.floor(n/2)) {
+            validSkips.push(k);
+            console.log(`Valid skip: k=${k} for n=${n} (gcd=${this.gcd(k, n)})`);
+          }
+        }
+      }
+      
+      // Always include at least skip 1 (regular polygon)
+      if (validSkips.length === 0) {
+        validSkips.push(1);
+      }
+      
+      console.log(`Valid skips for n=${n}: ${validSkips.join(', ')}`);
+      return validSkips;
+    },
+    
+    /**
+     * Calculate greatest common divisor
+     * @param {number} a First integer
+     * @param {number} b Second integer
+     * @returns {number} GCD of a and b
+     */
+    gcd(a, b) {
+      // Euclidean algorithm
+      while (b !== 0) {
+        const temp = b;
+        b = a % b;
+        a = temp;
+      }
+      return a;
     },
   };
 }

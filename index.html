@@ -238,6 +238,29 @@
     </section>
     
     <section>
+      <h2 class="section-title">STARS</h2>
+      <div class="section-content">
+        <div class="control">
+          <label for="starSkipRange">Skip:</label>
+          <div class="slider-container">
+            <input type="range" id="starSkipRange" min="1" max="5" step="1" value="1">
+            <span id="starSkipValue" class="slider-value">1</span>
+            <input type="number" id="starSkipNumber" min="1" max="5" step="1" value="1">
+          </div>
+          <div class="help-text">Creates star polygons by connecting vertices with the given skip pattern.</div>
+        </div>
+        <div class="control">
+          <label for="useStarsCheckbox">Use Star Polygon:</label>
+          <input type="checkbox" id="useStarsCheckbox">
+          <span class="help-text">When enabled, creates a stellated polygon {n/k} where n=Number and k=Skip</span>
+        </div>
+        <div class="control">
+          <div id="validSkipsInfo" class="help-text">Valid skips for a pentagon (n=5): 1, 2</div>
+        </div>
+      </div>
+    </section>
+    
+    <section>
       <h2 class="section-title">MODULUS</h2>
       <div class="section-content">
         <div class="control">

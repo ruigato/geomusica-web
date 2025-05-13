@@ -233,6 +233,13 @@ export function setupUI(state) {
   const fractalValue = document.getElementById('fractalValue');
   const useFractalCheckbox = document.getElementById('useFractalCheckbox');
   
+  // Star polygon controls
+  const starSkipRange = document.getElementById('starSkipRange');
+  const starSkipNumber = document.getElementById('starSkipNumber');
+  const starSkipValue = document.getElementById('starSkipValue');
+  const useStarsCheckbox = document.getElementById('useStarsCheckbox');
+  const validSkipsInfo = document.getElementById('validSkipsInfo');
+  
   // Note parameter controls - Duration
   const durationModeRadios = document.querySelectorAll('input[name="durationMode"]');
   const durationModuloRadioGroup = document.getElementById('durationModuloRadioGroup');
@@ -281,6 +288,7 @@ export function setupUI(state) {
   if (useEqualTemperamentCheckbox) useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
   if (useQuantizationCheckbox) useQuantizationCheckbox.checked = state.useQuantization;
   if (useFractalCheckbox) useFractalCheckbox.checked = state.useFractal;
+  if (useStarsCheckbox) useStarsCheckbox.checked = state.useStars;
   
   // Set initial values for scale mod controls from state with null checks
   if (altScaleRange && altScaleNumber && altScaleValue) {
@@ -413,6 +421,14 @@ export function setupUI(state) {
     });
   }
   
+  // Setup stars checkbox with null check
+  if (useStarsCheckbox) {
+    useStarsCheckbox.checked = state.useStars;
+    useStarsCheckbox.addEventListener('change', e => {
+      state.setUseStars(e.target.checked);
+    });
+  }
+  
   // Setup intersections checkbox with null check
   if (useIntersectionsCheckbox) {
     useIntersectionsCheckbox.checked = state.useIntersections;
@@ -509,49 +525,49 @@ export function setupUI(state) {
   if (bpmRange && bpmNumber && bpmValue) {
     syncPair(bpmRange, bpmNumber, bpmValue, 
       value => state.setBpm(Number(value)), 
-      UI_RANGES.BPM.MIN, UI_RANGES.BPM.MAX, 
+      UI_RANGES.BPM[0], UI_RANGES.BPM[1], 
       Number);
   }
   
   if (radiusRange && radiusNumber && radiusValue) {
     syncPair(radiusRange, radiusNumber, radiusValue, 
       value => state.setRadius(Number(value)), 
-      UI_RANGES.RADIUS.MIN, UI_RANGES.RADIUS.MAX, 
+      UI_RANGES.RADIUS[0], UI_RANGES.RADIUS[1], 
       Number);
   }
   
   if (copiesRange && copiesNumber && copiesValue) {
     syncPair(copiesRange, copiesNumber, copiesValue, 
       value => state.setCopies(Number(value)), 
-      UI_RANGES.COPIES.MIN, UI_RANGES.COPIES.MAX, 
+      UI_RANGES.COPIES[0], UI_RANGES.COPIES[1], 
       Number);
   }
   
   if (stepScaleRange && stepScaleNumber && stepScaleValue) {
     syncPair(stepScaleRange, stepScaleNumber, stepScaleValue, 
       value => state.setStepScale(Number(value)), 
-      UI_RANGES.STEP_SCALE.MIN, UI_RANGES.STEP_SCALE.MAX, 
+      UI_RANGES.STEP_SCALE[0], UI_RANGES.STEP_SCALE[1], 
       Number);
   }
   
   if (angleRange && angleNumber && angleValue) {
     syncPair(angleRange, angleNumber, angleValue, 
       value => state.setAngle(Number(value)), 
-      UI_RANGES.ANGLE.MIN, UI_RANGES.ANGLE.MAX, 
+      UI_RANGES.ANGLE[0], UI_RANGES.ANGLE[1], 
       Number);
   }
   
   if (numberRange && numberNumber && numberValue) {
     syncPair(numberRange, numberNumber, numberValue, 
       value => state.setSegments(Math.round(Number(value))), // FIX: Always round the number parameter 
-      UI_RANGES.NUMBER.MIN, UI_RANGES.NUMBER.MAX, 
+      UI_RANGES.SEGMENTS[0], UI_RANGES.SEGMENTS[1], 
       Number);
   }
     
   if (lerpTimeRange && lerpTimeNumber && lerpTimeValue) {
     syncPair(lerpTimeRange, lerpTimeNumber, lerpTimeValue, 
       value => state.setLerpTime(Number(value)), 
-      UI_RANGES.LERP_TIME.MIN, UI_RANGES.LERP_TIME.MAX, 
+      0.1, 5.0, 
       Number);
   }
     
@@ -559,14 +575,14 @@ export function setupUI(state) {
   if (altScaleRange && altScaleNumber && altScaleValue) {
     syncPair(altScaleRange, altScaleNumber, altScaleValue, 
       value => state.setAltScale(Number(value)), 
-      UI_RANGES.ALT_SCALE.MIN, UI_RANGES.ALT_SCALE.MAX, 
+      UI_RANGES.ALT_SCALE[0], UI_RANGES.ALT_SCALE[1], 
       Number);
   }
   
   if (altStepNRange && altStepNNumber && altStepNValue) {
     syncPair(altStepNRange, altStepNNumber, altStepNValue, 
       value => state.setAltStepN(Number(value)), 
-      UI_RANGES.ALT_STEP_N.MIN, UI_RANGES.ALT_STEP_N.MAX, 
+      UI_RANGES.ALT_STEP_N[0], UI_RANGES.ALT_STEP_N[1], 
       Number);
   }
 
@@ -574,7 +590,7 @@ export function setupUI(state) {
   if (referenceFreqRange && referenceFreqNumber && referenceFreqValue) {
     syncPair(referenceFreqRange, referenceFreqNumber, referenceFreqValue,
       value => state.setReferenceFrequency(Number(value)),
-      UI_RANGES.REFERENCE_FREQUENCY.MIN, UI_RANGES.REFERENCE_FREQUENCY.MAX,
+      UI_RANGES.REFERENCE_FREQ[0], UI_RANGES.REFERENCE_FREQ[1],
       Number);
   }
   
@@ -582,7 +598,7 @@ export function setupUI(state) {
   if (fractalRange && fractalNumber && fractalValue) {
     syncPair(fractalRange, fractalNumber, fractalValue,
       value => state.setFractalValue(Number(value)),
-      1, 9,
+      UI_RANGES.FRACTAL_VALUE[0], UI_RANGES.FRACTAL_VALUE[1],
       Number);
   }
     
@@ -644,6 +660,66 @@ export function setupUI(state) {
       Number);
   }
 
+  // Link star polygon controls
+  if (starSkipRange && starSkipNumber && starSkipValue) {
+    syncPair(starSkipRange, starSkipNumber, starSkipValue,
+      value => state.setStarSkip(Number(value)),
+      UI_RANGES.STAR_SKIP[0], UI_RANGES.STAR_SKIP[1],
+      Number);
+  }
+
+  // Update valid skips information when segments change
+  if (numberRange && validSkipsInfo) {
+    numberRange.addEventListener('input', updateValidSkips);
+    numberNumber.addEventListener('input', updateValidSkips);
+    
+    // Initial update
+    updateValidSkips();
+    
+    // Function to update valid skips information
+    function updateValidSkips() {
+      const n = state.segments;
+      const validSkips = state.getValidStarSkips();
+      validSkipsInfo.textContent = `Valid skips for ${getPolygonName(n)} (n=${n}): ${validSkips.join(', ')}`;
+      
+      // Also update the max value of the skip slider
+      const maxSkip = validSkips.length > 0 ? Math.max(...validSkips) : 1;
+      starSkipRange.max = maxSkip;
+      starSkipNumber.max = maxSkip;
+      
+      // Ensure the current skip value is valid
+      if (validSkips.length > 0) {
+        // Set skip to first valid skip if current value is not valid
+        if (!validSkips.includes(state.starSkip)) {
+          console.log(`Current skip ${state.starSkip} is not valid. Setting to ${validSkips[0]}`);
+          state.setStarSkip(validSkips[0]);
+          starSkipRange.value = validSkips[0];
+          starSkipNumber.value = validSkips[0];
+          starSkipValue.textContent = validSkips[0];
+        } else {
+          console.log(`Current skip ${state.starSkip} is valid among ${validSkips.join(',')}`);
+        }
+      }
+    }
+    
+    // Helper function to get polygon name
+    function getPolygonName(sides) {
+      const names = {
+        3: 'triangle',
+        4: 'square',
+        5: 'pentagon',
+        6: 'hexagon',
+        7: 'heptagon',
+        8: 'octagon',
+        9: 'nonagon',
+        10: 'decagon',
+        11: 'hendecagon',
+        12: 'dodecagon'
+      };
+      return names[sides] || `${sides}-gon`;
+    }
+  }
+
   return {
     bpmRange, bpmNumber, bpmValue,
     radiusRange, radiusNumber, radiusValue,
@@ -665,6 +741,8 @@ export function setupUI(state) {
     referenceFreqRange, referenceFreqNumber, referenceFreqValue,
     fractalRange, fractalNumber, fractalValue,
     useFractalCheckbox,
+    starSkipRange, starSkipNumber, starSkipValue,
+    useStarsCheckbox, validSkipsInfo,
     
     // Note parameter controls
     durationModeRadios, durationModuloRadioGroup,
