@@ -218,6 +218,26 @@
     </section>
     
     <section>
+      <h2 class="section-title">SHAPE MOD</h2>
+      <div class="section-content">
+        <div class="control">
+          <label for="fractalRange">Fractal:</label>
+          <div class="slider-container">
+            <input type="range" id="fractalRange" min="1" max="9" step="1" value="1">
+            <span id="fractalValue" class="slider-value">1</span>
+            <input type="number" id="fractalNumber" min="1" max="9" step="1" value="1">
+          </div>
+          <div class="help-text">Subdivides line segments, creating new vertices. 1 = no subdivision.</div>
+        </div>
+        <div class="control">
+          <label for="useFractalCheckbox">Use Fractal Subdivision:</label>
+          <input type="checkbox" id="useFractalCheckbox">
+          <span class="help-text">When enabled, line segments are divided into equal parts</span>
+        </div>
+      </div>
+    </section>
+    
+    <section>
       <h2 class="section-title">MODULUS</h2>
       <div class="section-content">
         <div class="control">
@@ -257,21 +277,6 @@
           <label for="useAltScaleCheckbox">Use Alt Scale:</label>
           <input type="checkbox" id="useAltScaleCheckbox">
           <span class="help-text">When enabled, every Nth copy is scaled by Alt Scale value</span>
-        </div>
-        <!-- Fractal subdivision controls -->
-        <div class="control">
-          <label for="fractalRange">Fractal:</label>
-          <div class="slider-container">
-            <input type="range" id="fractalRange" min="1" max="9" step="1" value="1">
-            <span id="fractalValue" class="slider-value">1</span>
-            <input type="number" id="fractalNumber" min="1" max="9" step="1" value="1">
-          </div>
-          <div class="help-text">Subdivides line segments, creating new vertices. 1 = no subdivision.</div>
-        </div>
-        <div class="control">
-          <label for="useFractalCheckbox">Use Fractal Subdivision:</label>
-          <input type="checkbox" id="useFractalCheckbox">
-          <span class="help-text">When enabled, line segments are divided into equal parts</span>
         </div>
       </div>
     </section>
