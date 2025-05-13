@@ -178,6 +178,37 @@ function addStateControlsToUI(state) {
   document.body.appendChild(container);
 }
 
+// Function to setup collapsible sections
+function setupCollapsibleSections() {
+  const sections = document.querySelectorAll('section');
+  
+  sections.forEach(section => {
+    const header = section.querySelector('h2');
+    const content = section.querySelector('.section-content');
+    
+    if (header && content) {
+      // Add click event to h2 headers
+      header.addEventListener('click', () => {
+        // Toggle the collapsed class
+        section.classList.toggle('collapsed');
+        
+        // Save the collapsed state to localStorage
+        const sectionId = header.textContent.trim().replace(/\s+/g, '_').toLowerCase();
+        localStorage.setItem(`section_${sectionId}_collapsed`, section.classList.contains('collapsed'));
+      });
+      
+      // Check if there's a saved state for this section
+      const sectionId = header.textContent.trim().replace(/\s+/g, '_').toLowerCase();
+      const isCollapsed = localStorage.getItem(`section_${sectionId}_collapsed`) === 'true';
+      
+      // Apply saved state
+      if (isCollapsed) {
+        section.classList.add('collapsed');
+      }
+    }
+  });
+}
+
 // Preload the DOS VGA font before proceeding with setup
 preloadFont('Perfect DOS VGA 437', '/fonts/PerfectDOSVGA437.ttf')
   .then(() => {
@@ -198,6 +229,7 @@ preloadFont('Perfect DOS VGA 437', '/fonts/PerfectDOSVGA437.ttf')
     // Initialize label system with fallback font
     initLabels();
     
+    // Continue with application setup
     initializeApplication();
   });
 
@@ -217,6 +249,9 @@ function initializeApplication() {
 
   // Add import/export controls to the UI
   addStateControlsToUI(appState);
+
+  // Setup collapsible sections
+  setupCollapsibleSections();
 
   // Set up auto save (every 5 seconds) - COMMENTED OUT FOR PERFORMANCE
   // const stopAutoSave = setupAutoSave(appState, 5000);

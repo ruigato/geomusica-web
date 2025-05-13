@@ -57,350 +57,366 @@
 <!-- Updated TIME section for index.html -->
 <section>
   <h2>TIME</h2>
-  <div class="control">
-    <label for="bpmRange">BPM:</label>
-    <div class="slider-container">
-      <input type="range" id="bpmRange" min="0" max="240" step="1" value="120">
-      <span id="bpmValue" class="slider-value">120</span>
-      <input type="number" id="bpmNumber" min="30" max="240" step="1" value="120">
+  <div class="section-content">
+    <div class="control">
+      <label for="bpmRange">BPM:</label>
+      <div class="slider-container">
+        <input type="range" id="bpmRange" min="0" max="240" step="1" value="120">
+        <span id="bpmValue" class="slider-value">120</span>
+        <input type="number" id="bpmNumber" min="30" max="240" step="1" value="120">
+      </div>
     </div>
-  </div>
-  
-  <div class="control">
-    <label>Quantization:</label>
-    <div id="quantizationRadioGroup" class="radio-group">
-      <!-- Radio buttons will be added by JavaScript -->
+    
+    <div class="control">
+      <label>Quantization:</label>
+      <div id="quantizationRadioGroup" class="radio-group">
+        <!-- Radio buttons will be added by JavaScript -->
+      </div>
+      <div class="help-text">Snap triggers to musical timing grid</div>
     </div>
-    <div class="help-text">Snap triggers to musical timing grid</div>
-  </div>
-  
-  <div class="control">
-    <label for="useQuantizationCheckbox">Use Quantization:</label>
-    <input type="checkbox" id="useQuantizationCheckbox">
-    <div class="help-text">When enabled, sound triggers will snap to the selected grid</div>
+    
+    <div class="control">
+      <label for="useQuantizationCheckbox">Use Quantization:</label>
+      <input type="checkbox" id="useQuantizationCheckbox">
+      <div class="help-text">When enabled, sound triggers will snap to the selected grid</div>
+    </div>
   </div>
 </section>
     
 <section>
   <h2>TIME SUBDIVISION</h2>
-  <div class="control">
-    <label>Speed Multiplier:</label>
-    <div id="timeSubdivisionRadioGroup" class="radio-group">
-      <!-- Radio buttons will be added by JavaScript -->
+  <div class="section-content">
+    <div class="control">
+      <label>Speed Multiplier:</label>
+      <div id="timeSubdivisionRadioGroup" class="radio-group">
+        <!-- Radio buttons will be added by JavaScript -->
+      </div>
+      <div class="help-text">Controls rotation speed: values more than 1x speed up time, values less than 1x slow it down</div>
     </div>
-    <div class="help-text">Controls rotation speed: values more than 1x speed up time, values less than 1x slow it down</div>
-  </div>
-  <div class="control">
-    <label for="useTimeSubdivisionCheckbox">Use Speed Multiplier:</label>
-    <input type="checkbox" id="useTimeSubdivisionCheckbox">
+    <div class="control">
+      <label for="useTimeSubdivisionCheckbox">Use Speed Multiplier:</label>
+      <input type="checkbox" id="useTimeSubdivisionCheckbox">
+    </div>
   </div>
 </section>
     
-<!-- Added new NOTE PARAMETERS section -->
-<section>
-  <h2>NOTE PARAMETERS</h2>
-  
-  <!-- Duration Controls -->
-  <h3>Duration</h3>
-  <div class="control">
-    <label>Duration Mode:</label>
-    <div class="radio-group">
-      <div class="radio-item">
-        <input type="radio" id="durationMode-modulo" name="durationMode" value="modulo" checked>
-        <label for="durationMode-modulo">Modulo</label>
-      </div>
-      <div class="radio-item">
-        <input type="radio" id="durationMode-random" name="durationMode" value="random">
-        <label for="durationMode-random">Random</label>
-      </div>
-      <div class="radio-item">
-        <input type="radio" id="durationMode-interpolation" name="durationMode" value="interpolation">
-        <label for="durationMode-interpolation">Interp</label>
-      </div>
-    </div>
-    <div class="help-text">Controls how durations are assigned to points</div>
-  </div>
-
-  <div class="control">
-    <label>Duration Modulo:</label>
-    <div id="durationModuloRadioGroup" class="radio-group">
-      <!-- Radio buttons will be added by JavaScript -->
-    </div>
-    <div class="help-text">For Modulo and Interpolation modes, sets pattern length</div>
-  </div>
-  
-  <div class="control">
-    <label for="minDurationRange">Min Duration (s):</label>
-    <div class="slider-container">
-      <input type="range" id="minDurationRange" min="0.05" max="1.0" step="0.01" value="0.1">
-      <span id="minDurationValue" class="slider-value">0.1</span>
-      <input type="number" id="minDurationNumber" min="0.05" max="1.0" step="0.01" value="0.1">
-    </div>
-  </div>
-  
-  <div class="control">
-    <label for="maxDurationRange">Max Duration (s):</label>
-    <div class="slider-container">
-      <input type="range" id="maxDurationRange" min="0.1" max="2.0" step="0.01" value="0.5">
-      <span id="maxDurationValue" class="slider-value">0.5</span>
-      <input type="number" id="maxDurationNumber" min="0.1" max="2.0" step="0.01" value="0.5">
-    </div>
-  </div>
-
-  <div class="control">
-  <label for="durationPhaseRange">Duration Phase:</label>
-  <div class="slider-container">
-    <input type="range" id="durationPhaseRange" min="0" max="1" step="0.01" value="0">
-    <span id="durationPhaseValue" class="slider-value">0.00</span>
-    <input type="number" id="durationPhaseNumber" min="0" max="1" step="0.01" value="0">
-  </div>
-  <div class="help-text">Offsets the starting point in the pattern (0-1)</div>
-</div>
-  
-  <!-- Velocity Controls -->
-  <h3>Velocity</h3>
-  <div class="control">
-    <label>Velocity Mode:</label>
-    <div class="radio-group">
-      <div class="radio-item">
-        <input type="radio" id="velocityMode-modulo" name="velocityMode" value="modulo" checked>
-        <label for="velocityMode-modulo">Modulo</label>
-      </div>
-      <div class="radio-item">
-        <input type="radio" id="velocityMode-random" name="velocityMode" value="random">
-        <label for="velocityMode-random">Random</label>
-      </div>
-      <div class="radio-item">
-        <input type="radio" id="velocityMode-interpolation" name="velocityMode" value="interpolation">
-        <label for="velocityMode-interpolation">Interp</label>
-      </div>
-    </div>
-    <div class="help-text">Controls how velocities are assigned to points</div>
-  </div>
-  
-  <div class="control">
-    <label>Velocity Modulo:</label>
-    <div id="velocityModuloRadioGroup" class="radio-group">
-      <!-- Radio buttons will be added by JavaScript -->
-    </div>
-    <div class="help-text">For Modulo and Interpolation modes, sets pattern length</div>
-  </div>
-  
-  <div class="control">
-    <label for="minVelocityRange">Min Velocity:</label>
-    <div class="slider-container">
-      <input type="range" id="minVelocityRange" min="0.1" max="0.9" step="0.01" value="0.3">
-      <span id="minVelocityValue" class="slider-value">0.3</span>
-      <input type="number" id="minVelocityNumber" min="0.1" max="0.9" step="0.01" value="0.3">
-    </div>
-  </div>
-  
-  <div class="control">
-    <label for="maxVelocityRange">Max Velocity:</label>
-    <div class="slider-container">
-      <input type="range" id="maxVelocityRange" min="0.2" max="1.0" step="0.01" value="0.9">
-      <span id="maxVelocityValue" class="slider-value">0.9</span>
-      <input type="number" id="maxVelocityNumber" min="0.2" max="1.0" step="0.01" value="0.9">
-    </div>
-  </div>
-
-  <!-- Add these controls after the min/max velocity controls in the Velocity section -->
-<div class="control">
-  <label for="velocityPhaseRange">Velocity Phase:</label>
-  <div class="slider-container">
-    <input type="range" id="velocityPhaseRange" min="0" max="1" step="0.01" value="0">
-    <span id="velocityPhaseValue" class="slider-value">0.00</span>
-    <input type="number" id="velocityPhaseNumber" min="0" max="1" step="0.01" value="0">
-  </div>
-  <div class="help-text">Offsets the starting point in the pattern (0-1)</div>
-</div>
-
-</section>
-
 <section>
   <h2>SHAPE</h2>
-  <div class="control">
-    <label for="radiusRange">Radius:</label>
-    <div class="slider-container">
-      <input type="range" id="radiusRange" min="20" max="2048" step="1" value="432">
-      <span id="radiusValue" class="slider-value">432</span>
-      <input type="number" id="radiusNumber" min="20" max="2048" step="1" value="432">
+  <div class="section-content">
+    <div class="control">
+      <label for="radiusRange">Radius:</label>
+      <div class="slider-container">
+        <input type="range" id="radiusRange" min="20" max="2048" step="1" value="432">
+        <span id="radiusValue" class="slider-value">432</span>
+        <input type="number" id="radiusNumber" min="20" max="2048" step="1" value="432">
+      </div>
     </div>
-  </div>
-  <div class="control">
-    <label for="copiesRange">Copies:</label>
-    <div class="slider-container">
-      <input type="range" id="copiesRange" min="0" max="32" step="1" value="1">
-      <span id="copiesValue" class="slider-value">1</span>
-      <input type="number" id="copiesNumber" min="0" max="32" step="1" value="1">
+    <div class="control">
+      <label for="copiesRange">Copies:</label>
+      <div class="slider-container">
+        <input type="range" id="copiesRange" min="0" max="32" step="1" value="1">
+        <span id="copiesValue" class="slider-value">1</span>
+        <input type="number" id="copiesNumber" min="0" max="32" step="1" value="1">
+      </div>
     </div>
-  </div>
-  <div class="control">
-    <label for="stepScaleRange">Step Scale:</label>
-    <div class="slider-container">
-      <input type="range" id="stepScaleRange" min="0.1" max="2" step="0.01" value="1">
-      <span id="stepScaleValue" class="slider-value">1.0</span>
-      <input type="number" id="stepScaleNumber" min="0.1" max="2" step="0.1" value="1.0">
+    <div class="control">
+      <label for="stepScaleRange">Step Scale:</label>
+      <div class="slider-container">
+        <input type="range" id="stepScaleRange" min="0.1" max="2" step="0.01" value="1">
+        <span id="stepScaleValue" class="slider-value">1.0</span>
+        <input type="number" id="stepScaleNumber" min="0.1" max="2" step="0.1" value="1.0">
+      </div>
     </div>
-  </div>
-  <div class="control">
-    <label for="angleRange">Angle (°):</label>
-    <div class="slider-container">
-      <input type="range" id="angleRange" min="-180" max="180" step="0.1" value="0">
-      <span id="angleValue" class="slider-value">0</span>
-      <input type="number" id="angleNumber" min="-180" max="180" step="1" value="0">
+    <div class="control">
+      <label for="angleRange">Angle (°):</label>
+      <div class="slider-container">
+        <input type="range" id="angleRange" min="-180" max="180" step="0.1" value="0">
+        <span id="angleValue" class="slider-value">0</span>
+        <input type="number" id="angleNumber" min="-180" max="180" step="1" value="0">
+      </div>
     </div>
-  </div>
-  <div class="control">
-    <label for="numberRange">Number:</label>
-    <div class="slider-container">
-      <input type="range" id="numberRange" min="2" max="12" step="1" value="4">
-      <span id="numberValue" class="slider-value">4</span>
-      <input type="number" id="numberNumber" min="2" max="12" step="1" value="4">
+    <div class="control">
+      <label for="numberRange">Number:</label>
+      <div class="slider-container">
+        <input type="range" id="numberRange" min="2" max="12" step="1" value="4">
+        <span id="numberValue" class="slider-value">4</span>
+        <input type="number" id="numberNumber" min="2" max="12" step="1" value="4">
+      </div>
     </div>
   </div>
 </section>
     
 <section>
   <h2>MODULUS</h2>
-  <div class="control">
-    <label>Modulus Value:</label>
-    <div id="modulusRadioGroup" class="radio-group">
-      <!-- Radio buttons will be added by JavaScript -->
+  <div class="section-content">
+    <div class="control">
+      <label>Modulus Value:</label>
+      <div id="modulusRadioGroup" class="radio-group">
+        <!-- Radio buttons will be added by JavaScript -->
+      </div>
+      <div class="help-text">When enabled, radius of copies is set to factorial divisions</div>
     </div>
-    <div class="help-text">When enabled, radius of copies is set to factorial divisions</div>
-  </div>
-  <div class="control">
-    <label for="useModulusCheckbox">Use Modulus:</label>
-    <input type="checkbox" id="useModulusCheckbox">
+    <div class="control">
+      <label for="useModulusCheckbox">Use Modulus:</label>
+      <input type="checkbox" id="useModulusCheckbox">
+    </div>
   </div>
 </section>
     
 <section>
   <h2>SCALE MOD</h2>
-  <div class="control">
-    <label for="altScaleRange">Alt Scale:</label>
-    <div class="slider-container">
-      <input type="range" id="altScaleRange" min="0.1" max="10" step="0.01" value="1.2">
-      <span id="altScaleValue" class="slider-value">1.2</span>
-      <input type="number" id="altScaleNumber" min="0.1" max="10" step="0.01" value="1.2">
+  <div class="section-content">
+    <div class="control">
+      <label for="altScaleRange">Alt Scale:</label>
+      <div class="slider-container">
+        <input type="range" id="altScaleRange" min="0.1" max="10" step="0.01" value="1.2">
+        <span id="altScaleValue" class="slider-value">1.2</span>
+        <input type="number" id="altScaleNumber" min="0.1" max="10" step="0.01" value="1.2">
+      </div>
     </div>
-  </div>
-  <div class="control">
-    <label for="altStepNRange">Alt Step N:</label>
-    <div class="slider-container">
-      <input type="range" id="altStepNRange" min="1" max="32" step="1" value="2">
-      <span id="altStepNValue" class="slider-value">2</span>
-      <input type="number" id="altStepNNumber" min="1" max="32" step="1" value="2">
+    <div class="control">
+      <label for="altStepNRange">Alt Step N:</label>
+      <div class="slider-container">
+        <input type="range" id="altStepNRange" min="1" max="32" step="1" value="2">
+        <span id="altStepNValue" class="slider-value">2</span>
+        <input type="number" id="altStepNNumber" min="1" max="32" step="1" value="2">
+      </div>
     </div>
-  </div>
-  <div class="control">
-    <label for="useAltScaleCheckbox">Use Alt Scale:</label>
-    <input type="checkbox" id="useAltScaleCheckbox">
-    <span class="help-text">When enabled, every Nth copy is scaled by Alt Scale value</span>
+    <div class="control">
+      <label for="useAltScaleCheckbox">Use Alt Scale:</label>
+      <input type="checkbox" id="useAltScaleCheckbox">
+      <span class="help-text">When enabled, every Nth copy is scaled by Alt Scale value</span>
+    </div>
   </div>
 </section>
     
 <section>
   <h2>INTERSECTIONS</h2>
-  <div class="control">
-    <label for="useIntersectionsCheckbox">Find Intersections:</label>
-    <input type="checkbox" id="useIntersectionsCheckbox">
-    <span class="help-text">Detects intersections between polygons and adds vertices</span>
+  <div class="section-content">
+    <div class="control">
+      <label for="useIntersectionsCheckbox">Find Intersections:</label>
+      <input type="checkbox" id="useIntersectionsCheckbox">
+      <span class="help-text">Detects intersections between polygons and adds vertices</span>
+    </div>
+  </div>
+</section>
+
+<!-- Move NOTE PARAMETERS section to be right before SYNTH -->
+<section>
+  <h2>NOTE PARAMETERS</h2>
+  <div class="section-content">
+    <!-- Duration Controls -->
+    <h3>Duration</h3>
+    <div class="control">
+      <label>Duration Mode:</label>
+      <div class="radio-group">
+        <div class="radio-item">
+          <input type="radio" id="durationMode-modulo" name="durationMode" value="modulo" checked>
+          <label for="durationMode-modulo">Modulo</label>
+        </div>
+        <div class="radio-item">
+          <input type="radio" id="durationMode-random" name="durationMode" value="random">
+          <label for="durationMode-random">Random</label>
+        </div>
+        <div class="radio-item">
+          <input type="radio" id="durationMode-interpolation" name="durationMode" value="interpolation">
+          <label for="durationMode-interpolation">Interp</label>
+        </div>
+      </div>
+      <div class="help-text">Controls how durations are assigned to points</div>
+    </div>
+
+    <div class="control">
+      <label>Duration Modulo:</label>
+      <div id="durationModuloRadioGroup" class="radio-group">
+        <!-- Radio buttons will be added by JavaScript -->
+      </div>
+      <div class="help-text">For Modulo and Interpolation modes, sets pattern length</div>
+    </div>
+    
+    <div class="control">
+      <label for="minDurationRange">Min Duration (s):</label>
+      <div class="slider-container">
+        <input type="range" id="minDurationRange" min="0.05" max="1.0" step="0.01" value="0.1">
+        <span id="minDurationValue" class="slider-value">0.1</span>
+        <input type="number" id="minDurationNumber" min="0.05" max="1.0" step="0.01" value="0.1">
+      </div>
+    </div>
+    
+    <div class="control">
+      <label for="maxDurationRange">Max Duration (s):</label>
+      <div class="slider-container">
+        <input type="range" id="maxDurationRange" min="0.1" max="2.0" step="0.01" value="0.5">
+        <span id="maxDurationValue" class="slider-value">0.5</span>
+        <input type="number" id="maxDurationNumber" min="0.1" max="2.0" step="0.01" value="0.5">
+      </div>
+    </div>
+
+    <div class="control">
+      <label for="durationPhaseRange">Duration Phase:</label>
+      <div class="slider-container">
+        <input type="range" id="durationPhaseRange" min="0" max="1" step="0.01" value="0">
+        <span id="durationPhaseValue" class="slider-value">0.00</span>
+        <input type="number" id="durationPhaseNumber" min="0" max="1" step="0.01" value="0">
+      </div>
+      <div class="help-text">Offsets the starting point in the pattern (0-1)</div>
+    </div>
+    
+    <!-- Velocity Controls -->
+    <h3>Velocity</h3>
+    <div class="control">
+      <label>Velocity Mode:</label>
+      <div class="radio-group">
+        <div class="radio-item">
+          <input type="radio" id="velocityMode-modulo" name="velocityMode" value="modulo" checked>
+          <label for="velocityMode-modulo">Modulo</label>
+        </div>
+        <div class="radio-item">
+          <input type="radio" id="velocityMode-random" name="velocityMode" value="random">
+          <label for="velocityMode-random">Random</label>
+        </div>
+        <div class="radio-item">
+          <input type="radio" id="velocityMode-interpolation" name="velocityMode" value="interpolation">
+          <label for="velocityMode-interpolation">Interp</label>
+        </div>
+      </div>
+      <div class="help-text">Controls how velocities are assigned to points</div>
+    </div>
+    
+    <div class="control">
+      <label>Velocity Modulo:</label>
+      <div id="velocityModuloRadioGroup" class="radio-group">
+        <!-- Radio buttons will be added by JavaScript -->
+      </div>
+      <div class="help-text">For Modulo and Interpolation modes, sets pattern length</div>
+    </div>
+    
+    <div class="control">
+      <label for="minVelocityRange">Min Velocity:</label>
+      <div class="slider-container">
+        <input type="range" id="minVelocityRange" min="0.1" max="0.9" step="0.01" value="0.3">
+        <span id="minVelocityValue" class="slider-value">0.3</span>
+        <input type="number" id="minVelocityNumber" min="0.1" max="0.9" step="0.01" value="0.3">
+      </div>
+    </div>
+    
+    <div class="control">
+      <label for="maxVelocityRange">Max Velocity:</label>
+      <div class="slider-container">
+        <input type="range" id="maxVelocityRange" min="0.2" max="1.0" step="0.01" value="0.9">
+        <span id="maxVelocityValue" class="slider-value">0.9</span>
+        <input type="number" id="maxVelocityNumber" min="0.2" max="1.0" step="0.01" value="0.9">
+      </div>
+    </div>
+
+    <!-- Add these controls after the min/max velocity controls in the Velocity section -->
+    <div class="control">
+      <label for="velocityPhaseRange">Velocity Phase:</label>
+      <div class="slider-container">
+        <input type="range" id="velocityPhaseRange" min="0" max="1" step="0.01" value="0">
+        <span id="velocityPhaseValue" class="slider-value">0.00</span>
+        <input type="number" id="velocityPhaseNumber" min="0" max="1" step="0.01" value="0">
+      </div>
+      <div class="help-text">Offsets the starting point in the pattern (0-1)</div>
+    </div>
   </div>
 </section>
     
 <!-- New SYNTH section with ADSR controls -->
 <section>
   <h2>SYNTH</h2>
-  <div class="control">
-    <label for="attackRange">Attack (s):</label>
-    <div class="slider-container">
-      <input type="range" id="attackRange" min="0.001" max="2.0" step="0.001" value="0.01">
-      <span id="attackValue" class="slider-value">0.01</span>
-      <input type="number" id="attackNumber" min="0.001" max="2.0" step="0.01" value="0.01">
+  <div class="section-content">
+    <div class="control">
+      <label for="attackRange">Attack (s):</label>
+      <div class="slider-container">
+        <input type="range" id="attackRange" min="0.001" max="2.0" step="0.001" value="0.01">
+        <span id="attackValue" class="slider-value">0.01</span>
+        <input type="number" id="attackNumber" min="0.001" max="2.0" step="0.01" value="0.01">
+      </div>
     </div>
-  </div>
-  <div class="control">
-    <label for="decayRange">Decay (s):</label>
-    <div class="slider-container">
-      <input type="range" id="decayRange" min="0.01" max="3.0" step="0.01" value="0.3">
-      <span id="decayValue" class="slider-value">0.3</span>
-      <input type="number" id="decayNumber" min="0.01" max="3.0" step="0.01" value="0.3">
+    <div class="control">
+      <label for="decayRange">Decay (s):</label>
+      <div class="slider-container">
+        <input type="range" id="decayRange" min="0.01" max="3.0" step="0.01" value="0.3">
+        <span id="decayValue" class="slider-value">0.3</span>
+        <input type="number" id="decayNumber" min="0.01" max="3.0" step="0.01" value="0.3">
+      </div>
     </div>
-  </div>
-  <div class="control">
-    <label for="sustainRange">Sustain:</label>
-    <div class="slider-container">
-      <input type="range" id="sustainRange" min="0.0" max="1.0" step="0.01" value="0.5">
-      <span id="sustainValue" class="slider-value">0.5</span>
-      <input type="number" id="sustainNumber" min="0.0" max="1.0" step="0.01" value="0.5">
+    <div class="control">
+      <label for="sustainRange">Sustain:</label>
+      <div class="slider-container">
+        <input type="range" id="sustainRange" min="0.0" max="1.0" step="0.01" value="0.5">
+        <span id="sustainValue" class="slider-value">0.5</span>
+        <input type="number" id="sustainNumber" min="0.0" max="1.0" step="0.01" value="0.5">
+      </div>
     </div>
-  </div>
-  <div class="control">
-    <label for="releaseRange">Release (s):</label>
-    <div class="slider-container">
-      <input type="range" id="releaseRange" min="0.01" max="10.0" step="0.01" value="1.0">
-      <span id="releaseValue" class="slider-value">1.0</span>
-      <input type="number" id="releaseNumber" min="0.01" max="10.0" step="0.01" value="1.0">
+    <div class="control">
+      <label for="releaseRange">Release (s):</label>
+      <div class="slider-container">
+        <input type="range" id="releaseRange" min="0.01" max="10.0" step="0.01" value="1.0">
+        <span id="releaseValue" class="slider-value">1.0</span>
+        <input type="number" id="releaseNumber" min="0.01" max="10.0" step="0.01" value="1.0">
+      </div>
     </div>
-  </div>
-  <div class="control">
-    <label for="brightnessRange">Brightness:</label>
-    <div class="slider-container">
-      <input type="range" id="brightnessRange" min="0.0" max="2.0" step="0.01" value="1.0">
-      <span id="brightnessValue" class="slider-value">1.0</span>
-      <input type="number" id="brightnessNumber" min="0.0" max="2.0" step="0.01" value="1.0">
+    <div class="control">
+      <label for="brightnessRange">Brightness:</label>
+      <div class="slider-container">
+        <input type="range" id="brightnessRange" min="0.0" max="2.0" step="0.01" value="1.0">
+        <span id="brightnessValue" class="slider-value">1.0</span>
+        <input type="number" id="brightnessNumber" min="0.0" max="2.0" step="0.01" value="1.0">
+      </div>
     </div>
-  </div>
-  <div class="control">
-    <label for="volumeRange">Volume:</label>
-    <div class="slider-container">
-      <input type="range" id="volumeRange" min="0.0" max="1.0" step="0.01" value="0.8">
-      <span id="volumeValue" class="slider-value">0.8</span>
-      <input type="number" id="volumeNumber" min="0.0" max="1.0" step="0.01" value="0.8">
+    <div class="control">
+      <label for="volumeRange">Volume:</label>
+      <div class="slider-container">
+        <input type="range" id="volumeRange" min="0.0" max="1.0" step="0.01" value="0.8">
+        <span id="volumeValue" class="slider-value">0.8</span>
+        <input type="number" id="volumeNumber" min="0.0" max="1.0" step="0.01" value="0.8">
+      </div>
     </div>
-  </div>
-  <div class="control">
-    <label for="useEqualTemperamentCheckbox">Equal Temperament:</label>
-    <input type="checkbox" id="useEqualTemperamentCheckbox">
-    <span class="help-text">When enabled, frequencies are quantized to the nearest equal temperament note</span>
-  </div>
-  <div class="control">
-    <label for="referenceFreqRange">Reference Freq (Hz):</label>
-    <div class="slider-container">
-      <input type="range" id="referenceFreqRange" min="415" max="466" step="1" value="440">
-      <span id="referenceFreqValue" class="slider-value">440</span>
-      <input type="number" id="referenceFreqNumber" min="415" max="466" step="1" value="440">
+    <div class="control">
+      <label for="useEqualTemperamentCheckbox">Equal Temperament:</label>
+      <input type="checkbox" id="useEqualTemperamentCheckbox">
+      <span class="help-text">When enabled, frequencies are quantized to the nearest equal temperament note</span>
     </div>
-    <span class="help-text">Reference frequency for equal temperament (standard A4 = 440Hz)</span>
+    <div class="control">
+      <label for="referenceFreqRange">Reference Freq (Hz):</label>
+      <div class="slider-container">
+        <input type="range" id="referenceFreqRange" min="415" max="466" step="1" value="440">
+        <span id="referenceFreqValue" class="slider-value">440</span>
+        <input type="number" id="referenceFreqNumber" min="415" max="466" step="1" value="440">
+      </div>
+      <span class="help-text">Reference frequency for equal temperament (standard A4 = 440Hz)</span>
+    </div>
   </div>
 </section>
     
 <section>
   <h2>ANIMATION</h2>
-  <div class="control">
-    <label for="useLerpCheckbox">Lag:</label>
-    <input type="checkbox" id="useLerpCheckbox">
-    <span class="help-text">Applies smooth transitions to Radius, Step Scale and Angle changes</span>
-  </div>
-  <div class="control">
-    <label for="lerpTimeRange">Lag Time (s):</label>
-    <div class="slider-container">
-      <input type="range" id="lerpTimeRange" min="0.1" max="5.0" step="0.1" value="1.0">
-      <span id="lerpTimeValue" class="slider-value">1.0</span>
-      <input type="number" id="lerpTimeNumber" min="0.1" max="5.0" step="0.1" value="1.0">
+  <div class="section-content">
+    <div class="control">
+      <label for="useLerpCheckbox">Lag:</label>
+      <input type="checkbox" id="useLerpCheckbox">
+      <span class="help-text">Applies smooth transitions to Radius, Step Scale and Angle changes</span>
     </div>
-  </div>
-  <div class="control">
-    <label for="showAxisFreqLabelsCheckbox">Axis Freq Labels:</label>
-    <input type="checkbox" id="showAxisFreqLabelsCheckbox" checked>
-    <span class="help-text">Shows frequency values on trigger points when they cross the axis</span>
-  </div>
-  <div class="control">
-    <label for="showPointsFreqLabelsCheckbox">Points Freq Labels:</label>
-    <input type="checkbox" id="showPointsFreqLabelsCheckbox">
-    <span class="help-text">Shows frequency values on all vertices and intersection points</span>
+    <div class="control">
+      <label for="lerpTimeRange">Lag Time (s):</label>
+      <div class="slider-container">
+        <input type="range" id="lerpTimeRange" min="0.1" max="5.0" step="0.1" value="1.0">
+        <span id="lerpTimeValue" class="slider-value">1.0</span>
+        <input type="number" id="lerpTimeNumber" min="0.1" max="5.0" step="0.1" value="1.0">
+      </div>
+    </div>
+    <div class="control">
+      <label for="showAxisFreqLabelsCheckbox">Axis Freq Labels:</label>
+      <input type="checkbox" id="showAxisFreqLabelsCheckbox" checked>
+      <span class="help-text">Shows frequency values on trigger points when they cross the axis</span>
+    </div>
+    <div class="control">
+      <label for="showPointsFreqLabelsCheckbox">Points Freq Labels:</label>
+      <input type="checkbox" id="showPointsFreqLabelsCheckbox">
+      <span class="help-text">Shows frequency values on all vertices and intersection points</span>
+    </div>
   </div>
 </section>
   </div>

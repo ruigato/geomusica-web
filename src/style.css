@@ -33,12 +33,55 @@ section {
   border-radius: 5px;
 }
 
-h2 {
+/* New styles for collapsible sections */
+section h2 {
   margin-top: 0;
   font-size: 1.2em;
   color: #0cf;
   border-bottom: 1px solid #444;
   padding-bottom: 5px;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative; /* For tooltip positioning */
+}
+
+section h2::after {
+  content: "▼";
+  font-size: 0.8em;
+  transition: transform 0.3s ease-in-out, color 0.2s;
+}
+
+section h2:hover::after {
+  color: #ffffff;
+}
+
+section.collapsed h2::after {
+  transform: rotate(-90deg);
+}
+
+section .section-content {
+  overflow: hidden;
+  transition: max-height 0.3s ease-out;
+  max-height: 2000px; /* Large enough to contain any section content */
+}
+
+section.collapsed .section-content {
+  max-height: 0;
+}
+
+section h2:hover::before {
+  content: "Click to collapse/expand";
+  position: absolute;
+  right: 30px;
+  font-size: 0.7em;
+  color: #8effff;
+  background-color: rgba(0, 0, 0, 0.7);
+  padding: 2px 5px;
+  border-radius: 3px;
+  opacity: 0.8;
 }
 
 .control {
