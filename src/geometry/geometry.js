@@ -55,8 +55,6 @@ export function createPolygonGeometry(radius, segments, state = null) {
   if (useFractal && fractalValue > 1) {
     const subdivisions = fractalValue;
     
-    console.log(`Applying fractal subdivision with value: ${fractalValue}`);
-    
     for (let i = 0; i < numSegments; i++) {
       const startVertex = baseVertices[i];
       const endVertex = baseVertices[(i + 1) % numSegments];
