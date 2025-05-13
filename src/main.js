@@ -29,6 +29,7 @@ import {
   updateAudioEngineFromState
 } from './state/statePersistence.js';
 import { initializeTime, enableCsoundTiming } from './time/time.js';
+import { setupHeaderTabs } from './ui/headerTabs.js';
 
 // Initialize stats for performance monitoring
 const stats = new Stats();
@@ -288,6 +289,9 @@ function initializeApplication() {
     setTimeout(initializeApplication, 100);
     return;
   }
+
+  // Setup header tabs functionality
+  setupHeaderTabs();
 
   // Load saved state if available
   const savedState = loadState();

@@ -28,6 +28,110 @@ body {
   border-right: 1px solid #333;
 }
 
+/* Header tabs styles */
+#header-tabs {
+  position: sticky;
+  top: 0;
+  background-color: #1a1a1a;
+  z-index: 100;
+  border-bottom: 1px solid #333;
+  padding: 10px;
+  margin-bottom: 20px;
+  border-radius: 5px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+}
+
+.tab-buttons-container {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.tab-button {
+  flex: 1;
+  padding: 10px;
+  background-color: #333;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.2s, transform 0.1s;
+  outline: none;
+}
+
+.tab-button:hover {
+  background-color: #444;
+}
+
+.tab-button.active {
+  background-color: #0a7;
+  color: #fff;
+  transform: scale(1.03);
+}
+
+.tab-button:active {
+  transform: scale(0.97);
+}
+
+.tab-content {
+  padding: 10px;
+  background-color: #2a2a2a;
+  border-radius: 4px;
+  margin-top: 10px;
+}
+
+.tab-content.hidden {
+  display: none;
+}
+
+.placeholder-text {
+  color: #888;
+  font-style: italic;
+  text-align: center;
+  margin: 20px 0;
+}
+
+.buttons-container {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+#expand-all-btn {
+  background-color: #0a7;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+#expand-all-btn:hover {
+  background-color: #0c8;
+}
+
+#collapse-all-btn {
+  background-color: #a70;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+#collapse-all-btn:hover {
+  background-color: #c80;
+}
+
+#expand-all-btn:active, #collapse-all-btn:active {
+  transform: scale(0.95);
+}
+
 #canvas {
   width: 60%; /* Reduced from 80% to 60% */
   height: 100vh;
