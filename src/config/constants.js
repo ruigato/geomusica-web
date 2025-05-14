@@ -63,7 +63,7 @@ export const UI_RANGES = {
   COPIES: [0, 32],
   SEGMENTS: [3, 32],
   STEP_SCALE: [0.01, 10],
-  ANGLE: [0, 90],
+  ANGLE: [-180, 180],
   MODULUS_VALUE: [2, 16],
   ALT_SCALE: [0.1, 10],
   ALT_STEP_N: [1, 32],
@@ -85,7 +85,7 @@ export const PARAMETER_RANGES = {
   COPIES: { MIN: 0, MAX: 32, STEP: 1 },
   SEGMENTS: { MIN: 3, MAX: 32, STEP: 1 },
   STEP_SCALE: { MIN: 0.01, MAX: 10, STEP: 0.01 },
-  ANGLE: { MIN: 0, MAX: 90, STEP: 0.1 },
+  ANGLE: { MIN: -180, MAX: 180, STEP: 0.1 },
   
   // Modulus parameter ranges
   MODULUS_VALUE: { MIN: 2, MAX: 16, STEP: 1 },
