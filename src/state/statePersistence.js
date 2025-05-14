@@ -657,6 +657,26 @@ export function updateUIFromState(state, uiElements) {
       }
     }
     
+    // Update Skip radio button if it exists
+    if (state.starSkip !== undefined && uiElements.starSkipRadioGroup) {
+      // Find the radio button for the current skip value
+      const radioButton = document.querySelector(`#starSkip-${state.starSkip}`);
+      if (radioButton) {
+        radioButton.checked = true;
+      } else {
+        // If radio button doesn't exist (e.g., invalid skip for current n),
+        // recalculate valid skips and select the first valid one
+        const validSkips = state.getValidStarSkips();
+        if (validSkips.length > 0) {
+          state.setStarSkip(validSkips[0]);
+          const firstValidRadio = document.querySelector(`#starSkip-${validSkips[0]}`);
+          if (firstValidRadio) {
+            firstValidRadio.checked = true;
+          }
+        }
+      }
+    }
+    
     console.log('UI updated from state successfully');
     return true;
   } catch (error) {

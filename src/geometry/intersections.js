@@ -72,6 +72,57 @@ function isPointTooClose(point, existingPoints, threshold = INTERSECTION_MERGE_T
 }
 
 /**
+ * Helper function to calculate Greatest Common Divisor
+ * Copied from geometry.js to ensure consistent calculation
+ * @param {number} a First number
+ * @param {number} b Second number
+ * @returns {number} Greatest common divisor
+ */
+function calculateGCD(a, b) {
+  while (b) {
+    const temp = b;
+    b = a % b;
+    a = temp;
+  }
+  return a;
+}
+
+/**
+ * Generate vertices for a star polygon
+ * @param {number} n Number of points
+ * @param {number} k Skip value
+ * @param {number} radius Radius
+ * @returns {Array<THREE.Vector3>} Array of vertices
+ */
+function generateStarPolygonVertices(n, k, radius) {
+  const vertices = [];
+  const baseVertices = [];
+  
+  // First generate all vertices on the circle
+  for (let i = 0; i < n; i++) {
+    const angle = (i / n) * Math.PI * 2;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    baseVertices.push(new THREE.Vector3(x, y, 0));
+  }
+  
+  // Now connect them according to the star pattern
+  let visited = new Set();
+  let currentIndex = 0;
+  
+  // Continue until we've visited all vertices or completed a cycle
+  while (visited.size < n && !visited.has(currentIndex)) {
+    visited.add(currentIndex);
+    vertices.push(baseVertices[currentIndex]);
+    
+    // Calculate next vertex based on skip pattern
+    currentIndex = (currentIndex + k) % n;
+  }
+  
+  return vertices;
+}
+
+/**
  * Find all intersections between polygon copies
  * @param {THREE.Group} group Group containing polygon copies
  * @returns {Array<THREE.Vector3>} Array of intersection points
@@ -103,17 +154,42 @@ export function findAllIntersections(group) {
     return intersectionPoints;
   }
   
-  // Generate base polygon vertices
-  const vertices = [];
-  const step = (Math.PI * 2) / state.segments;
+  // Generate base polygon vertices based on whether stars are enabled
+  let vertices = [];
   
-  for (let i = 0; i < state.segments; i++) {
-    const ang = i * step;
-    vertices.push(new THREE.Vector3(
-      state.radius * Math.cos(ang),
-      state.radius * Math.sin(ang),
-      0
-    ));
+  if (state.useStars && state.starSkip > 1) {
+    // Calculate GCD to determine if this creates a proper star
+    const gcd = calculateGCD(state.segments, state.starSkip);
+    
+    // Only use star pattern when gcd=1 (ensures a single connected path)
+    if (gcd === 1) {
+      console.log(`Creating star polygon for intersections: n=${state.segments}, k=${state.starSkip}`);
+      vertices = generateStarPolygonVertices(state.segments, state.starSkip, state.radius);
+    } else {
+      console.log(`Star pattern would create multiple disconnected shapes (gcd=${gcd}), using regular polygon for intersections`);
+      // Fall back to regular polygon
+      vertices = [];
+      const step = (Math.PI * 2) / state.segments;
+      for (let i = 0; i < state.segments; i++) {
+        const ang = i * step;
+        vertices.push(new THREE.Vector3(
+          state.radius * Math.cos(ang),
+          state.radius * Math.sin(ang),
+          0
+        ));
+      }
+    }
+  } else {
+    // Standard polygon vertices
+    const step = (Math.PI * 2) / state.segments;
+    for (let i = 0; i < state.segments; i++) {
+      const ang = i * step;
+      vertices.push(new THREE.Vector3(
+        state.radius * Math.cos(ang),
+        state.radius * Math.sin(ang),
+        0
+      ));
+    }
   }
   
   // Calculate polygon copies with proper scaling and rotation

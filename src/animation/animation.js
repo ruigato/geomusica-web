@@ -286,22 +286,20 @@ export function animate(params) {
       tempGroup.position.copy(group.position);
       tempGroup.userData.state = state;
       
-      // Add copies to temp group
-      for (let i = 0; i < state.copies; i++) {
-        const finalScale = state.useModulus 
-          ? state.getScaleFactorForCopy(i) 
-          : Math.pow(state.stepScale, i);
-          
-        const cumulativeAngleRadians = (i * state.angle * Math.PI) / 180;
-        
-        const copyGroup = new THREE.Group();
-        const lines = new THREE.LineLoop(params.baseGeo, mat.clone());
-        lines.scale.set(finalScale, finalScale, 1);
-        copyGroup.add(lines);
-        copyGroup.rotation.z = cumulativeAngleRadians;
-        
-        tempGroup.add(copyGroup);
-      }
+      // Add copies to temp group (this is all we need to do, the intersections.js 
+      // function now properly handles star polygon geometry internally)
+      updateGroup(
+        tempGroup, 
+        state.copies, 
+        state.stepScale, 
+        params.baseGeo, 
+        mat, 
+        state.segments, 
+        state.angle, 
+        state, 
+        false, 
+        false
+      );
       
       // Process intersections
       const newGeometry = processIntersections(state, params.baseGeo, tempGroup);

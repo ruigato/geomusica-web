@@ -159,6 +159,50 @@ function setupQuantizationRadioButtons(container, state) {
   }
 }
 
+// Function to set up star skip radio buttons
+function setupStarSkipRadioButtons(container, state) {
+  if (!container) return; // Null check
+  
+  // Clear any existing content
+  container.innerHTML = '';
+  
+  // Get valid skips for the current number of segments
+  const validSkips = state.getValidStarSkips();
+  
+  // Get current value from state
+  const currentValue = state.starSkip;
+  
+  // Create a radio button for each valid skip value
+  for (const skipValue of validSkips) {
+    const radioItem = document.createElement('div');
+    radioItem.className = 'radio-item';
+    
+    const radioId = `starSkip-${skipValue}`;
+    
+    const radioInput = document.createElement('input');
+    radioInput.type = 'radio';
+    radioInput.id = radioId;
+    radioInput.name = 'starSkip';
+    radioInput.value = skipValue;
+    radioInput.checked = (skipValue === currentValue);
+    
+    // Add event listener
+    radioInput.addEventListener('change', () => {
+      if (radioInput.checked) {
+        state.setStarSkip(skipValue);
+      }
+    });
+    
+    const radioLabel = document.createElement('label');
+    radioLabel.htmlFor = radioId;
+    radioLabel.textContent = skipValue;
+    
+    radioItem.appendChild(radioInput);
+    radioItem.appendChild(radioLabel);
+    container.appendChild(radioItem);
+  }
+}
+
 export function setupUI(state) {
   // Get all UI elements with null checks
   const bpmRange = document.getElementById('bpmRange');
@@ -234,9 +278,7 @@ export function setupUI(state) {
   const useFractalCheckbox = document.getElementById('useFractalCheckbox');
   
   // Star polygon controls
-  const starSkipRange = document.getElementById('starSkipRange');
-  const starSkipNumber = document.getElementById('starSkipNumber');
-  const starSkipValue = document.getElementById('starSkipValue');
+  const starSkipRadioGroup = document.getElementById('starSkipRadioGroup');
   const useStarsCheckbox = document.getElementById('useStarsCheckbox');
   const validSkipsInfo = document.getElementById('validSkipsInfo');
   
@@ -661,11 +703,8 @@ export function setupUI(state) {
   }
 
   // Link star polygon controls
-  if (starSkipRange && starSkipNumber && starSkipValue) {
-    syncPair(starSkipRange, starSkipNumber, starSkipValue,
-      value => state.setStarSkip(Number(value)),
-      UI_RANGES.STAR_SKIP[0], UI_RANGES.STAR_SKIP[1],
-      Number);
+  if (starSkipRadioGroup && validSkipsInfo) {
+    setupStarSkipRadioButtons(starSkipRadioGroup, state);
   }
 
   // Update valid skips information when segments change
@@ -682,10 +721,10 @@ export function setupUI(state) {
       const validSkips = state.getValidStarSkips();
       validSkipsInfo.textContent = `Valid skips for ${getPolygonName(n)} (n=${n}): ${validSkips.join(', ')}`;
       
-      // Also update the max value of the skip slider
-      const maxSkip = validSkips.length > 0 ? Math.max(...validSkips) : 1;
-      starSkipRange.max = maxSkip;
-      starSkipNumber.max = maxSkip;
+      // Update the star skip radio buttons 
+      if (starSkipRadioGroup) {
+        setupStarSkipRadioButtons(starSkipRadioGroup, state);
+      }
       
       // Ensure the current skip value is valid
       if (validSkips.length > 0) {
@@ -693,9 +732,6 @@ export function setupUI(state) {
         if (!validSkips.includes(state.starSkip)) {
           console.log(`Current skip ${state.starSkip} is not valid. Setting to ${validSkips[0]}`);
           state.setStarSkip(validSkips[0]);
-          starSkipRange.value = validSkips[0];
-          starSkipNumber.value = validSkips[0];
-          starSkipValue.textContent = validSkips[0];
         } else {
           console.log(`Current skip ${state.starSkip} is valid among ${validSkips.join(',')}`);
         }
@@ -741,7 +777,7 @@ export function setupUI(state) {
     referenceFreqRange, referenceFreqNumber, referenceFreqValue,
     fractalRange, fractalNumber, fractalValue,
     useFractalCheckbox,
-    starSkipRange, starSkipNumber, starSkipValue,
+    starSkipRadioGroup,
     useStarsCheckbox, validSkipsInfo,
     
     // Note parameter controls

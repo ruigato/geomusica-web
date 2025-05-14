@@ -438,7 +438,7 @@ function initializeApplication() {
 
     // Initialize geometry - use our new polygon outline geometry
     // Fix for rounding bug: Ensure we pass the exact number of segments
-    const baseGeo = createPolygonGeometry(appState.radius, Math.round(appState.segments));
+    const baseGeo = createPolygonGeometry(appState.radius, Math.round(appState.segments), appState);
     appState.baseGeo = baseGeo; // Store reference in state
     
     // Use LineBasicMaterial for lines
@@ -538,7 +538,7 @@ function initializeApplication() {
 
     // Initialize polygon geometry without audio
     // Fix for rounding bug: Ensure we pass the exact number of segments
-    const baseGeo = createPolygonGeometry(appState.radius, Math.round(appState.segments));
+    const baseGeo = createPolygonGeometry(appState.radius, Math.round(appState.segments), appState);
     appState.baseGeo = baseGeo;
     
     // Use LineBasicMaterial for lines
