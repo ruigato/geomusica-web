@@ -357,7 +357,9 @@ export function animate(params) {
     const shouldUpdateGroup = 
       paramsChanged || 
       noteParamsChanged || // Add note parameters change detection
-      state.parameterChanges.copies || 
+      state.parameterChanges.copies ||
+      state.parameterChanges.euclidValue ||  // Add Euclidean rhythm parameter
+      state.parameterChanges.useEuclid ||    // Add Euclidean rhythm toggle
       state.justCalculatedIntersections || 
       state.needsPointFreqLabelsUpdate ||
       needsNewGeometry ||

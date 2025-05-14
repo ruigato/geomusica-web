@@ -83,8 +83,43 @@ function syncStateAcrossSystems() {
   if (appState.parameterChanges && 
       (appState.parameterChanges.copies || 
        appState.parameterChanges.modulus || 
-       appState.parameterChanges.useModulus)) {
+       appState.parameterChanges.useModulus ||
+       appState.parameterChanges.euclidValue ||
+       appState.parameterChanges.useEuclid ||
+       appState.parameterChanges.segments ||
+       appState.parameterChanges.fractal ||
+       appState.parameterChanges.useFractal ||
+       appState.parameterChanges.starSkip ||
+       appState.parameterChanges.useStars)) {
     appState.needsIntersectionUpdate = true;
+    
+    // Explicitly force a geometry update for Euclidean rhythm and Stars parameters
+    if (appState.parameterChanges.euclidValue || 
+        appState.parameterChanges.useEuclid ||
+        appState.parameterChanges.starSkip ||
+        appState.parameterChanges.useStars) {
+      // If we have a valid baseGeo reference, update it based on current state parameters
+      if (appState.baseGeo) {
+        const oldGeo = appState.baseGeo;
+        
+        // Force recreate the geometry with current parameters
+        appState.baseGeo = createPolygonGeometry(
+          appState.radius,
+          Math.round(appState.segments),
+          appState
+        );
+        
+        // Clean up old geometry if needed
+        if (oldGeo && oldGeo !== appState.baseGeo) {
+          // Don't dispose immediately as it might still be in use
+          setTimeout(() => {
+            oldGeo.dispose();
+          }, 100);
+        }
+        
+        console.log("Forced geometry update due to Euclidean rhythm or Stars parameter change");
+      }
+    }
   }
 }
 

@@ -873,6 +873,15 @@ export function createAppState() {
         this.fractalValue = newValue;
         this.parameterChanges.fractal = true;
         this.needsIntersectionUpdate = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo && this.useFractal) {
+          console.log("Forcing geometry update due to fractal value change");
+          
+          // Set flags to signal that geometry needs recreation
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        }
       }
     },
     
@@ -886,6 +895,15 @@ export function createAppState() {
         this.useFractal = newValue;
         this.parameterChanges.useFractal = true;
         this.needsIntersectionUpdate = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo) {
+          console.log("Forcing geometry update due to fractal toggle");
+          
+          // Set flags to signal that geometry needs recreation
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        }
       }
     },
     
@@ -899,6 +917,16 @@ export function createAppState() {
         this.euclidValue = newValue;
         this.parameterChanges.euclidValue = true;
         this.needsIntersectionUpdate = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo && this.useEuclid) {
+          console.log("Forcing geometry update due to Euclidean value change");
+          
+          // We need to import this dynamically - handled by the main.js overrides
+          // Just set a flag to signal that geometry needs recreation
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        }
       }
     },
     
@@ -912,6 +940,16 @@ export function createAppState() {
         this.useEuclid = newValue;
         this.parameterChanges.useEuclid = true;
         this.needsIntersectionUpdate = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo) {
+          console.log("Forcing geometry update due to Euclidean toggle");
+          
+          // We need to import this dynamically - handled by the main.js overrides
+          // Just set a flag to signal that geometry needs recreation
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        }
       }
     },
     
@@ -925,6 +963,15 @@ export function createAppState() {
         this.starSkip = newValue;
         this.parameterChanges.starSkip = true;
         this.needsIntersectionUpdate = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo && this.useStars) {
+          console.log("Forcing geometry update due to star skip value change");
+          
+          // Set flags to signal that geometry needs recreation
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        }
       }
     },
     
@@ -938,6 +985,15 @@ export function createAppState() {
         this.useStars = newValue;
         this.parameterChanges.useStars = true;
         this.needsIntersectionUpdate = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo) {
+          console.log("Forcing geometry update due to star toggle");
+          
+          // Set flags to signal that geometry needs recreation
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        }
       }
     },
     
