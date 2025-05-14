@@ -1,10 +1,53 @@
-// src/geometry/intersections.js - Optimized version
+// src/geometry/intersections.js - Optimized version with cached intersections
 import * as THREE from 'three';
 import { INTERSECTION_MERGE_THRESHOLD, INTERSECTION_POINT_COLOR, INTERSECTION_POINT_OPACITY, INTERSECTION_POINT_SIZE } from '../config/constants.js';
 
 // Reusable Vector3 objects to reduce garbage collection
 const _vec1 = new THREE.Vector3();
 const _vec2 = new THREE.Vector3();
+
+// Precision-preserving cache for intersection calculations
+class IntersectionCache {
+    constructor(precision = 1e-10) {
+        this.cache = new Map();
+        this.precision = precision;
+    }
+
+    // Generate a stable hash key for line segments
+    _generateKey(p1, p2, p3, p4) {
+        // Use a consistent ordering and round to specified precision
+        const roundCoord = (coord) => Math.round(coord / this.precision) * this.precision;
+        
+        const coords = [
+            roundCoord(p1.x), roundCoord(p1.y),
+            roundCoord(p2.x), roundCoord(p2.y),
+            roundCoord(p3.x), roundCoord(p3.y),
+            roundCoord(p4.x), roundCoord(p4.y)
+        ].sort();
+        
+        return coords.join('|');
+    }
+
+    // Check if intersection is already calculated
+    get(p1, p2, p3, p4) {
+        const key = this._generateKey(p1, p2, p3, p4);
+        return this.cache.get(key);
+    }
+
+    // Store intersection result
+    set(p1, p2, p3, p4, intersection) {
+        const key = this._generateKey(p1, p2, p3, p4);
+        this.cache.set(key, intersection);
+        return intersection;
+    }
+
+    // Clear cache when geometry changes
+    clear() {
+        this.cache.clear();
+    }
+}
+
+const intersectionCache = new IntersectionCache();
 
 /**
  * Find intersection between two line segments
@@ -15,6 +58,12 @@ const _vec2 = new THREE.Vector3();
  * @returns {THREE.Vector3|null} Intersection point or null if no intersection
  */
 export function findIntersection(p1, p2, p3, p4) {
+  // First, check if this intersection is already cached
+  const cachedIntersection = intersectionCache.get(p1, p2, p3, p4);
+  if (cachedIntersection) {
+    return cachedIntersection;
+  }
+
   // Extract coordinates
   const x1 = p1.x, y1 = p1.y;
   const x2 = p2.x, y2 = p2.y;
@@ -42,7 +91,10 @@ export function findIntersection(p1, p2, p3, p4) {
   const x = x1 + ua * (x2 - x1);
   const y = y1 + ua * (y2 - y1);
   
-  return new THREE.Vector3(x, y, 0);
+  const intersection = new THREE.Vector3(x, y, 0);
+  
+  // Cache the result for future use
+  return intersectionCache.set(p1, p2, p3, p4, intersection);
 }
 
 /**
