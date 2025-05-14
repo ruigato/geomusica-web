@@ -1,0 +1,15 @@
+{
+  "name": "geomusica_wasm",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "geomusica_wasm_bg.wasm",
+    "geomusica_wasm.js",
+    "geomusica_wasm.d.ts"
+  ],
+  "main": "geomusica_wasm.js",
+  "types": "geomusica_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
