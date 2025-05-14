@@ -323,7 +323,7 @@ export function findAllIntersections(group) {
   let vertices = [];
   
   // Only generate star polygon vertices for intersection calculation if we haven't already handled it in the useCuts section
-  if (state.useStars && state.starSkip > 1 && (!state.useCuts || calculateGCD(state.segments, state.starSkip) !== 1)) {
+  if (state.useStars && state.starSkip > 1) {
     // Calculate GCD to determine if this creates a proper star
     const gcd = calculateGCD(state.segments, state.starSkip);
     
@@ -335,7 +335,7 @@ export function findAllIntersections(group) {
       vertices = generateStarPolygonVertices(state.segments, state.starSkip, state.radius);
       
       // Handle the "cuts" feature: find self-intersections in the star polygon
-      // We only reach this if we haven't already handled it in the special case above
+      // Always check for cuts when useCuts is enabled, regardless of useIntersections
       if (state.useCuts && intersectionPoints.length === 0) {
         if (debug) {
           console.log("Finding star polygon self-intersections (cuts)");
