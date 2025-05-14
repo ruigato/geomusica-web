@@ -868,45 +868,87 @@ function generateEuclideanRhythm(n, k) {
   if (k <= 0) return Array(n).fill(false);
   if (k >= n) return Array(n).fill(true);
   
-  // Initialize arrays
-  let pattern = [];
-  let counts = [];
-  let remainders = [];
-  let divisor = n - k;
+  // Simpler and more direct implementation
+  // This implementation guarantees exactly k pulses distributed as evenly as possible
+  const pattern = Array(n).fill(false);
   
-  // Initialize arrays
-  remainders.push(k);
-  let level = 0;
+  // Calculate the step size for even distribution
+  const step = n / k;
   
-  // Euclid's algorithm
-  while (remainders[level] > 1) {
-    counts.push(Math.floor(divisor / remainders[level]));
-    remainders.push(divisor % remainders[level]);
-    divisor = remainders[level];
-    level++;
-  }
-  counts.push(divisor);
-  
-  // Build the pattern
-  let builder = [];
-  for (let i = 0; i < level + 1; i++) {
-    builder.push([]);
+  // Place pulses at evenly distributed positions
+  for (let i = 0; i < k; i++) {
+    // Round to nearest integer and ensure it's within bounds
+    const position = Math.floor(i * step) % n;
+    pattern[position] = true;
   }
   
-  builder[level] = [true];
-  for (let i = level - 1; i >= 0; i--) {
-    for (let j = 0; j < counts[i]; j++) {
-      builder[i] = builder[i].concat(builder[i+1]);
+  // Verify we have exactly k pulses
+  const pulseCount = pattern.filter(p => p).length;
+  if (pulseCount !== k) {
+    console.warn(`Expected ${k} pulses but generated ${pulseCount}. Adjusting pattern.`);
+    
+    // Force exactly k pulses by adding or removing as needed
+    if (pulseCount < k) {
+      // Add more pulses to positions that are as far as possible from existing pulses
+      const gaps = [];
+      let lastPulse = -1;
+      
+      // Find gaps between pulses
+      for (let i = 0; i < n; i++) {
+        if (pattern[i]) {
+          if (lastPulse >= 0) {
+            gaps.push({start: lastPulse, end: i, length: i - lastPulse});
+          }
+          lastPulse = i;
+        }
+      }
+      
+      // Add the gap that wraps around the end
+      if (lastPulse >= 0) {
+        gaps.push({start: lastPulse, end: n + pattern.indexOf(true), length: n - lastPulse + pattern.indexOf(true)});
+      }
+      
+      // Sort gaps by length (descending)
+      gaps.sort((a, b) => b.length - a.length);
+      
+      // Add pulses in the middle of the largest gaps
+      for (let i = 0; i < k - pulseCount && gaps.length > 0; i++) {
+        const gap = gaps.shift();
+        const middle = Math.floor((gap.start + gap.length / 2)) % n;
+        pattern[middle] = true;
+      }
+    } else if (pulseCount > k) {
+      // Remove excess pulses
+      const pulsePositions = [];
+      for (let i = 0; i < n; i++) {
+        if (pattern[i]) pulsePositions.push(i);
+      }
+      
+      // Remove pulses that are closest to other pulses
+      while (pulsePositions.length > k) {
+        let minDistance = Infinity;
+        let indexToRemove = -1;
+        
+        for (let i = 0; i < pulsePositions.length; i++) {
+          const nextIndex = (i + 1) % pulsePositions.length;
+          const distance = (pulsePositions[nextIndex] - pulsePositions[i] + n) % n;
+          
+          if (distance < minDistance) {
+            minDistance = distance;
+            indexToRemove = i;
+          }
+        }
+        
+        // Remove the pulse at this position
+        if (indexToRemove >= 0) {
+          pattern[pulsePositions[indexToRemove]] = false;
+          pulsePositions.splice(indexToRemove, 1);
+        }
+      }
     }
-    if (remainders[i+1] !== 0) {
-      builder[i] = builder[i].concat(builder[i+1].slice(0, remainders[i+1]));
-    }
   }
   
-  pattern = builder[0];
-  
-  // Make sure the pattern is exactly n elements long
-  return pattern.slice(0, n);
+  return pattern;
 }
 
 /**
@@ -929,6 +971,9 @@ function createEuclideanPolygonGeometry(radius, n, k, useFractal, fractalValue, 
   // Generate Euclidean rhythm pattern
   const pattern = generateEuclideanRhythm(n, k);
   
+  // Debug: log the generated pattern
+  console.log(`Euclidean rhythm pattern for n=${n}, k=${k}: ${JSON.stringify(pattern)}`);
+  
   // Generate all vertex positions on the circle
   const allVertices = [];
   for (let i = 0; i < n; i++) {
@@ -945,6 +990,29 @@ function createEuclideanPolygonGeometry(radius, n, k, useFractal, fractalValue, 
       selectedVertices.push(allVertices[i]);
     }
   }
+  
+  // Ensure we have the correct number of vertices based on k
+  console.log(`Selected ${selectedVertices.length} vertices from pattern, expected ${k}`);
+  
+  // If we have fewer vertices than k, there might be an issue with the pattern generation
+  if (selectedVertices.length < k) {
+    console.warn(`Got fewer vertices (${selectedVertices.length}) than expected (${k}). Forcing selection of ${k} vertices.`);
+    
+    // Force selection of k evenly distributed vertices
+    selectedVertices.length = 0;
+    const step = Math.floor(n / k);
+    for (let i = 0; i < k; i++) {
+      const index = (i * step) % n;
+      selectedVertices.push(allVertices[index]);
+    }
+  }
+  
+  // Sort vertices by angle to maintain order around the circle
+  selectedVertices.sort((a, b) => {
+    const angleA = Math.atan2(a.y, a.x);
+    const angleB = Math.atan2(b.y, b.x);
+    return angleA - angleB;
+  });
   
   // If no vertices were selected, return empty geometry
   if (selectedVertices.length === 0) {
@@ -976,6 +1044,9 @@ function createEuclideanPolygonGeometry(radius, n, k, useFractal, fractalValue, 
         vertices.push(x, y, 0);
       }
     }
+    
+    // We don't need to add the first vertex again because the last subdivision 
+    // connects back to the first vertex already
   } else {
     // Just add the selected vertices without subdivision
     for (const vertex of selectedVertices) {

@@ -783,7 +783,18 @@ export function setupUI(state) {
   // Update Euclidean rhythm info
   function updateEuclidInfo() {
     if (validEuclidInfo) {
-      validEuclidInfo.textContent = `Current Euclidean pattern: k=${state.euclidValue} out of n=${state.segments} vertices`;
+      const n = state.segments;
+      const k = state.euclidValue;
+      
+      // Make sure k is at most n
+      const effectiveK = Math.min(k, n);
+      
+      validEuclidInfo.textContent = `Current Euclidean pattern: ${effectiveK} vertices evenly distributed from a ${n}-sided polygon`;
+      
+      // If k > n, add a warning
+      if (k > n) {
+        validEuclidInfo.innerHTML += `<br><span style="color: #ff8866;">Note: Only using ${n} vertices since that's the maximum for this shape</span>`;
+      }
     }
   }
   
