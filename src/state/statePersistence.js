@@ -82,7 +82,8 @@ export function saveState(state) {
       
       // Star polygon parameters
       starSkip: state.starSkip,
-      useStars: state.useStars
+      useStars: state.useStars,
+      useCuts: state.useCuts
     };
     
     // Convert to string and save
@@ -191,6 +192,7 @@ export function applyLoadedState(state, loadedState) {
     // Star polygon parameters
     if (loadedState.starSkip !== undefined) state.setStarSkip(loadedState.starSkip);
     if (loadedState.useStars !== undefined) state.setUseStars(loadedState.useStars);
+    if (loadedState.useCuts !== undefined) state.setUseCuts(loadedState.useCuts);
     
     console.log('State applied successfully');
     return true;
@@ -325,7 +327,8 @@ export function exportStateToFile(state) {
       
       // Star polygon parameters
       starSkip: state.starSkip,
-      useStars: state.useStars
+      useStars: state.useStars,
+      useCuts: state.useCuts
     };
     
     // Add timestamp
@@ -675,6 +678,14 @@ export function updateUIFromState(state, uiElements) {
           }
         }
       }
+    }
+    
+    if (uiElements.useStarsCheckbox && state.useStars !== undefined) {
+      uiElements.useStarsCheckbox.checked = state.useStars;
+    }
+    
+    if (uiElements.useCutsCheckbox && state.useCuts !== undefined) {
+      uiElements.useCutsCheckbox.checked = state.useCuts;
     }
     
     console.log('UI updated from state successfully');

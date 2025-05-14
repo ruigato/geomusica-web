@@ -33,6 +33,7 @@ export function createPolygonGeometry(radius, segments, state = null) {
   const fractalValue = state?.fractalValue || 1;
   const useStars = state?.useStars || false;
   const starSkip = state?.starSkip || 1;
+  const debug = false; // Set to true only when debugging is needed
   
   // Always create a completely fresh geometry
   const geometry = new THREE.BufferGeometry();
@@ -41,12 +42,14 @@ export function createPolygonGeometry(radius, segments, state = null) {
   if (useStars && starSkip > 1 && starSkip < numSegments) {
     // Calculate GCD to determine if this creates a proper star
     const gcd = calculateGCD(numSegments, starSkip);
-    console.log(`Creating star polygon with: useStars=${useStars}, starSkip=${starSkip}, segments=${numSegments}, gcd=${gcd}`);
+    if (debug) {
+      console.log(`Creating star polygon with: useStars=${useStars}, starSkip=${starSkip}, segments=${numSegments}, gcd=${gcd}`);
+    }
     
     // Only use star pattern when gcd=1 (ensures a single connected path)
     if (gcd === 1 || starSkip === 1) {
-      return createStarPolygonGeometry(radius, numSegments, starSkip, useFractal, fractalValue);
-    } else {
+      return createStarPolygonGeometry(radius, numSegments, starSkip, useFractal, fractalValue, debug);
+    } else if (debug) {
       console.log(`Warning: Skip ${starSkip} with ${numSegments} segments has gcd=${gcd}, would create multiple disconnected shapes`);
       // Fall through to create a regular polygon instead
     }
@@ -103,16 +106,19 @@ export function createPolygonGeometry(radius, segments, state = null) {
  * @param {number} k - Skip value (step size)
  * @param {boolean} useFractal - Whether to use fractal subdivision
  * @param {number} fractalValue - Fractal subdivision level
+ * @param {boolean} debug - Enable debug logging
  * @returns {THREE.BufferGeometry} Star polygon geometry
  */
-function createStarPolygonGeometry(radius, n, k, useFractal, fractalValue) {
+function createStarPolygonGeometry(radius, n, k, useFractal, fractalValue, debug = false) {
   const geometry = new THREE.BufferGeometry();
   const vertices = [];
   
   // Calculate GCD to determine if we'll get a single star or multiple shapes
   const gcd = calculateGCD(n, k);
   
-  console.log(`Creating star polygon {${n}/${k}} - GCD: ${gcd}`);
+  if (debug) {
+    console.log(`Creating star polygon {${n}/${k}} - GCD: ${gcd}`);
+  }
   
   // Collect base vertices of the polygon in a circle
   const baseVertices = [];
@@ -126,7 +132,9 @@ function createStarPolygonGeometry(radius, n, k, useFractal, fractalValue) {
   // If gcd > 1, we'll get multiple disconnected figures
   // The figure will repeat after visiting n/gcd vertices
   const verticesPerFigure = n / gcd;
-  console.log(`This will create ${gcd} separate figure(s) with ${verticesPerFigure} vertices each`);
+  if (debug) {
+    console.log(`This will create ${gcd} separate figure(s) with ${verticesPerFigure} vertices each`);
+  }
   
   // If fractal subdivision is enabled and value > 1, subdivide each line segment
   if (useFractal && fractalValue > 1) {
@@ -253,7 +261,7 @@ export function calculateBoundingSphere(group, state) {
   }
   
   // Account for intersection points if needed
-  if (state.useIntersections && state.intersectionPoints && state.intersectionPoints.length > 0) {
+  if ((state.useIntersections || (state.useStars && state.useCuts)) && state.intersectionPoints && state.intersectionPoints.length > 0) {
     for (const point of state.intersectionPoints) {
       const dist = Math.hypot(point.x, point.y);
       maxDistance = Math.max(maxDistance, dist * 1.1); // Add 10% margin
@@ -425,61 +433,61 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   let intersectionPoints = [];
   
   // Check if we need to find intersections and have multiple copies
-  if (state && state.useIntersections && copies > 1) {
+  // OPTIMIZATION: Only do this when needsIntersectionUpdate is true to avoid per-frame recalculation
+  if (state && (state.useIntersections || (state.useStars && state.useCuts)) && 
+      state.needsIntersectionUpdate && 
+      (copies > 1 || (state.useStars && state.useCuts))) {
+    // Create a temporary group for intersection calculation
     tempGroup = new THREE.Group();
     tempGroup.position.copy(group.position);
     tempGroup.rotation.copy(group.rotation);
     tempGroup.scale.copy(group.scale);
-  }
-  
-  // First create all the polygon copies (either in the main group or temp group)
-  const targetGroup = tempGroup || group;
-  
-  for (let i = 0; i < copies; i++) {
-    // Base scale factor from step scale
-    let stepScaleFactor = Math.pow(stepScale, i);
+    tempGroup.userData = { state: state }; // Important: add state to userData to avoid "No state found" errors
     
-    // Initialize final scale variables
-    let finalScale = stepScaleFactor;
-    
-    // Determine scale based on different features
-    if (state) {
-      if (state.useModulus) {
-        // Get the sequence value (increasing from 1/modulus to 1.0)
-        const modulusScale = state.getScaleFactorForCopy(i);
-        finalScale = modulusScale * stepScaleFactor;  // Apply both modulus scale and step scale
-      } else if (state.useAltScale) {
-        // Apply alt scale multiplier if this is an Nth copy (without modulus)
-        // Always use the current altScale value (which will be lerped if lerping is enabled)
-        if ((i + 1) % state.altStepN === 0) {
-          finalScale = stepScaleFactor * state.altScale;
+    // First create all the polygon copies in the temp group
+    for (let i = 0; i < copies; i++) {
+      // Base scale factor from step scale
+      let stepScaleFactor = Math.pow(stepScale, i);
+      
+      // Initialize final scale variables
+      let finalScale = stepScaleFactor;
+      
+      // Determine scale based on different features
+      if (state) {
+        if (state.useModulus) {
+          // Get the sequence value (increasing from 1/modulus to 1.0)
+          const modulusScale = state.getScaleFactorForCopy(i);
+          finalScale = modulusScale * stepScaleFactor;  // Apply both modulus scale and step scale
+        } else if (state.useAltScale) {
+          // Apply alt scale multiplier if this is an Nth copy (without modulus)
+          // Always use the current altScale value (which will be lerped if lerping is enabled)
+          if ((i + 1) % state.altStepN === 0) {
+            finalScale = stepScaleFactor * state.altScale;
+          }
         }
       }
+      
+      // Each copy gets a cumulative angle (i * angle) in degrees
+      const cumulativeAngleDegrees = i * angle;
+      
+      // Convert to radians only when setting the actual Three.js rotation
+      const cumulativeAngleRadians = (cumulativeAngleDegrees * Math.PI) / 180;
+      
+      // Create a group for this copy to hold both the lines and vertex circles
+      const copyGroup = new THREE.Group();
+      
+      // Create line for the polygon outline - use the original geometry here
+      const lines = new THREE.LineLoop(baseGeo, mat.clone());
+      lines.scale.set(finalScale, finalScale, 1);
+      copyGroup.add(lines);
+      
+      // Apply rotation to the copy group
+      copyGroup.rotation.z = cumulativeAngleRadians;
+      
+      // Add the whole copy group to the temp group
+      tempGroup.add(copyGroup);
     }
     
-    // Each copy gets a cumulative angle (i * angle) in degrees
-    const cumulativeAngleDegrees = i * angle;
-    
-    // Convert to radians only when setting the actual Three.js rotation
-    const cumulativeAngleRadians = (cumulativeAngleDegrees * Math.PI) / 180;
-    
-    // Create a group for this copy to hold both the lines and vertex circles
-    const copyGroup = new THREE.Group();
-    
-    // Create line for the polygon outline - use the original geometry here
-    const lines = new THREE.LineLoop(baseGeo, mat.clone());
-    lines.scale.set(finalScale, finalScale, 1);
-    copyGroup.add(lines);
-    
-    // Apply rotation to the copy group
-    copyGroup.rotation.z = cumulativeAngleRadians;
-    
-    // Add the whole copy group to the target group
-    targetGroup.add(copyGroup);
-  }
-  
-  // If we're using intersections and need an update, find and apply intersections
-  if (state && state.useIntersections && state.needsIntersectionUpdate && copies > 1) {
     // Find all intersection points between the copies in the temp group
     intersectionPoints = findAllIntersections(tempGroup);
     
@@ -490,6 +498,10 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       
       // Reset the flag since we've updated the intersections
       state.needsIntersectionUpdate = false;
+    } else {
+      // Reset the flag even if no intersections found
+      state.needsIntersectionUpdate = false;
+      state.intersectionPoints = [];
     }
   }
   
@@ -513,7 +525,22 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   // Calculate global sequential index for vertex indexing
   let globalVertexIndex = 0;
   
-  // Now create the actual group based on the updated geometry
+  // Clean up temporary group if it exists
+  if (tempGroup) {
+    tempGroup.traverse(child => {
+      if (child.geometry && child !== baseGeo) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    });
+    tempGroup = null;
+  }
+  
+  // Now create the actual polygon copies for display
   for (let i = 0; i < copies; i++) {
     // Base scale factor from step scale
     let stepScaleFactor = Math.pow(stepScale, i);
@@ -654,32 +681,19 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     group.add(copyGroup);
   }
   
-  // Clean up temporary group if it exists
-  if (tempGroup) {
-    tempGroup.traverse(child => {
-      if (child.geometry && child !== baseGeo) child.geometry.dispose();
-      if (child.material) {
-        if (Array.isArray(child.material)) {
-          child.material.forEach(m => m.dispose());
-        } else {
-          child.material.dispose();
-        }
-      }
-    });
-    tempGroup = null;
-  }
-  
   // Finally, add the intersection point markers to the group (so they rotate with everything)
   // Only create/update markers if:
-  // 1. We're using intersections AND
+  // 1. We're using intersections OR (using stars AND using cuts) AND
   // 2. We have intersection points AND
   // 3. We're not currently lerping AND
-  // 4. Either we just calculated new intersections OR we don't have markers yet
+  // 4. We have at least 1 copy AND
+  // 5. Either we just calculated new intersections OR we don't have markers yet
   const needToCreateMarkers = state && 
-                             state.useIntersections && 
-                             hasEnoughCopiesForIntersections && // Only if we have enough copies
+                             (state.useIntersections || (state.useStars && state.useCuts)) && 
+                             (hasEnoughCopiesForIntersections || (state.useStars && state.useCuts)) && // Only if we have enough copies or using star cuts
                              state.intersectionPoints && 
                              state.intersectionPoints.length > 0 && 
+                             copies > 0 && // Don't create markers if copies = 0
                              !isLerping &&
                              (justCalculatedIntersections || !group.userData.intersectionMarkerGroup);
                              

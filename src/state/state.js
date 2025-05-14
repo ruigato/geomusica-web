@@ -49,7 +49,8 @@ export function createAppState() {
       fractal: false,
       useFractal: false,
       starSkip: false,
-      useStars: false
+      useStars: false,
+      useCuts: false
     },
     
     // Performance and frame tracking
@@ -127,6 +128,10 @@ export function createAppState() {
     lastUseIntersections: DEFAULT_VALUES.USE_INTERSECTIONS,
     intersectionPoints: [],
     needsIntersectionUpdate: true,
+    
+    // Cuts related parameters
+    useCuts: false,
+    lastUseCuts: false,
     
     // Lerp/Lag related parameters
     useLerp: false,
@@ -900,6 +905,20 @@ export function createAppState() {
       if (this.useStars !== newValue) {
         this.useStars = newValue;
         this.parameterChanges.useStars = true;
+        this.needsIntersectionUpdate = true;
+      }
+    },
+    
+    /**
+     * Toggle cuts (internal star intersections)
+     * @param {boolean} value Enable/disable cuts
+     */
+    setUseCuts(value) {
+      const newValue = Boolean(value);
+      if (this.useCuts !== newValue) {
+        this.useCuts = newValue;
+        this.lastUseCuts = newValue;
+        this.parameterChanges.useCuts = true;
         this.needsIntersectionUpdate = true;
       }
     },

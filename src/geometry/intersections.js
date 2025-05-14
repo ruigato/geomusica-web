@@ -123,17 +123,110 @@ function generateStarPolygonVertices(n, k, radius) {
 }
 
 /**
+ * Find self-intersections within a star polygon
+ * @param {Array<THREE.Vector3>} vertices Array of star polygon vertices
+ * @param {number} scale Scale factor to apply to intersections
+ * @returns {Array<THREE.Vector3>} Array of intersection points
+ */
+function findStarSelfIntersections(vertices, scale = 1.0) {
+  const intersectionPoints = [];
+  
+  // Skip if not enough vertices for intersections
+  if (vertices.length < 4) {
+    // Silent failure - no need for console spam
+    return intersectionPoints;
+  }
+  
+  // Only log this when debug is enabled
+  const debug = false; // Set to true only when debugging
+  if (debug) {
+    console.log(`Finding self-intersections for star polygon with ${vertices.length} vertices`);
+  }
+  
+  // Check all non-adjacent line segments for intersections
+  let intersectionCount = 0;
+  for (let i = 0; i < vertices.length; i++) {
+    const i1 = i;
+    const i2 = (i + 1) % vertices.length;
+    
+    // Look for intersections with all other non-adjacent segments
+    for (let j = 0; j < vertices.length; j++) {
+      // Skip if segments are adjacent or the same
+      if (j === i || j === (i + 1) % vertices.length || 
+          j === (i - 1 + vertices.length) % vertices.length) {
+        continue;
+      }
+      
+      const j1 = j;
+      const j2 = (j + 1) % vertices.length;
+      
+      // Skip if other segment is adjacent to current segment
+      if (j2 === i1 || j2 === i2 || j1 === i1 || j1 === i2) {
+        continue;
+      }
+      
+      const intersection = findIntersection(
+        vertices[i1], 
+        vertices[i2], 
+        vertices[j1], 
+        vertices[j2]
+      );
+      
+      if (intersection) {
+        intersectionCount++;
+        
+        // Debug log only when needed
+        if (debug) {
+          console.log(`Found star self-intersection between segments ${i1}-${i2} and ${j1}-${j2}`);
+        }
+        
+        // Scale intersection if needed
+        if (scale !== 1.0) {
+          intersection.multiplyScalar(scale);
+        }
+        
+        // Only add if not too close to any existing point
+        if (!isPointTooClose(intersection, intersectionPoints)) {
+          // Only add if not too close to any existing vertex
+          let tooCloseToVertex = false;
+          for (const v of vertices) {
+            if (distanceBetweenPoints(intersection, v) < INTERSECTION_MERGE_THRESHOLD) {
+              tooCloseToVertex = true;
+              break;
+            }
+          }
+          
+          if (!tooCloseToVertex) {
+            intersectionPoints.push(intersection);
+          } else if (debug) {
+            console.log("Skipping intersection that's too close to a vertex");
+          }
+        }
+      }
+    }
+  }
+  
+  // Only log summary when debug is enabled
+  if (debug) {
+    console.log(`Found ${intersectionPoints.length} valid self-intersections in star polygon out of ${intersectionCount} total`);
+  }
+  return intersectionPoints;
+}
+
+/**
  * Find all intersections between polygon copies
  * @param {THREE.Group} group Group containing polygon copies
  * @returns {Array<THREE.Vector3>} Array of intersection points
  */
 export function findAllIntersections(group) {
   const intersectionPoints = [];
+  const debug = false; // Set to true only when debugging
   
   // Get state object from group's userData
   const state = group.userData.state;
   
   if (!state) {
+    // Warn but don't continue to spam console
     console.warn("No state found in group userData, cannot calculate intersections");
     return intersectionPoints;
   }
@@ -149,24 +242,128 @@ export function findAllIntersections(group) {
   
   const copies = actualCopies.length;
   
-  // Skip if not enough copies for intersections
-  if (copies < 2) {
+  // Skip if not enough copies for intersections and not using cuts
+  if (copies < 2 && !state.useCuts) {
     return intersectionPoints;
+  }
+  
+  // Skip if copies = 0 (even if useCuts is enabled)
+  if (copies === 0) {
+    return intersectionPoints;
+  }
+  
+  // If using star cuts, create self-intersections for each copy
+  if (state.useStars && state.useCuts && state.starSkip > 1) {
+    // Calculate GCD to determine if this creates a proper star
+    const gcd = calculateGCD(state.segments, state.starSkip);
+    
+    // Only process when gcd=1 (ensures a single connected path)
+    if (gcd === 1) {
+      // Generate base star polygon vertices
+      const baseVertices = generateStarPolygonVertices(state.segments, state.starSkip, state.radius);
+      
+      // Process each copy
+      for (let i = 0; i < copies; i++) {
+        // Calculate scale based on copy index
+        let stepScaleFactor = Math.pow(state.stepScale, i);
+        let finalScale = stepScaleFactor;
+        
+        // Apply modulus or alt scale if needed
+        if (state.useModulus) {
+          const modulusScale = state.getScaleFactorForCopy(i);
+          finalScale = modulusScale * stepScaleFactor;
+        } else if (state.useAltScale && (i + 1) % state.altStepN === 0) {
+          finalScale = stepScaleFactor * state.altScale;
+        }
+        
+        // Calculate rotation for this copy (in radians)
+        const rotationRad = (i * state.angle * Math.PI) / 180;
+        
+        // Scale and rotate the base vertices for this copy
+        const scaledRotatedVertices = [];
+        for (const vertex of baseVertices) {
+          // Scale the vertex
+          const scaledVertex = vertex.clone().multiplyScalar(finalScale);
+          
+          // Rotate the vertex
+          const rotatedVertex = new THREE.Vector3(
+            scaledVertex.x * Math.cos(rotationRad) - scaledVertex.y * Math.sin(rotationRad),
+            scaledVertex.x * Math.sin(rotationRad) + scaledVertex.y * Math.cos(rotationRad),
+            0
+          );
+          
+          scaledRotatedVertices.push(rotatedVertex);
+        }
+        
+        // Find self-intersections for this copy
+        const selfIntersections = findStarSelfIntersections(scaledRotatedVertices);
+        
+        // Add to overall intersections
+        for (const point of selfIntersections) {
+          if (!isPointTooClose(point, intersectionPoints)) {
+            intersectionPoints.push(point);
+            if (debug) {
+              console.log(`Added star self-intersection for copy ${i} at (${point.x.toFixed(2)}, ${point.y.toFixed(2)})`);
+            }
+          }
+        }
+      }
+      
+      // If we're not looking for intersections between copies, we can return now
+      if (copies < 2 && !state.useIntersections) {
+        if (debug) {
+          console.log(`Returning ${intersectionPoints.length} star self-intersections across all copies`);
+        }
+        return intersectionPoints;
+      }
+    }
   }
   
   // Generate base polygon vertices based on whether stars are enabled
   let vertices = [];
   
-  if (state.useStars && state.starSkip > 1) {
+  // Only generate star polygon vertices for intersection calculation if we haven't already handled it in the useCuts section
+  if (state.useStars && state.starSkip > 1 && (!state.useCuts || calculateGCD(state.segments, state.starSkip) !== 1)) {
     // Calculate GCD to determine if this creates a proper star
     const gcd = calculateGCD(state.segments, state.starSkip);
     
     // Only use star pattern when gcd=1 (ensures a single connected path)
     if (gcd === 1) {
-      console.log(`Creating star polygon for intersections: n=${state.segments}, k=${state.starSkip}`);
+      if (debug) {
+        console.log(`Creating star polygon for intersections: n=${state.segments}, k=${state.starSkip}, useCuts=${state.useCuts}`);
+      }
       vertices = generateStarPolygonVertices(state.segments, state.starSkip, state.radius);
+      
+      // Handle the "cuts" feature: find self-intersections in the star polygon
+      // We only reach this if we haven't already handled it in the special case above
+      if (state.useCuts && intersectionPoints.length === 0) {
+        if (debug) {
+          console.log("Finding star polygon self-intersections (cuts)");
+        }
+        const selfIntersections = findStarSelfIntersections(vertices);
+        
+        // Add self-intersections to the result
+        for (const point of selfIntersections) {
+          if (!isPointTooClose(point, intersectionPoints)) {
+            intersectionPoints.push(point);
+            if (debug) {
+              console.log(`Added star self-intersection at (${point.x.toFixed(2)}, ${point.y.toFixed(2)})`);
+            }
+          }
+        }
+        
+        // If we're not looking for intersections between copies, we can return now
+        if (copies < 2 && !state.useIntersections) {
+          if (debug) {
+            console.log(`Returning ${intersectionPoints.length} star self-intersections only (no copy intersections needed)`);
+          }
+          return intersectionPoints;
+        }
+      }
     } else {
-      console.log(`Star pattern would create multiple disconnected shapes (gcd=${gcd}), using regular polygon for intersections`);
+      if (debug) {
+        console.log(`Star pattern would create multiple disconnected shapes (gcd=${gcd}), using regular polygon for intersections`);
+      }
       // Fall back to regular polygon
       vertices = [];
       const step = (Math.PI * 2) / state.segments;
@@ -179,7 +376,7 @@ export function findAllIntersections(group) {
         ));
       }
     }
-  } else {
+  } else if (!state.useStars) {
     // Standard polygon vertices
     const step = (Math.PI * 2) / state.segments;
     for (let i = 0; i < state.segments; i++) {
@@ -190,6 +387,15 @@ export function findAllIntersections(group) {
         0
       ));
     }
+  }
+  
+  // Skip the rest if we only needed self-intersections and there are no copies
+  // or if useIntersections is disabled and we're just using cuts
+  if ((copies < 2 || !state.useIntersections) && intersectionPoints.length > 0) {
+    if (debug) {
+      console.log(`Skipping copy intersections, returning ${intersectionPoints.length} star self-intersections`);
+    }
+    return intersectionPoints;
   }
   
   // Calculate polygon copies with proper scaling and rotation

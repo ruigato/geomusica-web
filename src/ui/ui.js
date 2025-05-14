@@ -280,6 +280,7 @@ export function setupUI(state) {
   // Star polygon controls
   const starSkipRadioGroup = document.getElementById('starSkipRadioGroup');
   const useStarsCheckbox = document.getElementById('useStarsCheckbox');
+  const useCutsCheckbox = document.getElementById('useCutsCheckbox');
   const validSkipsInfo = document.getElementById('validSkipsInfo');
   
   // Note parameter controls - Duration
@@ -331,6 +332,7 @@ export function setupUI(state) {
   if (useQuantizationCheckbox) useQuantizationCheckbox.checked = state.useQuantization;
   if (useFractalCheckbox) useFractalCheckbox.checked = state.useFractal;
   if (useStarsCheckbox) useStarsCheckbox.checked = state.useStars;
+  if (useCutsCheckbox) useCutsCheckbox.checked = state.useCuts;
   
   // Set initial values for scale mod controls from state with null checks
   if (altScaleRange && altScaleNumber && altScaleValue) {
@@ -468,6 +470,14 @@ export function setupUI(state) {
     useStarsCheckbox.checked = state.useStars;
     useStarsCheckbox.addEventListener('change', e => {
       state.setUseStars(e.target.checked);
+    });
+  }
+  
+  // Setup cuts checkbox with null check
+  if (useCutsCheckbox) {
+    useCutsCheckbox.checked = state.useCuts;
+    useCutsCheckbox.addEventListener('change', e => {
+      state.setUseCuts(e.target.checked);
     });
   }
   
@@ -779,6 +789,7 @@ export function setupUI(state) {
     useFractalCheckbox,
     starSkipRadioGroup,
     useStarsCheckbox, validSkipsInfo,
+    useCutsCheckbox,
     
     // Note parameter controls
     durationModeRadios, durationModuloRadioGroup,

@@ -618,7 +618,12 @@ const originalSetters = {
   setSegments: appState.setSegments,
   // Add fractal setters
   setFractalValue: appState.setFractalValue,
-  setUseFractal: appState.setUseFractal
+  setUseFractal: appState.setUseFractal,
+  // Add star polygon setters
+  setStarSkip: appState.setStarSkip,
+  setUseStars: appState.setUseStars,
+  // Add cuts setter
+  setUseCuts: appState.setUseCuts
 };
 
 // Override key setters to ensure state sync
@@ -668,6 +673,23 @@ appState.setFractalValue = function(value) {
 
 appState.setUseFractal = function(value) {
   originalSetters.setUseFractal.call(this, value);
+  syncStateAcrossSystems();
+};
+
+// Override star polygon setters
+appState.setStarSkip = function(value) {
+  originalSetters.setStarSkip.call(this, value);
+  syncStateAcrossSystems();
+};
+
+appState.setUseStars = function(value) {
+  originalSetters.setUseStars.call(this, value);
+  syncStateAcrossSystems();
+};
+
+// Override cuts setter
+appState.setUseCuts = function(value) {
+  originalSetters.setUseCuts.call(this, value);
   syncStateAcrossSystems();
 };
 

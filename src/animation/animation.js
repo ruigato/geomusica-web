@@ -124,11 +124,17 @@ export function animate(params) {
         
     const starParamsChanged = 
         state.parameterChanges && 
-        (state.parameterChanges.starSkip || state.parameterChanges.useStars);
+        (state.parameterChanges.starSkip || state.parameterChanges.useStars || state.parameterChanges.useCuts);
     
     if (fractalParamsChanged || starParamsChanged) {
       console.log("Fractal or star parameters changed, forcing geometry recreation");
       needsNewGeometry = true;
+      
+      // Force intersection update if using cuts with stars
+      if (state.useStars && (state.useCuts || state.parameterChanges.useCuts)) {
+        console.log("Star cuts parameter changed, forcing intersection update");
+        state.needsIntersectionUpdate = true;
+      }
     }
     
     // Always check if baseGeo exists and is valid
@@ -231,8 +237,10 @@ export function animate(params) {
     // Check if we have enough copies for intersections
     const hasEnoughCopiesForIntersections = state.copies > 1;
 
-    // Clean up intersections if not enough copies
-    if (state.useIntersections && !hasEnoughCopiesForIntersections) {
+    // Clean up intersections if not enough copies and not using star cuts
+    // or if copies is set to 0 (even with star cuts)
+    if ((state.useIntersections && !hasEnoughCopiesForIntersections && !(state.useStars && state.useCuts)) || 
+        state.copies === 0) {
       // Clear intersection points
       state.intersectionPoints = [];
       
@@ -257,21 +265,43 @@ export function animate(params) {
     }
     
     // Handle intersection toggle changes
-    if (state.lastUseIntersections !== state.useIntersections) {
+    if (state.lastUseIntersections !== state.useIntersections || state.lastUseCuts !== state.useCuts) {
       state.lastUseIntersections = state.useIntersections;
+      state.lastUseCuts = state.useCuts;
       state.needsIntersectionUpdate = true;
       
-      // Clean up if disabled
-      if (!state.useIntersections) {
+      // Clean up intersections and markers if both features are disabled
+      // or if copies is 0 (force cleanup)
+      if ((!state.useIntersections && !state.useCuts) || state.copies === 0) {
+        // Clean up markers
         cleanupIntersectionMarkers(scene);
+        
+        // Clear intersection points
+        state.intersectionPoints = [];
+        
+        // Clean up marker group if present
+        if (group.userData && group.userData.intersectionMarkerGroup) {
+          group.remove(group.userData.intersectionMarkerGroup);
+          group.userData.intersectionMarkerGroup.traverse(child => {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                child.material.forEach(m => m.dispose());
+              } else {
+                child.material.dispose();
+              }
+            }
+          });
+          group.userData.intersectionMarkerGroup = null;
+        }
       }
     }
     
     // Determine if intersections need recalculation
     const needsIntersectionRecalculation = 
-      state.useIntersections && 
-      hasEnoughCopiesForIntersections && 
-      (state.needsIntersectionUpdate || paramsChanged);
+      (state.useIntersections || (state.useStars && state.useCuts)) && 
+      (hasEnoughCopiesForIntersections || (state.useStars && state.useCuts)) && 
+      state.needsIntersectionUpdate;  // Only recalculate when this flag is set
       
     // Calculate intersections if needed
     if (needsIntersectionRecalculation) {
