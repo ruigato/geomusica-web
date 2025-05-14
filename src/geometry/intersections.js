@@ -1,42 +1,42 @@
 // src/geometry/intersections.js - Optimized version with cached intersections
 import * as THREE from 'three';
 import { INTERSECTION_MERGE_THRESHOLD, INTERSECTION_POINT_COLOR, INTERSECTION_POINT_OPACITY, INTERSECTION_POINT_SIZE } from '../config/constants.js';
+import { findIntersectionWasm, initializeWasmIntersections } from './intersections.wasm.js';
 
 // Reusable Vector3 objects to reduce garbage collection
 const _vec1 = new THREE.Vector3();
 const _vec2 = new THREE.Vector3();
 
-// Precision-preserving cache for intersection calculations
+// Lightweight intersection cache with minimal overhead
 class IntersectionCache {
-    constructor(precision = 1e-10) {
+    constructor(maxSize = 1000) {
         this.cache = new Map();
-        this.precision = precision;
+        this.maxSize = maxSize;
     }
 
-    // Generate a stable hash key for line segments
+    // Generate a compact hash key with minimal computation
     _generateKey(p1, p2, p3, p4) {
-        // Use a consistent ordering and round to specified precision
-        const roundCoord = (coord) => Math.round(coord / this.precision) * this.precision;
-        
-        const coords = [
-            roundCoord(p1.x), roundCoord(p1.y),
-            roundCoord(p2.x), roundCoord(p2.y),
-            roundCoord(p3.x), roundCoord(p3.y),
-            roundCoord(p4.x), roundCoord(p4.y)
-        ].sort();
-        
-        return coords.join('|');
+        // Use a simple, fast hashing approach
+        return `${p1.x.toFixed(4)}|${p1.y.toFixed(4)}|${p2.x.toFixed(4)}|${p2.y.toFixed(4)}|` +
+               `${p3.x.toFixed(4)}|${p3.y.toFixed(4)}|${p4.x.toFixed(4)}|${p4.y.toFixed(4)}`;
     }
 
     // Check if intersection is already calculated
     get(p1, p2, p3, p4) {
-        const key = this._generateKey(p1, p2, p3, p4);
-        return this.cache.get(key);
+        return this.cache.get(this._generateKey(p1, p2, p3, p4));
     }
 
-    // Store intersection result
+    // Store intersection result with size management
     set(p1, p2, p3, p4, intersection) {
         const key = this._generateKey(p1, p2, p3, p4);
+        
+        // Implement a simple LRU-like cache management
+        if (this.cache.size >= this.maxSize) {
+            // Remove the first entry if cache is full
+            const firstKey = this.cache.keys().next().value;
+            this.cache.delete(firstKey);
+        }
+        
         this.cache.set(key, intersection);
         return intersection;
     }
@@ -49,16 +49,35 @@ class IntersectionCache {
 
 const intersectionCache = new IntersectionCache();
 
+let wasmInitialized = false;
+
 /**
- * Find intersection between two line segments
+ * Initialize WebAssembly intersection module
+ * @returns {Promise<void>}
+ */
+export async function initIntersectionModule() {
+    await initializeWasmIntersections();
+    wasmInitialized = true;
+}
+
+/**
+ * Find intersection point between two line segments
  * @param {THREE.Vector3} p1 First point of first line segment
  * @param {THREE.Vector3} p2 Second point of first line segment
  * @param {THREE.Vector3} p3 First point of second line segment
  * @param {THREE.Vector3} p4 Second point of second line segment
  * @returns {THREE.Vector3|null} Intersection point or null if no intersection
  */
+  wasmInitialized = true;
+}
+
 export function findIntersection(p1, p2, p3, p4) {
-  // First, check if this intersection is already cached
+  // Use WebAssembly implementation if initialized
+  if (wasmInitialized) {
+    return findIntersectionWasm(p1, p2, p3, p4);
+  }
+
+  // Fallback to JavaScript implementation
   const cachedIntersection = intersectionCache.get(p1, p2, p3, p4);
   if (cachedIntersection) {
     return cachedIntersection;
@@ -94,7 +113,8 @@ export function findIntersection(p1, p2, p3, p4) {
   const intersection = new THREE.Vector3(x, y, 0);
   
   // Cache the result for future use
-  return intersectionCache.set(p1, p2, p3, p4, intersection);
+  intersectionCache.set(p1, p2, p3, p4, intersection);
+  return intersection;
 }
 
 /**
@@ -265,11 +285,12 @@ function findStarSelfIntersections(vertices, scale = 1.0) {
   return intersectionPoints;
 }
 
-/**
  * Find all intersections between polygon copies
  * @param {THREE.Group} group Group containing polygon copies
  * @returns {Array<THREE.Vector3>} Array of intersection points
  */
+import { findAllIntersectionsWasm } from './intersections.wasm.js';
+
 export function findAllIntersections(group) {
   const intersectionPoints = [];
   const debug = false; // Set to true only when debugging
@@ -278,7 +299,6 @@ export function findAllIntersections(group) {
   const state = group.userData.state;
   
   if (!state) {
-    // Warn but don't continue to spam console
     console.warn("No state found in group userData, cannot calculate intersections");
     return intersectionPoints;
   }
@@ -299,61 +319,10 @@ export function findAllIntersections(group) {
     return intersectionPoints;
   }
   
-  // Skip if copies = 0 (even if useCuts is enabled)
-  if (copies === 0) {
-    return intersectionPoints;
-  }
-  
-  // If using star cuts, create self-intersections for each copy
-  if (state.useStars && state.useCuts && state.starSkip > 1) {
-    // Calculate GCD to determine if this creates a proper star
-    const gcd = calculateGCD(state.segments, state.starSkip);
-    
-    // Only process when gcd=1 (ensures a single connected path)
-    if (gcd === 1) {
-      // Generate base star polygon vertices
-      const baseVertices = generateStarPolygonVertices(state.segments, state.starSkip, state.radius);
-      
-      // Process each copy
-      for (let i = 0; i < copies; i++) {
-        // Calculate scale based on copy index
-        let stepScaleFactor = Math.pow(state.stepScale, i);
-        let finalScale = stepScaleFactor;
-        
-        // Apply modulus or alt scale if needed
-        if (state.useModulus) {
-          const modulusScale = state.getScaleFactorForCopy(i);
-          finalScale = modulusScale * stepScaleFactor;
-        } else if (state.useAltScale && (i + 1) % state.altStepN === 0) {
-          finalScale = stepScaleFactor * state.altScale;
-        }
-        
-        // Calculate rotation for this copy (in radians)
-        const rotationRad = (i * state.angle * Math.PI) / 180;
-        
-        // Scale and rotate the base vertices for this copy
-        const scaledRotatedVertices = [];
-        for (const vertex of baseVertices) {
-          // Scale the vertex
-          const scaledVertex = vertex.clone().multiplyScalar(finalScale);
-          
-          // Rotate the vertex
-          const rotatedVertex = new THREE.Vector3(
-            scaledVertex.x * Math.cos(rotationRad) - scaledVertex.y * Math.sin(rotationRad),
-            scaledVertex.x * Math.sin(rotationRad) + scaledVertex.y * Math.cos(rotationRad),
-            0
-          );
-          
-          scaledRotatedVertices.push(rotatedVertex);
-        }
-        
-        // Find self-intersections for this copy
-        const selfIntersections = findStarSelfIntersections(scaledRotatedVertices);
-        
-        // Add to overall intersections
-        for (const point of selfIntersections) {
-          if (!isPointTooClose(point, intersectionPoints)) {
-            intersectionPoints.push(point);
+  // Prepare polygon vertices for WebAssembly
+  const polygonVertices = [];
+  for (const polygon of actualCopies) {
+    const vertices = polygon.geometry.attributes.position.array;
             if (debug) {
               console.log(`Added star self-intersection for copy ${i} at (${point.x.toFixed(2)}, ${point.y.toFixed(2)})`);
             }
