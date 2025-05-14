@@ -51,7 +51,9 @@ export const DEFAULT_VALUES = {
   FRACTAL_VALUE: 1, // Default fractal value (no subdivision)
   USE_FRACTAL: false, // Default for fractal feature
   STAR_SKIP: 1, // Default for star skip value
-  USE_STARS: false // Default for star polygon feature
+  USE_STARS: false, // Default for star polygon feature
+  EUCLID_VALUE: 1, // Default Euclidean rhythm value
+  USE_EUCLID: false // Default for Euclidean rhythm feature
 };
 
 // UI Ranges
@@ -69,6 +71,7 @@ export const UI_RANGES = {
   QUANTIZATION_VALUE: [0, 8],
   REFERENCE_FREQ: [220, 880],
   FRACTAL_VALUE: [1, 9],
+  EUCLID_VALUE: [1, 12], // UI range for Euclidean rhythm value
   STAR_SKIP: [1, 5] // UI range for star skip value
 };
 
@@ -111,6 +114,10 @@ export const PARAMETER_RANGES = {
   // Fractal subdivision range
   FRACTAL_VALUE: { MIN: 1, MAX: 9, STEP: 1 },
   USE_FRACTAL: { MIN: false, MAX: true, STEP: null },
+  
+  // Euclidean rhythm range
+  EUCLID_VALUE: { MIN: 1, MAX: 12, STEP: 1 },
+  USE_EUCLID: { MIN: false, MAX: true, STEP: null },
   
   // Star polygon parameters
   STAR_SKIP: { MIN: 1, MAX: 5, STEP: 1 },

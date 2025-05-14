@@ -45,6 +45,10 @@ export function saveState(state) {
       fractalValue: state.fractalValue,
       useFractal: state.useFractal,
       
+      // Euclidean rhythm parameters
+      euclidValue: state.euclidValue,
+      useEuclid: state.useEuclid,
+      
       // Intersection parameters
       useIntersections: state.useIntersections,
       
@@ -122,6 +126,90 @@ export function loadState() {
 }
 
 /**
+ * Get a serializable object representing the state
+ * @param {Object} state Application state
+ * @returns {Object} Serializable state object
+ */
+export function getSerializableState(state) {
+  return {
+    // Shape parameters
+    radius: state.radius,
+    copies: state.copies,
+    segments: state.segments,
+    stepScale: state.stepScale,
+    angle: state.angle,
+    
+    // Modulus parameters
+    modulusValue: state.modulusValue,
+    useModulus: state.useModulus,
+    
+    // Time subdivision parameters
+    timeSubdivisionValue: state.timeSubdivisionValue,
+    useTimeSubdivision: state.useTimeSubdivision,
+    
+    // Quantization parameters
+    quantizationValue: state.quantizationValue,
+    useQuantization: state.useQuantization,
+    
+    // Scale mod parameters
+    altScale: state.altScale,
+    altStepN: state.altStepN,
+    useAltScale: state.useAltScale,
+    
+    // Fractal parameters
+    fractalValue: state.fractalValue,
+    useFractal: state.useFractal,
+    
+    // Euclidean rhythm parameters
+    euclidValue: state.euclidValue,
+    useEuclid: state.useEuclid,
+    
+    // Star parameters
+    starSkip: state.starSkip,
+    useStars: state.useStars,
+    useCuts: state.useCuts,
+    
+    // Time parameters
+    bpm: state.bpm,
+    
+    // Intersection parameters
+    useIntersections: state.useIntersections,
+    
+    // Animation parameters
+    useLerp: state.useLerp,
+    lerpTime: state.lerpTime,
+    
+    // Synth parameters
+    attack: state.attack,
+    decay: state.decay,
+    sustain: state.sustain,
+    release: state.release,
+    brightness: state.brightness,
+    volume: state.volume,
+    
+    useEqualTemperament: state.useEqualTemperament,
+    referenceFrequency: state.referenceFrequency,
+
+    // Display parameters
+    showAxisFreqLabels: state.showAxisFreqLabels,
+    showPointsFreqLabels: state.showPointsFreqLabels,
+    
+    // Note parameter settings
+    durationMode: state.durationMode,
+    durationModulo: state.durationModulo,
+    minDuration: state.minDuration, 
+    maxDuration: state.maxDuration,
+    durationPhase: state.durationPhase,
+    
+    velocityMode: state.velocityMode,
+    velocityModulo: state.velocityModulo,
+    minVelocity: state.minVelocity,
+    maxVelocity: state.maxVelocity,
+    velocityPhase: state.velocityPhase,
+  };
+}
+
+/**
  * Apply loaded state to current state object
  * @param {Object} state - The application state to update
  * @param {Object} loadedState - The loaded state data
@@ -157,6 +245,10 @@ export function applyLoadedState(state, loadedState) {
     // Apply fractal parameters
     if (loadedState.fractalValue !== undefined) state.setFractalValue(loadedState.fractalValue);
     if (loadedState.useFractal !== undefined) state.setUseFractal(loadedState.useFractal);
+    
+    // Apply Euclidean rhythm parameters
+    if (loadedState.euclidValue !== undefined) state.setEuclidValue(loadedState.euclidValue);
+    if (loadedState.useEuclid !== undefined) state.setUseEuclid(loadedState.useEuclid);
     
     if (loadedState.useIntersections !== undefined) state.setUseIntersections(loadedState.useIntersections);
     
@@ -296,6 +388,9 @@ export function exportStateToFile(state) {
       
       fractalValue: state.fractalValue,
       useFractal: state.useFractal,
+      
+      euclidValue: state.euclidValue,
+      useEuclid: state.useEuclid,
       
       useIntersections: state.useIntersections,
       useLerp: state.useLerp,
@@ -460,6 +555,21 @@ export function updateUIFromState(state, uiElements) {
       uiElements.fractalRange.value = state.fractalValue;
       if (uiElements.fractalNumber) uiElements.fractalNumber.value = state.fractalValue;
       if (uiElements.fractalValue) uiElements.fractalValue.textContent = state.fractalValue;
+    }
+    
+    // Update Euclidean rhythm controls
+    if (uiElements.useEuclidCheckbox && state.useEuclid !== undefined) {
+      uiElements.useEuclidCheckbox.checked = state.useEuclid;
+    }
+    
+    if (uiElements.euclidRange && state.euclidValue !== undefined) {
+      uiElements.euclidRange.value = state.euclidValue;
+      if (uiElements.euclidNumber) uiElements.euclidNumber.value = state.euclidValue;
+      if (uiElements.euclidValue) uiElements.euclidValue.textContent = state.euclidValue;
+    }
+    
+    if (uiElements.validEuclidInfo && state.euclidValue !== undefined && state.segments !== undefined) {
+      uiElements.validEuclidInfo.textContent = `Current Euclidean pattern: k=${state.euclidValue} out of n=${state.segments} vertices`;
     }
     
     // Update checkbox states

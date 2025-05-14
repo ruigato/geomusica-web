@@ -619,6 +619,9 @@ const originalSetters = {
   // Add fractal setters
   setFractalValue: appState.setFractalValue,
   setUseFractal: appState.setUseFractal,
+  // Add euclidean rhythm setters
+  setEuclidValue: appState.setEuclidValue,
+  setUseEuclid: appState.setUseEuclid,
   // Add star polygon setters
   setStarSkip: appState.setStarSkip,
   setUseStars: appState.setUseStars,
@@ -673,6 +676,17 @@ appState.setFractalValue = function(value) {
 
 appState.setUseFractal = function(value) {
   originalSetters.setUseFractal.call(this, value);
+  syncStateAcrossSystems();
+};
+
+// Override euclidean rhythm setters
+appState.setEuclidValue = function(value) {
+  originalSetters.setEuclidValue.call(this, value);
+  syncStateAcrossSystems();
+};
+
+appState.setUseEuclid = function(value) {
+  originalSetters.setUseEuclid.call(this, value);
   syncStateAcrossSystems();
 };
 

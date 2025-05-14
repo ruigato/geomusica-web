@@ -766,6 +766,49 @@ export function setupUI(state) {
     }
   }
 
+  const euclidRange = document.getElementById('euclidRange');
+  const euclidNumber = document.getElementById('euclidNumber');
+  const euclidValue = document.getElementById('euclidValue');
+  const useEuclidCheckbox = document.getElementById('useEuclidCheckbox');
+  const validEuclidInfo = document.getElementById('validEuclidInfo');
+  
+  // Setup Euclidean rhythm checkbox with null check
+  if (useEuclidCheckbox) {
+    useEuclidCheckbox.checked = state.useEuclid;
+    useEuclidCheckbox.addEventListener('change', e => {
+      state.setUseEuclid(e.target.checked);
+    });
+  }
+  
+  // Update Euclidean rhythm info
+  function updateEuclidInfo() {
+    if (validEuclidInfo) {
+      validEuclidInfo.textContent = `Current Euclidean pattern: k=${state.euclidValue} out of n=${state.segments} vertices`;
+    }
+  }
+  
+  // Link Euclidean rhythm controls
+  if (euclidRange && euclidNumber && euclidValue) {
+    syncPair(euclidRange, euclidNumber, euclidValue,
+      value => {
+        state.setEuclidValue(Number(value));
+        updateEuclidInfo();
+      },
+      UI_RANGES.EUCLID_VALUE[0], UI_RANGES.EUCLID_VALUE[1],
+      Number);
+    // Initial update
+    updateEuclidInfo();
+  }
+  
+  // Setup a listener for segment changes to update Euclidean info
+  if (numberRange) {
+    numberRange.addEventListener('input', updateEuclidInfo);
+    numberRange.addEventListener('change', updateEuclidInfo);
+  }
+  
+  // Initial update
+  updateEuclidInfo();
+
   return {
     bpmRange, bpmNumber, bpmValue,
     radiusRange, radiusNumber, radiusValue,
@@ -787,6 +830,8 @@ export function setupUI(state) {
     referenceFreqRange, referenceFreqNumber, referenceFreqValue,
     fractalRange, fractalNumber, fractalValue,
     useFractalCheckbox,
+    euclidRange, euclidNumber, euclidValue,
+    useEuclidCheckbox, validEuclidInfo,
     starSkipRadioGroup,
     useStarsCheckbox, validSkipsInfo,
     useCutsCheckbox,

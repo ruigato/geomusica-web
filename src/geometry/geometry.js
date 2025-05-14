@@ -33,10 +33,17 @@ export function createPolygonGeometry(radius, segments, state = null) {
   const fractalValue = state?.fractalValue || 1;
   const useStars = state?.useStars || false;
   const starSkip = state?.starSkip || 1;
+  const useEuclid = state?.useEuclid || false;
+  const euclidValue = state?.euclidValue || 3;
   const debug = false; // Set to true only when debugging is needed
   
   // Always create a completely fresh geometry
   const geometry = new THREE.BufferGeometry();
+  
+  // If Euclidean rhythm is enabled, create a polygon based on Euclidean distribution
+  if (useEuclid && euclidValue > 0 && euclidValue <= numSegments) {
+    return createEuclideanPolygonGeometry(radius, numSegments, euclidValue, useFractal, fractalValue, debug);
+  }
   
   // If a valid skip is specified and stars are enabled, create a star polygon
   if (useStars && starSkip > 1 && starSkip < numSegments) {
@@ -847,4 +854,143 @@ export function getVertexPositions(baseGeo, scale, rotationAngle) {
  */
 export function getFrequency(x, y) {
   return Math.hypot(x, y);
+}
+
+/**
+ * Generate a Euclidean rhythm pattern
+ * Distributes k pulses over n steps as evenly as possible
+ * @param {number} n Total number of steps
+ * @param {number} k Number of pulses to distribute
+ * @returns {Array<boolean>} Array where true indicates a pulse
+ */
+function generateEuclideanRhythm(n, k) {
+  // Edge cases
+  if (k <= 0) return Array(n).fill(false);
+  if (k >= n) return Array(n).fill(true);
+  
+  // Initialize arrays
+  let pattern = [];
+  let counts = [];
+  let remainders = [];
+  let divisor = n - k;
+  
+  // Initialize arrays
+  remainders.push(k);
+  let level = 0;
+  
+  // Euclid's algorithm
+  while (remainders[level] > 1) {
+    counts.push(Math.floor(divisor / remainders[level]));
+    remainders.push(divisor % remainders[level]);
+    divisor = remainders[level];
+    level++;
+  }
+  counts.push(divisor);
+  
+  // Build the pattern
+  let builder = [];
+  for (let i = 0; i < level + 1; i++) {
+    builder.push([]);
+  }
+  
+  builder[level] = [true];
+  for (let i = level - 1; i >= 0; i--) {
+    for (let j = 0; j < counts[i]; j++) {
+      builder[i] = builder[i].concat(builder[i+1]);
+    }
+    if (remainders[i+1] !== 0) {
+      builder[i] = builder[i].concat(builder[i+1].slice(0, remainders[i+1]));
+    }
+  }
+  
+  pattern = builder[0];
+  
+  // Make sure the pattern is exactly n elements long
+  return pattern.slice(0, n);
+}
+
+/**
+ * Create a polygon geometry based on Euclidean rhythm
+ * @param {number} radius - Radius of the polygon
+ * @param {number} n - Total number of vertices in the complete polygon
+ * @param {number} k - Number of vertices to distribute according to Euclidean rhythm
+ * @param {boolean} useFractal - Whether to use fractal subdivision
+ * @param {number} fractalValue - Fractal subdivision level
+ * @param {boolean} debug - Enable debug logging
+ * @returns {THREE.BufferGeometry} Euclidean rhythm polygon geometry
+ */
+function createEuclideanPolygonGeometry(radius, n, k, useFractal, fractalValue, debug = false) {
+  const geometry = new THREE.BufferGeometry();
+  
+  if (debug) {
+    console.log(`Creating Euclidean rhythm polygon with n=${n}, k=${k}`);
+  }
+  
+  // Generate Euclidean rhythm pattern
+  const pattern = generateEuclideanRhythm(n, k);
+  
+  // Generate all vertex positions on the circle
+  const allVertices = [];
+  for (let i = 0; i < n; i++) {
+    const angle = (i / n) * Math.PI * 2;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    allVertices.push(new THREE.Vector3(x, y, 0));
+  }
+  
+  // Filter vertices based on the Euclidean pattern
+  const selectedVertices = [];
+  for (let i = 0; i < n; i++) {
+    if (pattern[i]) {
+      selectedVertices.push(allVertices[i]);
+    }
+  }
+  
+  // If no vertices were selected, return empty geometry
+  if (selectedVertices.length === 0) {
+    if (debug) {
+      console.warn("Euclidean pattern resulted in no vertices");
+    }
+    return geometry;
+  }
+  
+  // Create position array for geometry
+  const vertices = [];
+  
+  // If fractal subdivision is enabled, add subdivision points
+  if (useFractal && fractalValue > 1) {
+    const subdivisions = fractalValue;
+    
+    for (let i = 0; i < selectedVertices.length; i++) {
+      const startVertex = selectedVertices[i];
+      const endVertex = selectedVertices[(i + 1) % selectedVertices.length];
+      
+      // Add the start vertex
+      vertices.push(startVertex.x, startVertex.y, startVertex.z);
+      
+      // Create subdivision points between vertices
+      for (let j = 1; j < subdivisions; j++) {
+        const t = j / subdivisions;
+        const x = startVertex.x + (endVertex.x - startVertex.x) * t;
+        const y = startVertex.y + (endVertex.y - startVertex.y) * t;
+        vertices.push(x, y, 0);
+      }
+    }
+  } else {
+    // Just add the selected vertices without subdivision
+    for (const vertex of selectedVertices) {
+      vertices.push(vertex.x, vertex.y, vertex.z);
+    }
+    
+    // Add the first vertex again to close the loop
+    if (selectedVertices.length > 0) {
+      const firstVertex = selectedVertices[0];
+      vertices.push(firstVertex.x, firstVertex.y, firstVertex.z);
+    }
+  }
+  
+  // Set up the attributes
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  
+  return geometry;
 }

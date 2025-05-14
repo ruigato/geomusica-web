@@ -234,6 +234,24 @@
           <input type="checkbox" id="useFractalCheckbox">
           <span class="help-text">When enabled, line segments are divided into equal parts</span>
         </div>
+        
+        <div class="control">
+          <label for="euclidRange">Euclid:</label>
+          <div class="slider-container">
+            <input type="range" id="euclidRange" min="1" max="12" step="1" value="3">
+            <span id="euclidValue" class="slider-value">3</span>
+            <input type="number" id="euclidNumber" min="1" max="12" step="1" value="3">
+          </div>
+          <div class="help-text">Redistributes the vertices according to Euclidean rhythm algorithm.</div>
+        </div>
+        <div class="control">
+          <label for="useEuclidCheckbox">Use Euclidean Pattern:</label>
+          <input type="checkbox" id="useEuclidCheckbox">
+          <span class="help-text">When enabled, creates a shape using Euclidean distribution with k=Euclid value</span>
+        </div>
+        <div class="control">
+          <div id="validEuclidInfo" class="help-text">Current Euclidean pattern: k=3 out of n=5 vertices</div>
+        </div>
       </div>
     </section>
     

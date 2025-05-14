@@ -50,7 +50,9 @@ export function createAppState() {
       useFractal: false,
       starSkip: false,
       useStars: false,
-      useCuts: false
+      useCuts: false,
+      euclidValue: false,
+      useEuclid: false
     },
     
     // Performance and frame tracking
@@ -165,6 +167,10 @@ export function createAppState() {
     // SHAPE MOD Fractal parameters
     fractalValue: 1, // Default to 1 (no subdivision)
     useFractal: false, // Default to off
+    
+    // SHAPE MOD Euclidean rhythm parameters
+    euclidValue: 3, // Default value 3
+    useEuclid: false, // Default to off
     
     // STARS parameters
     starSkip: 1, // Default skip value
@@ -879,6 +885,32 @@ export function createAppState() {
       if (this.useFractal !== newValue) {
         this.useFractal = newValue;
         this.parameterChanges.useFractal = true;
+        this.needsIntersectionUpdate = true;
+      }
+    },
+    
+    /**
+     * Set Euclidean rhythm value
+     * @param {number} value Euclidean rhythm value (1-12)
+     */
+    setEuclidValue(value) {
+      const newValue = Math.max(1, Math.min(12, Math.round(Number(value))));
+      if (this.euclidValue !== newValue) {
+        this.euclidValue = newValue;
+        this.parameterChanges.euclidValue = true;
+        this.needsIntersectionUpdate = true;
+      }
+    },
+    
+    /**
+     * Toggle Euclidean rhythm
+     * @param {boolean} value Enable/disable Euclidean rhythm
+     */
+    setUseEuclid(value) {
+      const newValue = Boolean(value);
+      if (this.useEuclid !== newValue) {
+        this.useEuclid = newValue;
+        this.parameterChanges.useEuclid = true;
         this.needsIntersectionUpdate = true;
       }
     },
