@@ -1,750 +1,263 @@
-// src/main.js - Updated with improved DOM loading and parameter handling
+// src/main.js - Refactored for Layer System with GlobalState and LayerManager
 import * as THREE from 'three';
 import Stats from 'stats.js';
 
-// Import modules
+// State Management
+import { createGlobalState } from './state/globalState.js';
+import { LayerManager } from './state/LayerManager.js';
+// import { createAppState } from './state/state.js'; // Old state replaced
+
+// UI - These will need significant adaptation
 import { setupUI } from './ui/ui.js';
-import { setupSynthUI } from './ui/synthUI.js';
+import { setupSynthUI } from './ui/synthUI.js'; // May focus on active layer or be part of general layer UI
+
+// Core Modules
 import { 
-  setupAudio, 
-  triggerAudio, 
-  setEnvelope, 
-  setBrightness, 
-  setMasterVolume,
-  applySynthParameters
+    setupAudio, 
+    setMasterVolume, 
+    applySynthParameters 
 } from './audio/audio.js';
-import { createPolygonGeometry, createAxis } from './geometry/geometry.js';
-import { animate } from './animation/animation.js';
-import { createAppState } from './state/state.js';
-import { MARK_LIFE } from './config/constants.js';
+
+// Geometry - updateGroup will be refactored to updateLayerVisuals
+import { createPolygonGeometry, createAxis } from './geometry/geometry.js'; 
+
+import { animate } from './animation/animation.js'; // animate will be refactored
+
+// State Persistence - This module will need significant refactoring
+import { 
+    loadState, 
+    applyLoadedState, 
+    setupAutoSave, 
+    exportStateToFile, 
+    importStateFromFile, 
+    updateUIFromState,
+    updateAudioEngineFromState
+} from './state/statePersistence.js';
+
+// Other Utilities
 import { initLabels, updateLabelPositions } from './ui/domLabels.js';
 import { preloadFont } from './utils/fontUtils.js';
-import { 
-  loadState, 
-  applyLoadedState, 
-  setupAutoSave, 
-  exportStateToFile, 
-  importStateFromFile, 
-  updateUIFromState,
-  updateAudioEngineFromState
-} from './state/statePersistence.js';
-import { initializeTime, enableCsoundTiming } from './time/time.js';
-import { setupHeaderTabs } from './ui/headerTabs.js';
+import { initializeTime, enableCsoundTiming } from './time/time.js'; 
+import { setupHeaderTabs } from './ui/headerTabs.js'; 
 
 // Initialize stats for performance monitoring
 const stats = new Stats();
-stats.showPanel(0);
+stats.showPanel(0); 
 document.body.appendChild(stats.dom);
-
-// Position the stats panel in the top right corner
 stats.dom.style.position = 'absolute';
 stats.dom.style.left = 'auto';
 stats.dom.style.right = '10px';
 stats.dom.style.top = '10px';
 
-// Create application state
-const appState = createAppState();
 
-// Make state globally accessible for debugging
-window._appState = appState;
+// --- Core Three.js Setup ---
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000); 
+camera.position.z = 1200; 
+scene.add(camera); 
 
-// Store UI references globally
-let uiReferences = null;
-let synthUIReferences = null;
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio); 
+document.body.appendChild(renderer.domElement);
 
-// References to core components
-let audioInstance = null;
-let sceneInstance = null;
-let groupInstance = null;
+// --- Initialize State Management ---
+const globalState = createGlobalState();
+window._globalState = globalState; // For debugging
 
-/**
- * Ensure state is synchronized across all systems
- * Call this whenever the state changes in important ways
- */
-function syncStateAcrossSystems() {
-  // Make sure all core components have access to the state
-  if (sceneInstance) {
-    sceneInstance.userData.state = appState;
-  }
-  
-  if (groupInstance) {
-    groupInstance.userData.state = appState;
-  }
-  
-  if (audioInstance) {
-    // Update audio state
-    audioInstance.userData = {
-      ...audioInstance.userData,
-      state: appState
-    };
-  }
-  
-  // Force more immediate intersection update on critical parameter changes
-  if (appState.parameterChanges && 
-      (appState.parameterChanges.copies || 
-       appState.parameterChanges.modulus || 
-       appState.parameterChanges.useModulus ||
-       appState.parameterChanges.euclidValue ||
-       appState.parameterChanges.useEuclid ||
-       appState.parameterChanges.segments ||
-       appState.parameterChanges.fractal ||
-       appState.parameterChanges.useFractal ||
-       appState.parameterChanges.starSkip ||
-       appState.parameterChanges.useStars)) {
-    appState.needsIntersectionUpdate = true;
-    
-    // Explicitly force a geometry update for Euclidean rhythm and Stars parameters
-    if (appState.parameterChanges.euclidValue || 
-        appState.parameterChanges.useEuclid ||
-        appState.parameterChanges.starSkip ||
-        appState.parameterChanges.useStars) {
-      // If we have a valid baseGeo reference, update it based on current state parameters
-      if (appState.baseGeo) {
-        const oldGeo = appState.baseGeo;
-        
-        // Force recreate the geometry with current parameters
-        appState.baseGeo = createPolygonGeometry(
-          appState.radius,
-          Math.round(appState.segments),
-          appState
-        );
-        
-        // Clean up old geometry if needed
-        if (oldGeo && oldGeo !== appState.baseGeo) {
-          // Don't dispose immediately as it might still be in use
-          setTimeout(() => {
-            oldGeo.dispose();
-          }, 100);
+const layerManager = new LayerManager(scene); // Pass the scene
+window._layerManager = layerManager; // For debugging
+
+// --- Make state and core components accessible ---
+scene.userData.globalState = globalState;
+scene.userData.layerManager = layerManager;
+scene.userData.camera = camera;
+scene.userData.renderer = renderer;
+
+// // Store UI references globally // Commenting out for now, will be handled by setupUI
+// let uiReferences = null;
+// let synthUIReferences = null;
+
+// // References to core components // Commenting out, these are now part of scene/camera/renderer or managed locally
+// let audioInstance = null;
+// let sceneInstance = null; // scene is now the primary reference
+// let groupInstance = null; // groupInstance is replaced by layerManager.layerGroups
+
+// // Remove old appState initialization
+// const appState = createAppState(); 
+// window._appState = appState;
+
+// // Remove old syncStateAcrossSystems function, as state is now passed explicitly or via scene.userData
+// function syncStateAcrossSystems() { ... }
+
+// --- Main Application Initialization ---
+async function initializeApplication() {
+    try {
+        await preloadFont('Perfect DOS VGA 437', '/fonts/PerfectDOSVGA437.ttf');
+        console.log('DOS VGA font loaded successfully');
+        initLabels(scene, camera, renderer); // Pass necessary components
+    } catch (error) {
+        console.error("Font loading failed:", error);
+    }
+
+    // Setup Audio System
+    try {
+        // const audioContext = await setupAudio(globalState); // Old call
+        const audioSetupResult = await setupAudio(globalState); 
+        if (audioSetupResult && audioSetupResult.csoundInstance) {
+            scene.userData.csoundInstance = audioSetupResult.csoundInstance; // Store if needed
+            scene.userData.audioContext = audioSetupResult.audioContext;   // Store if needed
+
+            if (globalState.masterVolume !== undefined && typeof setMasterVolume === 'function') {
+                setMasterVolume(globalState.masterVolume);
+            }
+            console.log('Audio system initialized.');
+
+            // Initialize Time System with Csound instance and AudioContext
+            try {
+                initializeTime(audioSetupResult.csoundInstance, audioSetupResult.audioContext); 
+                // if (globalState.useCsoundTiming) { // This logic is handled within initializeTime/enableCsoundTiming
+                //      enableCsoundTiming();
+                // }
+                console.log('Time system initialized with audio components.');
+            } catch (error) {
+                console.error('Error initializing time system:', error);
+            }
+        } else {
+            console.error('Audio system setup failed to return valid instance or context.');
         }
-        
-        console.log("Forced geometry update due to Euclidean rhythm or Stars parameter change");
-      }
+    } catch (error) {
+        console.error('Audio system initialization failed:', error);
     }
-  }
-}
-
-// Add this function to the file
-function addStateControlsToUI(state) {
-  // Create a container for the controls
-  const container = document.createElement('div');
-  container.style.position = 'absolute';
-  container.style.bottom = '10px';
-  container.style.right = '10px';
-  container.style.zIndex = '1000';
-  container.style.display = 'flex';
-  container.style.gap = '10px';
-  
-  // Create export button
-  const exportButton = document.createElement('button');
-  exportButton.textContent = 'Export Settings';
-  exportButton.style.padding = '8px 12px';
-  exportButton.style.backgroundColor = '#333';
-  exportButton.style.color = '#fff';
-  exportButton.style.border = 'none';
-  exportButton.style.borderRadius = '4px';
-  exportButton.style.cursor = 'pointer';
-  
-  // Add export click handler
-  exportButton.addEventListener('click', () => {
-    exportStateToFile(state);
-  });
-  
-  // Create import button and file input
-  const importButton = document.createElement('button');
-  importButton.textContent = 'Import Settings';
-  importButton.style.padding = '8px 12px';
-  importButton.style.backgroundColor = '#333';
-  importButton.style.color = '#fff';
-  importButton.style.border = 'none';
-  importButton.style.borderRadius = '4px';
-  importButton.style.cursor = 'pointer';
-  
-  const fileInput = document.createElement('input');
-  fileInput.type = 'file';
-  fileInput.accept = '.json';
-  fileInput.style.display = 'none';
-  
-  // Set up import click handler
-  importButton.addEventListener('click', () => {
-    fileInput.click();
-  });
-  
-  // Handle file selection
-  fileInput.addEventListener('change', (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      importStateFromFile(file, state)
-        .then(success => {
-          if (success) {
-            // Update UI to reflect imported state
-            const allUIReferences = { ...uiReferences, ...synthUIReferences };
-            updateUIFromState(state, allUIReferences);
-            
-            // Ensure all systems have updated state
-            syncStateAcrossSystems();
-            
-            // Update audio engine with imported state values
-            applySynthParameters({
-              attack: state.attack,
-              decay: state.decay,
-              sustain: state.sustain,
-              release: state.release,
-              brightness: state.brightness,
-              volume: state.volume
-            }).then(result => {
-              console.log("Synth parameters applied after import:", result);
-            });
-          } else {
-            alert('Failed to import settings');
-          }
-        })
-        .catch(error => {
-          console.error('Import error:', error);
-          alert('Error importing settings file');
-        });
-    }
-  });
-  
-  // Add elements to container
-  container.appendChild(exportButton);
-  container.appendChild(importButton);
-  container.appendChild(fileInput);
-  
-  // Add container to document
-  document.body.appendChild(container);
-}
-
-/**
- * Check if the DOM is fully loaded
- * @returns {boolean} True if DOM is fully loaded, false otherwise
- */
-function isDOMLoaded() {
-  return document.readyState === 'complete' || document.readyState === 'interactive';
-}
-
-// Function to setup collapsible sections
-function setupCollapsibleSections() {
-  const sections = document.querySelectorAll('section');
-  
-  sections.forEach(section => {
-    const header = section.querySelector('h2');
-    const content = section.querySelector('.section-content');
     
-    if (header && content) {
-      // Add click event to h2 headers
-      header.addEventListener('click', () => {
-        // Toggle the collapsed class on the section (for our original implementation)
-        section.classList.toggle('collapsed');
-        
-        // Toggle the collapsed class on the header and content (for the inline JS implementation)
-        if (header.classList.contains('section-title')) {
-          header.classList.toggle('collapsed');
-          content.classList.toggle('collapsed');
+    // Load Persisted State (Needs Major Refactoring in statePersistence.js)
+    try {
+        const persistedData = loadState(); 
+        if (persistedData) {
+            console.log("Applying loaded state...");
+            applyLoadedState(globalState, layerManager, persistedData); 
+        } else {
+            console.log("No saved state found, creating a default layer.");
+            layerManager.addLayer({ name: "Default Layer 1" }); 
         }
-        
-        // Save the collapsed state to localStorage
-        const sectionId = header.textContent.trim().replace(/\s+/g, '_').toLowerCase();
-        localStorage.setItem(`section_${sectionId}_collapsed`, section.classList.contains('collapsed'));
-      });
-      
-      // Check if there's a saved state for this section
-      const sectionId = header.textContent.trim().replace(/\s+/g, '_').toLowerCase();
-      const isCollapsed = localStorage.getItem(`section_${sectionId}_collapsed`) === 'true';
-      
-      // Apply saved state
-      if (isCollapsed) {
-        section.classList.add('collapsed');
-        
-        // Also add it to the title and content if we're using that approach
-        if (header.classList.contains('section-title')) {
-          header.classList.add('collapsed');
-          content.classList.add('collapsed');
+    } catch (error) {
+        console.error("Error loading or applying state:", error);
+        if (layerManager.getAllLayers().length === 0) {
+             layerManager.addLayer({ name: "Fallback Layer" });
         }
-      }
-    }
-  });
-}
-
-// Preload the DOS VGA font before proceeding with setup
-function loadFontAndInitApp() {
-  preloadFont('Perfect DOS VGA 437', '/fonts/PerfectDOSVGA437.ttf')
-    .then(() => {
-      console.log('DOS VGA font loaded successfully');
-      
-      // Initialize label system after font is loaded
-      initLabels();
-      
-      // Continue with application setup
-      // Make sure we check if DOM is ready
-      if (isDOMLoaded()) {
-        initializeApplication();
-      } else {
-        // Wait for DOM to be fully loaded
-        document.addEventListener('DOMContentLoaded', initializeApplication);
-      }
-    })
-    .catch(error => {
-      console.error('Error loading DOS VGA font:', error);
-      
-      // Continue anyway with fallback font
-      console.warn('Using fallback font instead');
-      
-      // Initialize label system with fallback font
-      initLabels();
-      
-      // Make sure we check if DOM is ready
-      if (isDOMLoaded()) {
-        initializeApplication();
-      } else {
-        // Wait for DOM to be fully loaded
-        document.addEventListener('DOMContentLoaded', initializeApplication);
-      }
-    });
-}
-
-// Function to initialize the application after font loading
-function initializeApplication() {
-  console.log("Initializing application...");
-  
-  // Ensure DOM is fully loaded
-  if (!isDOMLoaded()) {
-    console.warn("DOM not fully loaded. Waiting...");
-    document.addEventListener('DOMContentLoaded', initializeApplication);
-    return;
-  }
-  
-  console.log("DOM loaded. Setting up UI...");
-  
-  // Setup UI and bind it to state - STORE the references
-  uiReferences = setupUI(appState);
-  
-  if (!uiReferences) {
-    console.error("Failed to set up UI. Retrying...");
-    // Retry after a short delay
-    setTimeout(initializeApplication, 100);
-    return;
-  }
-
-  // Setup header tabs functionality
-  setupHeaderTabs();
-
-  // Load saved state if available
-  const savedState = loadState();
-  if (savedState) {
-    console.log("Loading saved state:", savedState);
-    applyLoadedState(appState, savedState);
-    // Update UI to reflect loaded state
-    updateUIFromState(appState, uiReferences);
-  }
-
-  // Add import/export controls to the UI
-  addStateControlsToUI(appState);
-
-  // Setup collapsible sections
-  setupCollapsibleSections();
-
-  // Set up auto save (every 5 seconds) - COMMENTED OUT FOR PERFORMANCE
-  // const stopAutoSave = setupAutoSave(appState, 5000);
-
-  // Setup audio - now with enhanced Csound timing for better precision
-  setupAudio().then(audioEngineInstance => {
-    audioInstance = audioEngineInstance;
-    
-    if (!audioInstance) {
-      console.error('Failed to initialize audio. Visualization will run without audio.');
     }
 
-    // Store state reference in audio instance
-    if (audioInstance) {
-      audioInstance.userData = { 
-        ...audioInstance.userData, 
-        state: appState 
-      };
+    // Setup UI (Needs Major Refactoring in ui.js)
+    try {
+        // uiReferences = setupUI(globalState, layerManager, scene, camera, renderer); // New signature
+        // setupSynthUI(globalState, layerManager, scene, camera, renderer); // New signature
+        console.log('UI setup will be called here with globalState and layerManager.');
+    } catch (error) {
+        console.error('Error setting up UI:', error);
+    }
+    
+    // Setup Header Tabs
+    try {
+        setupHeaderTabs(); 
+    } catch (error) {
+        console.error('Error setting up header tabs:', error);
     }
 
-    // Initialize time module with Csound instance
-    if (audioInstance && audioInstance.audioContext) {
-      initializeTime(audioInstance, audioInstance.audioContext);
-      
-      // Enable Csound timing after a short delay to ensure Csound is ready
-      setTimeout(() => {
-        enableCsoundTiming().then(success => {
-          if (success) {
-            console.log("Csound timing enabled successfully");
-          } else {
-            console.warn("Could not enable Csound timing, using audio context time instead");
-          }
-        });
-      }, 1000);
-    }
-
-    // Setup synthesizer UI controls after audio is initialized
-    synthUIReferences = setupSynthUI(appState, audioInstance);
-    
-    // If we have loaded state, update synth UI and audio engine
-    if (savedState) {
-      console.log("Applying loaded state to UI elements:", savedState);
-      
-      // Update both UI sets with all loaded values including equal temperament settings
-      updateUIFromState(appState, { ...uiReferences, ...synthUIReferences });
-      
-      // Apply synth parameters directly with the new approach
-      applySynthParameters({
-        attack: appState.attack,
-        decay: appState.decay,
-        sustain: appState.sustain,
-        release: appState.release,
-        brightness: appState.brightness,
-        volume: appState.volume
-      }).then(result => {
-        console.log("Synth parameters applied on load:", result);
-      });
-    } else {
-      // Set initial ADSR values in the audio engine from default state
-      applySynthParameters({
-        attack: appState.attack,
-        decay: appState.decay,
-        sustain: appState.sustain,
-        release: appState.release,
-        brightness: appState.brightness,
-        volume: appState.volume
-      });
-    }
-
-    // Function to handle audio triggers
-    const handleAudioTrigger = (note) => {
-      if (!audioInstance) {
-        return note;
-      }
-    
-      try {
-        // Make sure we're using a clean copy of the note
-        const noteCopy = typeof note === 'object' ? { ...note } : { 
-          frequency: 440, 
-          duration: 0.3, 
-          velocity: 0.7,
-          pan: 0
-        };
-        
-        // Add state reference data to the note
-        if (appState) {
-          noteCopy.useEqualTemperament = appState.useEqualTemperament;
-          noteCopy.referenceFrequency = appState.referenceFrequency;
-        }
-        
-        // Pass the note copy to triggerAudio
-        return triggerAudio(noteCopy);
-      } catch (error) {
-        console.error("Error in handleAudioTrigger:", error);
-        return note;
-      }
-    };
-
-    // Three.js setup
-    const scene = new THREE.Scene();
-    sceneInstance = scene;
-    
-    // Store the appState in the scene's userData for access in other modules
-    scene.userData.state = appState;
-    
-    const cam = new THREE.PerspectiveCamera(
-      75, 
-      (window.innerWidth * 0.5) / window.innerHeight, // Updated to account for 50% UI width
-      0.1, 
-      100000
-    );
-    cam.position.set(0, 0, 2000);
-    cam.lookAt(0, 0, 0);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth * 0.5, window.innerHeight); // Updated to account for 50% UI width
-    
-    const canvasContainer = document.getElementById('canvas');
-    if (canvasContainer) {
-      canvasContainer.appendChild(renderer.domElement);
-    } else {
-      console.error("Canvas container not found in DOM");
-      document.body.appendChild(renderer.domElement);
-    }
-
-    // Store camera and renderer in scene's userData for label management
-    scene.userData.camera = cam;
-    scene.userData.renderer = renderer;
-
-    // Initialize geometry - use our new polygon outline geometry
-    // Fix for rounding bug: Ensure we pass the exact number of segments
-    const baseGeo = createPolygonGeometry(appState.radius, Math.round(appState.segments), appState);
-    appState.baseGeo = baseGeo; // Store reference in state
-    
-    // Use LineBasicMaterial for lines
-    const mat = new THREE.LineBasicMaterial({ color: 0x00ffcc });
-    
-    const group = new THREE.Group();
-    groupInstance = group;
-    group.userData.state = appState;
-    scene.add(group);
     createAxis(scene);
 
-    // Setup marker geometry - create a reusable geometry for markers
-    const markerGeom = new THREE.SphereGeometry(8, 8, 8);
-    
-    // Store it in scene's userData for reuse
-    scene.userData.markerGeometry = markerGeom;
+    // Setup Auto-Save (Needs Refactoring in statePersistence.js)
+    // setupAutoSave(globalState, layerManager, 15000); // New signature
 
-    // Handle window resize
+    addStateControlsToUI(globalState, layerManager); // Adapted call
+
     window.addEventListener('resize', () => {
-      cam.aspect = (window.innerWidth * 0.5) / window.innerHeight; // Updated to account for 50% UI width
-      cam.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth * 0.5, window.innerHeight); // Updated to account for 50% UI width
-      
-      // Update DOM label positions when window resizes
-      updateLabelPositions(cam, renderer);
-    });
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        if (typeof updateLabelPositions === 'function') {
+            updateLabelPositions(); // Ensure labels are updated on resize
+        }
+    }, false);
 
-    // Add an info message
-    const infoEl = document.createElement('div');
-    infoEl.style.position = 'absolute';
-    infoEl.style.bottom = '10px';
-    infoEl.style.left = '10px';
-    infoEl.style.color = 'white';
-    infoEl.style.background = 'rgba(0,0,0,0.5)';
-    infoEl.style.padding = '5px';
-    infoEl.style.borderRadius = '5px';
-    infoEl.textContent = 'GeoMusica - Click anywhere to start audio';
-    document.body.appendChild(infoEl);
-    
-    // Print state to console for debugging
-    console.log("Current state before animation:", {
-      useAltScale: appState.useAltScale,
-      altScale: appState.altScale,
-      altStepN: appState.altStepN,
-      useTimeSubdivision: appState.useTimeSubdivision,
-      timeSubdivisionValue: appState.timeSubdivisionValue,
-      useEqualTemperament: appState.useEqualTemperament,
-      referenceFrequency: appState.referenceFrequency,
-      segments: appState.segments // Added to debug the segments issue
-    });
-    
-    // Start animation loop
+    console.log("Initialization complete. Starting animation loop.");
     animate({
-      scene,
-      group,
-      baseGeo,
-      mat,
-      stats,
-      csound: audioInstance,
-      renderer,
-      cam,
-      state: appState,
-      triggerAudioCallback: handleAudioTrigger
+        scene,
+        camera,
+        renderer,
+        globalState,
+        layerManager,
+        stats,
+        // Pass other necessary functions like triggerAudio, updateLayerVisuals once they are ready
     });
-  }).catch(error => {
-    console.error('Error setting up audio:', error);
-    
-    // Setup Three.js anyway without audio
-    const scene = new THREE.Scene();
-    sceneInstance = scene;
-    
-    // Store the appState in the scene's userData for access in other modules
-    scene.userData.state = appState;
-    
-    const cam = new THREE.PerspectiveCamera(
-      75, 
-      (window.innerWidth * 0.5) / window.innerHeight, // Updated to account for 50% UI width
-      0.1, 
-      10000
-    );
-    cam.position.set(0, 0, 2000);
-    cam.lookAt(0, 0, 0);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth * 0.5, window.innerHeight); // Updated to account for 50% UI width
-    const canvasContainer = document.getElementById('canvas');
-    if (canvasContainer) {
-      canvasContainer.appendChild(renderer.domElement);
-    } else {
-      console.error("Canvas container not found in DOM");
-      document.body.appendChild(renderer.domElement);
-    }
-
-    // Store camera and renderer in scene's userData for label management
-    scene.userData.camera = cam;
-    scene.userData.renderer = renderer;
-
-    // Initialize polygon geometry without audio
-    // Fix for rounding bug: Ensure we pass the exact number of segments
-    const baseGeo = createPolygonGeometry(appState.radius, Math.round(appState.segments), appState);
-    appState.baseGeo = baseGeo;
-    
-    // Use LineBasicMaterial for lines
-    const mat = new THREE.LineBasicMaterial({ color: 0x00ffcc });
-    
-    const group = new THREE.Group();
-    groupInstance = group;
-    group.userData.state = appState;
-    scene.add(group);
-    createAxis(scene);
-
-    // Setup marker geometry - create a reusable geometry for markers
-    const markerGeom = new THREE.SphereGeometry(8, 8, 8);
-    
-    // Store it in scene's userData for reuse
-    scene.userData.markerGeometry = markerGeom;
-
-    // Handle window resize with label updates
-    window.addEventListener('resize', () => {
-      cam.aspect = (window.innerWidth * 0.5) / window.innerHeight; // Updated to account for 50% UI width
-      cam.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth * 0.5, window.innerHeight); // Updated to account for 50% UI width
-      
-      // Update DOM label positions when window resizes
-      updateLabelPositions(cam, renderer);
-    });
-
-    // Silent audio trigger function - does nothing but required for animation
-    const silentAudioTrigger = (note) => {
-      return note;
-    };
-
-    // Still setup the synth UI even without audio
-    synthUIReferences = setupSynthUI(appState, null);
-    
-    // If we have loaded state, update synth UI
-    if (savedState) {
-      // Update both UI sets with all loaded values including scale mod parameters
-      updateUIFromState(appState, { ...uiReferences, ...synthUIReferences });
-    }
-
-    // Start animation loop without audio
-    animate({
-      scene,
-      group,
-      baseGeo,
-      mat,
-      stats,
-      csound: null,
-      renderer,
-      cam,
-      state: appState,
-      triggerAudioCallback: silentAudioTrigger
-    });
-  });
-  // Force initial redraw after a delay to ensure correct segments rendering
-setTimeout(() => {
-  // Force update of segments to redraw geometry
-  if (appState && appState.segments) {
-    const currentSegments = appState.segments;
-    appState.setSegments(currentSegments);
-    console.log("Forcing initial redraw with segments:", currentSegments);
-  }
-}, 500);
 }
 
-// After saving all the original state setters, wrap them to call syncStateAcrossSystems
-// This ensures state is always consistent across all systems
-const originalSetters = {
-  setCopies: appState.setCopies,
-  setModulusValue: appState.setModulusValue,
-  setUseModulus: appState.setUseModulus,
-  setAltScale: appState.setAltScale,
-  setUseAltScale: appState.setUseAltScale,
-  setAltStepN: appState.setAltStepN,
-  // Add setSegments to ensure rounding is properly applied
-  setSegments: appState.setSegments,
-  // Add fractal setters
-  setFractalValue: appState.setFractalValue,
-  setUseFractal: appState.setUseFractal,
-  // Add euclidean rhythm setters
-  setEuclidValue: appState.setEuclidValue,
-  setUseEuclid: appState.setUseEuclid,
-  // Add star polygon setters
-  setStarSkip: appState.setStarSkip,
-  setUseStars: appState.setUseStars,
-  // Add cuts setter
-  setUseCuts: appState.setUseCuts
-};
+// Helper function for state export/import buttons (adapted from original)
+function addStateControlsToUI(globalState, layerManager) { // Added parameters
+    const container = document.createElement('div');
+    container.id = 'state-controls-container'; // Add an ID for potential removal/check
+    container.style.position = 'fixed'; 
+    container.style.bottom = '10px';
+    container.style.right = '10px';
+    container.style.zIndex = '10000'; 
+    container.style.display = 'flex';
+    container.style.gap = '10px';
+    container.style.backgroundColor = 'rgba(0,0,0,0.5)';
+    container.style.padding = '5px';
+    container.style.borderRadius = '5px';
 
-// Override key setters to ensure state sync
-appState.setCopies = function(value) {
-  originalSetters.setCopies.call(this, value);
-  syncStateAcrossSystems();
-};
+    const exportButton = document.createElement('button');
+    exportButton.textContent = 'Export All';
+    exportButton.style.padding = '8px 12px';
+    exportButton.onclick = () => {
+        // exportStateToFile will be refactored in statePersistence.js
+        exportStateToFile(globalState, layerManager); 
+    };
 
-appState.setModulusValue = function(value) {
-  originalSetters.setModulusValue.call(this, value);
-  syncStateAcrossSystems();
-};
+    const importButton = document.createElement('button');
+    importButton.textContent = 'Import All';
+    importButton.style.padding = '8px 12px';
+    
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.json';
+    fileInput.style.display = 'none';
 
-appState.setUseModulus = function(value) {
-  originalSetters.setUseModulus.call(this, value);
-  syncStateAcrossSystems();
-};
+    importButton.onclick = () => fileInput.click();
 
-appState.setAltScale = function(value) {
-  originalSetters.setAltScale.call(this, value);
-  syncStateAcrossSystems();
-};
+    fileInput.onchange = async (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            try {
+                // importStateFromFile will be refactored in statePersistence.js
+                const success = await importStateFromFile(file, globalState, layerManager);
+                if (success) {
+                    alert('Settings imported successfully!');
+                    // UI and audio should be updated by applyLoadedState called within importStateFromFile
+                    // Or trigger a global refresh/event if needed
+                } else {
+                    alert('Failed to import settings. Check console for errors.');
+                }
+            } catch (err) {
+                console.error('Import error:', err);
+                alert(`Error importing settings: ${err.message}`);
+            }
+        }
+        fileInput.value = ''; 
+    };
 
-appState.setUseAltScale = function(value) {
-  originalSetters.setUseAltScale.call(this, value);
-  syncStateAcrossSystems();
-};
+    container.appendChild(exportButton);
+    container.appendChild(importButton);
+    container.appendChild(fileInput); 
+    // Check if container already exists before appending
+    if (!document.getElementById('state-controls-container')) {
+        document.body.appendChild(container);
+    }
+}
 
-appState.setAltStepN = function(value) {
-  originalSetters.setAltStepN.call(this, value);
-  syncStateAcrossSystems();
-};
 
-// Override setSegments to ensure proper rounding
-appState.setSegments = function(value) {
-  // Ensure value is properly rounded to an integer
-  const roundedValue = Math.round(Number(value));
-  originalSetters.setSegments.call(this, roundedValue);
-  syncStateAcrossSystems();
-};
-
-// Override fractal setters
-appState.setFractalValue = function(value) {
-  originalSetters.setFractalValue.call(this, value);
-  syncStateAcrossSystems();
-};
-
-appState.setUseFractal = function(value) {
-  originalSetters.setUseFractal.call(this, value);
-  syncStateAcrossSystems();
-};
-
-// Override euclidean rhythm setters
-appState.setEuclidValue = function(value) {
-  originalSetters.setEuclidValue.call(this, value);
-  syncStateAcrossSystems();
-};
-
-appState.setUseEuclid = function(value) {
-  originalSetters.setUseEuclid.call(this, value);
-  syncStateAcrossSystems();
-};
-
-// Override star polygon setters
-appState.setStarSkip = function(value) {
-  originalSetters.setStarSkip.call(this, value);
-  syncStateAcrossSystems();
-};
-
-appState.setUseStars = function(value) {
-  originalSetters.setUseStars.call(this, value);
-  syncStateAcrossSystems();
-};
-
-// Override cuts setter
-appState.setUseCuts = function(value) {
-  originalSetters.setUseCuts.call(this, value);
-  syncStateAcrossSystems();
-};
-
-// Start the application initialization process
-if (isDOMLoaded()) {
-  loadFontAndInitApp();
+// --- DOM Ready Check and App Initialization ---
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    initializeApplication();
 } else {
-  document.addEventListener('DOMContentLoaded', loadFontAndInitApp);
+    document.addEventListener('DOMContentLoaded', initializeApplication);
 }

@@ -1,100 +1,37 @@
-// src/state/statePersistence.js - Updated with Note Parameters
+// src/state/statePersistence.js - Refactored for GlobalState and LayerManager
 /**
  * State persistence module for GeoMusica
  * Saves and loads application state to/from localStorage
  */
 
-const STORAGE_KEY = 'geomusica_state';
+// const STORAGE_KEY = 'geomusica_state'; // Old key for single state object
+const GLOBAL_SETTINGS_KEY = 'geomusica_global_settings';
+const LAYERS_DATA_KEY = 'geomusica_layers_data';
 
 /**
- * Save the current state to localStorage
- * @param {Object} state - The application state
+ * Save the current global settings and layer configurations.
+ * @param {Object} globalState - The global application state.
+ * @param {LayerManager} layerManager - The layer manager instance.
  */
-export function saveState(state) {
+export function saveState(globalState, layerManager) {
   try {
-    // Extract only the serializable properties we want to save
-    const saveData = {
-      // Time parameters
-      bpm: state.bpm,
-      
-      // Shape parameters
-      radius: state.radius,
-      copies: state.copies,
-      segments: state.segments,
-      stepScale: state.stepScale,
-      angle: state.angle,
-      
-      // Modulus parameters
-      modulusValue: state.modulusValue,
-      useModulus: state.useModulus,
-      
-      // Time Subdivision parameters
-      timeSubdivisionValue: state.timeSubdivisionValue,
-      useTimeSubdivision: state.useTimeSubdivision,
-      
-      // Time Quantization parameters
-      quantizationValue: state.quantizationValue,
-      useQuantization: state.useQuantization,
-      
-      // Scale Mod parameters
-      altScale: state.altScale,
-      altStepN: state.altStepN,
-      useAltScale: state.useAltScale,
-      
-      // Fractal parameters
-      fractalValue: state.fractalValue,
-      useFractal: state.useFractal,
-      
-      // Euclidean rhythm parameters
-      euclidValue: state.euclidValue,
-      useEuclid: state.useEuclid,
-      
-      // Intersection parameters
-      useIntersections: state.useIntersections,
-      
-      // Animation parameters
-      useLerp: state.useLerp,
-      lerpTime: state.lerpTime,
-      
-      // Synth parameters
-      attack: state.attack,
-      decay: state.decay,
-      sustain: state.sustain,
-      release: state.release,
-      brightness: state.brightness,
-      volume: state.volume,
-      
-      useEqualTemperament: state.useEqualTemperament,
-      referenceFrequency: state.referenceFrequency,
+    // 1. Serialize Global State (excluding non-persistent parts)
+    const serializableGlobalState = { ...globalState };
+    delete serializableGlobalState.parameterChanges; // Runtime tracking object
+    delete serializableGlobalState.lastUpdateTime; // Runtime metric
+    delete serializableGlobalState.frame; // Runtime metric
+    delete serializableGlobalState.lastTime; // Runtime metric, re-initialized on load
+    delete serializableGlobalState.activeModals; // Runtime UI state
+    // delete serializableGlobalState.audioContext; // Runtime object, should not be serialized
+    // Add any other runtime properties of globalState to exclude here
 
-      // Display parameters
-      showAxisFreqLabels: state.showAxisFreqLabels,
-      showPointsFreqLabels: state.showPointsFreqLabels,
-      
-      // Note parameter settings
-      durationMode: state.durationMode,
-      durationModulo: state.durationModulo,
-      minDuration: state.minDuration, 
-      maxDuration: state.maxDuration,
-      durationPhase: state.durationPhase,
-      
-      velocityMode: state.velocityMode,
-      velocityModulo: state.velocityModulo,
-      minVelocity: state.minVelocity,
-      maxVelocity: state.maxVelocity,
-      velocityPhase: state.velocityPhase,
-      
-      // Star polygon parameters
-      starSkip: state.starSkip,
-      useStars: state.useStars,
-      useCuts: state.useCuts
-    };
-    
-    // Convert to string and save
-    const saveString = JSON.stringify(saveData);
-    localStorage.setItem(STORAGE_KEY, saveString);
-    console.log('State saved successfully');
-    
+    localStorage.setItem(GLOBAL_SETTINGS_KEY, JSON.stringify(serializableGlobalState));
+
+    // 2. Serialize Layer Data using LayerManager's method
+    const layersData = layerManager.serializeLayers(); 
+    localStorage.setItem(LAYERS_DATA_KEY, JSON.stringify(layersData));
+
+    console.log('Global settings and Layers saved successfully');
     return true;
   } catch (error) {
     console.error('Error saving state:', error);
@@ -103,705 +40,372 @@ export function saveState(state) {
 }
 
 /**
- * Load state from localStorage
- * @returns {Object|null} The loaded state or null if not found
+ * Load global settings and layer configurations from localStorage.
+ * @returns {Object|null} Object containing { globalSettings, layersData } or null if critical parts not found/error.
  */
 export function loadState() {
   try {
-    const saveString = localStorage.getItem(STORAGE_KEY);
-    
-    if (!saveString) {
-      console.log('No saved state found');
+    const globalSettingsString = localStorage.getItem(GLOBAL_SETTINGS_KEY);
+    const layersDataString = localStorage.getItem(LAYERS_DATA_KEY);
+
+    // If neither is found, it's likely a fresh session or cleared storage.
+    if (!globalSettingsString && !layersDataString) {
+      console.log('No saved state found (global settings or layers).');
       return null;
     }
     
-    const loadedState = JSON.parse(saveString);
-    console.log('State loaded successfully');
+    let globalSettings = null;
+    if (globalSettingsString) {
+        try {
+            globalSettings = JSON.parse(globalSettingsString);
+        } catch (e) {
+            console.error("Error parsing global settings from localStorage:", e);
+            // Decide if this is a critical error, maybe clear the faulty item
+            // localStorage.removeItem(GLOBAL_SETTINGS_KEY);
+        }
+    } else {
+        console.log('No global settings found in localStorage. Will use defaults.');
+    }
+
+    let layersData = null;
+    if (layersDataString) {
+        try {
+            layersData = JSON.parse(layersDataString);
+        } catch (e) {
+            console.error("Error parsing layers data from localStorage:", e);
+            // localStorage.removeItem(LAYERS_DATA_KEY);
+        }
+    } else {
+        console.log('No layers data found in localStorage. Will start with no layers or default layer(s).');
+        layersData = []; // Default to empty array if no layer data found
+    }
     
-    return loadedState;
+    // Only log success if we actually got something to return
+    if (globalSettings || (layersData && layersData.length > 0)) {
+        console.log('State loaded from localStorage (global/layers).');
+    }
+    return { globalSettings, layersData };
+
   } catch (error) {
-    console.error('Error loading state:', error);
-    return null;
+    // This outer catch might be redundant if inner catches handle JSON.parse errors
+    console.error('Error loading state from localStorage:', error);
+    return { globalSettings: null, layersData: [] }; // Fallback to a defined structure
   }
 }
 
 /**
- * Get a serializable object representing the state
- * @param {Object} state Application state
- * @returns {Object} Serializable state object
+ * Apply loaded state to current globalState and layerManager.
+ * @param {Object} globalState - The live global state object to update.
+ * @param {LayerManager} layerManager - The live layer manager instance.
+ * @param {Object} loadedData - The object from loadState() containing { globalSettings, layersData }.
  */
-export function getSerializableState(state) {
-  return {
-    // Shape parameters
-    radius: state.radius,
-    copies: state.copies,
-    segments: state.segments,
-    stepScale: state.stepScale,
-    angle: state.angle,
-    
-    // Modulus parameters
-    modulusValue: state.modulusValue,
-    useModulus: state.useModulus,
-    
-    // Time subdivision parameters
-    timeSubdivisionValue: state.timeSubdivisionValue,
-    useTimeSubdivision: state.useTimeSubdivision,
-    
-    // Quantization parameters
-    quantizationValue: state.quantizationValue,
-    useQuantization: state.useQuantization,
-    
-    // Scale mod parameters
-    altScale: state.altScale,
-    altStepN: state.altStepN,
-    useAltScale: state.useAltScale,
-    
-    // Fractal parameters
-    fractalValue: state.fractalValue,
-    useFractal: state.useFractal,
-    
-    // Euclidean rhythm parameters
-    euclidValue: state.euclidValue,
-    useEuclid: state.useEuclid,
-    
-    // Star parameters
-    starSkip: state.starSkip,
-    useStars: state.useStars,
-    useCuts: state.useCuts,
-    
-    // Time parameters
-    bpm: state.bpm,
-    
-    // Intersection parameters
-    useIntersections: state.useIntersections,
-    
-    // Animation parameters
-    useLerp: state.useLerp,
-    lerpTime: state.lerpTime,
-    
-    // Synth parameters
-    attack: state.attack,
-    decay: state.decay,
-    sustain: state.sustain,
-    release: state.release,
-    brightness: state.brightness,
-    volume: state.volume,
-    
-    useEqualTemperament: state.useEqualTemperament,
-    referenceFrequency: state.referenceFrequency,
-
-    // Display parameters
-    showAxisFreqLabels: state.showAxisFreqLabels,
-    showPointsFreqLabels: state.showPointsFreqLabels,
-    
-    // Note parameter settings
-    durationMode: state.durationMode,
-    durationModulo: state.durationModulo,
-    minDuration: state.minDuration, 
-    maxDuration: state.maxDuration,
-    durationPhase: state.durationPhase,
-    
-    velocityMode: state.velocityMode,
-    velocityModulo: state.velocityModulo,
-    minVelocity: state.minVelocity,
-    maxVelocity: state.maxVelocity,
-    velocityPhase: state.velocityPhase,
-  };
-}
-
-/**
- * Apply loaded state to current state object
- * @param {Object} state - The application state to update
- * @param {Object} loadedState - The loaded state data
- */
-export function applyLoadedState(state, loadedState) {
-  if (!state || !loadedState) return false;
-  
-  try {
-    // Apply each property if it exists in the loaded state
-    if (loadedState.bpm !== undefined) state.setBpm(loadedState.bpm);
-    if (loadedState.radius !== undefined) state.setRadius(loadedState.radius);
-    if (loadedState.copies !== undefined) state.setCopies(loadedState.copies);
-    if (loadedState.segments !== undefined) state.setSegments(loadedState.segments);
-    if (loadedState.stepScale !== undefined) state.setStepScale(loadedState.stepScale);
-    if (loadedState.angle !== undefined) state.setAngle(loadedState.angle);
-    
-    if (loadedState.modulusValue !== undefined) state.setModulusValue(loadedState.modulusValue);
-    if (loadedState.useModulus !== undefined) state.setUseModulus(loadedState.useModulus);
-    
-    // Apply time subdivision parameters
-    if (loadedState.timeSubdivisionValue !== undefined) state.setTimeSubdivisionValue(loadedState.timeSubdivisionValue);
-    if (loadedState.useTimeSubdivision !== undefined) state.setUseTimeSubdivision(loadedState.useTimeSubdivision);
-    
-    // Apply time quantization parameters
-    if (loadedState.quantizationValue !== undefined) state.setQuantizationValue(loadedState.quantizationValue);
-    if (loadedState.useQuantization !== undefined) state.setUseQuantization(loadedState.useQuantization);
-    
-    // Apply scale mod parameters
-    if (loadedState.altScale !== undefined) state.setAltScale(loadedState.altScale);
-    if (loadedState.altStepN !== undefined) state.setAltStepN(loadedState.altStepN);
-    if (loadedState.useAltScale !== undefined) state.setUseAltScale(loadedState.useAltScale);
-    
-    // Apply fractal parameters
-    if (loadedState.fractalValue !== undefined) state.setFractalValue(loadedState.fractalValue);
-    if (loadedState.useFractal !== undefined) state.setUseFractal(loadedState.useFractal);
-    
-    // Apply Euclidean rhythm parameters
-    if (loadedState.euclidValue !== undefined) state.setEuclidValue(loadedState.euclidValue);
-    if (loadedState.useEuclid !== undefined) state.setUseEuclid(loadedState.useEuclid);
-    
-    if (loadedState.useIntersections !== undefined) state.setUseIntersections(loadedState.useIntersections);
-    
-    if (loadedState.useLerp !== undefined) state.setUseLerp(loadedState.useLerp);
-    if (loadedState.lerpTime !== undefined) state.setLerpTime(loadedState.lerpTime);
-    
-    if (loadedState.attack !== undefined) state.setAttack(loadedState.attack);
-    if (loadedState.decay !== undefined) state.setDecay(loadedState.decay);
-    if (loadedState.sustain !== undefined) state.setSustain(loadedState.sustain);
-    if (loadedState.release !== undefined) state.setRelease(loadedState.release);
-    if (loadedState.brightness !== undefined) state.setBrightness(loadedState.brightness);
-    if (loadedState.volume !== undefined) state.setVolume(loadedState.volume);
-    
-    if (loadedState.useEqualTemperament !== undefined) state.setUseEqualTemperament(loadedState.useEqualTemperament);
-    if (loadedState.referenceFrequency !== undefined) state.setReferenceFrequency(loadedState.referenceFrequency);
-  
-    if (loadedState.showAxisFreqLabels !== undefined) state.setShowAxisFreqLabels(loadedState.showAxisFreqLabels);
-    if (loadedState.showPointsFreqLabels !== undefined) state.setShowPointsFreqLabels(loadedState.showPointsFreqLabels);
-    
-    // Apply note parameter settings
-    if (loadedState.durationMode !== undefined) state.setDurationMode(loadedState.durationMode);
-    if (loadedState.durationModulo !== undefined) state.setDurationModulo(loadedState.durationModulo);
-    if (loadedState.minDuration !== undefined) state.setMinDuration(loadedState.minDuration);
-    if (loadedState.maxDuration !== undefined) state.setMaxDuration(loadedState.maxDuration);
-    if (loadedState.durationPhase !== undefined) state.setDurationPhase(loadedState.durationPhase);
-    
-    if (loadedState.velocityMode !== undefined) state.setVelocityMode(loadedState.velocityMode);
-    if (loadedState.velocityModulo !== undefined) state.setVelocityModulo(loadedState.velocityModulo);
-    if (loadedState.minVelocity !== undefined) state.setMinVelocity(loadedState.minVelocity);
-    if (loadedState.maxVelocity !== undefined) state.setMaxVelocity(loadedState.maxVelocity);
-    if (loadedState.velocityPhase !== undefined) state.setVelocityPhase(loadedState.velocityPhase);
-    
-    // Star polygon parameters
-    if (loadedState.starSkip !== undefined) state.setStarSkip(loadedState.starSkip);
-    if (loadedState.useStars !== undefined) state.setUseStars(loadedState.useStars);
-    if (loadedState.useCuts !== undefined) state.setUseCuts(loadedState.useCuts);
-    
-    console.log('State applied successfully');
-    return true;
-  } catch (error) {
-    console.error('Error applying state:', error);
+export function applyLoadedState(globalState, layerManager, loadedData) {
+  if (!loadedData) {
+    console.warn("applyLoadedState: No loadedData provided.");
     return false;
   }
-}
 
-/**
- * Update the audio engine with values from the state
- * @param {Object} state - The application state
- * @param {Object} audioModule - The audio module containing the necessary functions
- */
-export function updateAudioEngineFromState(state, audioModule) {
-  if (!state || !audioModule) return false;
-  
+  let appliedGlobal = false;
+  let appliedLayers = false;
+
   try {
-    // Apply all parameters at once using the new function
-    const params = {
-      attack: state.attack,
-      decay: state.decay,
-      sustain: state.sustain,
-      release: state.release,
-      brightness: state.brightness,
-      volume: state.volume
-    };
-    
-    // Use the new applySynthParameters function
-    if (audioModule.applySynthParameters) {
-      audioModule.applySynthParameters(params);
+    // Apply Global Settings
+    if (loadedData.globalSettings && globalState) {
+      console.log("Applying global settings...", loadedData.globalSettings);
+      for (const key in loadedData.globalSettings) {
+        if (Object.prototype.hasOwnProperty.call(loadedData.globalSettings, key)) {
+          const value = loadedData.globalSettings[key];
+          const setterName = `set${key.charAt(0).toUpperCase() + key.slice(1)}`;
+          
+          if (typeof globalState[setterName] === 'function') {
+            globalState[setterName](value);
+          } else if (globalState.hasOwnProperty(key)) {
+            // Direct assignment for properties without setters or complex objects
+            if (globalState[key] !== undefined && typeof globalState[key] === 'object' && 
+                globalState[key] !== null && !Array.isArray(globalState[key]) && 
+                typeof value === 'object' && value !== null) {
+                 // For nested objects like 'performance', merge them to preserve structure
+                 Object.assign(globalState[key], value); 
+            } else {
+                 globalState[key] = value; // Direct assignment for simple types or if structure differs
+            }
+          } else {
+            // console.warn(`Global state has no property or setter for: ${key}`);
+          }
+        }
+      }
+      if (typeof globalState.resetParameterChanges === 'function') {
+        globalState.resetParameterChanges(); // Reset after applying all changes
+      }
+      console.log('Global settings applied.');
+      appliedGlobal = true;
     } else {
-      // Fallback to individual parameter setting
-      const { setEnvelope, setBrightness, setMasterVolume } = audioModule;
-      
-      if (setEnvelope) {
-        setEnvelope(state.attack, state.decay, state.sustain, state.release);
-      }
-      
-      if (setBrightness) {
-        setBrightness(state.brightness);
-      }
-      
-      if (setMasterVolume) {
-        setMasterVolume(state.volume);
+      console.log("No global settings to apply or globalState object missing.");
+    }
+
+    // Apply Layer Data
+    if (loadedData.layersData && layerManager) {
+      console.log("Applying layers data...", loadedData.layersData);
+      layerManager.deserializeLayers(loadedData.layersData); 
+      console.log('Layers data applied.');
+      appliedLayers = true;
+    } else {
+      console.log("No layers data to apply or layerManager object missing.");
+      // If there's no layersData from localStorage, ensure LayerManager is at least empty or has defaults.
+      // deserializeLayers should handle empty array correctly by clearing existing layers.
+      if (layerManager && !loadedData.layersData) {
+        layerManager.deserializeLayers([]); // Ensure it clears out any existing layers if none are loaded
       }
     }
     
-    console.log('Audio engine updated from state successfully');
-    return true;
+    // Note: UI and Audio engine updates should ideally be triggered 
+    // by events or subscriptions after state changes, rather than directly here.
+    // For example, LayerManager notifying its subscribers would allow the UI to refresh its layer list.
+    // Global state changes could also have a notification mechanism.
+
+    return appliedGlobal || appliedLayers; 
   } catch (error) {
-    console.error('Error updating audio engine from state:', error);
+    console.error('Error applying loaded state:', error);
     return false;
   }
 }
 
 /**
- * Setup auto-save functionality
- * @param {Object} state - The application state to auto-save
- * @param {number} interval - Save interval in milliseconds (default: 5000ms/5s)
+ * Export current state (global and layers) to a JSON file.
+ * @param {Object} globalState - The global application state.
+ * @param {LayerManager} layerManager - The layer manager instance.
  */
-export function setupAutoSave(state, interval = 5000) {
-  // Save immediately to capture initial state
-  saveState(state);
-  
-  // Setup interval for periodic saves
-  const autoSaveInterval = setInterval(() => {
-    saveState(state);
-  }, interval);
-  
-  // Return a function to clear the interval if needed
-  return () => clearInterval(autoSaveInterval);
-}
-
-/**
- * Export current state to a downloadable JSON file
- * @param {Object} state - The application state
- */
-export function exportStateToFile(state) {
+export function exportStateToFile(globalState, layerManager) {
   try {
-    // Extract serializable properties as in saveState
-    const exportData = {
-      bpm: state.bpm,
-      radius: state.radius,
-      copies: state.copies,
-      segments: state.segments,
-      stepScale: state.stepScale,
-      angle: state.angle,
-      modulusValue: state.modulusValue,
-      useModulus: state.useModulus,
-      
-      timeSubdivisionValue: state.timeSubdivisionValue,
-      useTimeSubdivision: state.useTimeSubdivision,
-      
-      quantizationValue: state.quantizationValue,
-      useQuantization: state.useQuantization,
-      
-      altScale: state.altScale,
-      altStepN: state.altStepN,
-      useAltScale: state.useAltScale,
-      
-      fractalValue: state.fractalValue,
-      useFractal: state.useFractal,
-      
-      euclidValue: state.euclidValue,
-      useEuclid: state.useEuclid,
-      
-      useIntersections: state.useIntersections,
-      useLerp: state.useLerp,
-      lerpTime: state.lerpTime,
-      
-      attack: state.attack,
-      decay: state.decay,
-      sustain: state.sustain,
-      release: state.release,
-      brightness: state.brightness,
-      volume: state.volume,
-      useEqualTemperament: state.useEqualTemperament,
-      referenceFrequency: state.referenceFrequency,
-      showAxisFreqLabels: state.showAxisFreqLabels,
-      showPointsFreqLabels: state.showPointsFreqLabels,
-      
-      // Include note parameter settings
-      durationMode: state.durationMode,
-      durationModulo: state.durationModulo,
-      minDuration: state.minDuration, 
-      maxDuration: state.maxDuration,
-      durationPhase: state.durationPhase,
-      
-      velocityMode: state.velocityMode,
-      velocityModulo: state.velocityModulo,
-      minVelocity: state.minVelocity,
-      maxVelocity: state.maxVelocity,
-      velocityPhase: state.velocityPhase,
-      
-      // Star polygon parameters
-      starSkip: state.starSkip,
-      useStars: state.useStars,
-      useCuts: state.useCuts
+    const serializableGlobalState = { ...globalState };
+    // Remove runtime or non-persistent properties from globalState for export
+    delete serializableGlobalState.parameterChanges;
+    delete serializableGlobalState.lastUpdateTime;
+    delete serializableGlobalState.frame;
+    delete serializableGlobalState.lastTime;
+    delete serializableGlobalState.activeModals;
+    // delete serializableGlobalState.audioContext; 
+
+    const layersData = layerManager.serializeLayers();
+
+    const combinedState = {
+      formatVersion: 'geomusica-v2.0', // Versioning for future compatibility
+      savedAt: new Date().toISOString(),
+      globalSettings: serializableGlobalState,
+      layers: layersData
     };
-    
-    // Add timestamp
-    exportData.exportDate = new Date().toISOString();
-    
-    // Convert to JSON string
-    const jsonString = JSON.stringify(exportData, null, 2);
-    
-    // Create a blob
+
+    const jsonString = JSON.stringify(combinedState, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    
-    // Create download link
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `geomusica_settings_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;
-    
-    // Append to document, click, and remove
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    // Clean up URL object
+    const a = document.createElement('a');
+    a.href = url;
+    // Create a more user-friendly timestamp for the filename
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    a.download = `geomusica_session_${timestamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+    console.log('State exported to file successfully.');
     return true;
   } catch (error) {
-    console.error('Error exporting state:', error);
+    console.error('Error exporting state to file:', error);
+    // alert('Failed to export state. See console for details.'); // Optional user feedback
     return false;
   }
 }
 
 /**
- * Import state from a JSON file
- * @param {File} file - The file to import
- * @param {Object} state - The application state to update
- * @returns {Promise<boolean>} True if successful
+ * Import state from a JSON file.
+ * @param {File} file - The file object to import.
+ * @param {Object} globalState - The live global state object.
+ * @param {LayerManager} layerManager - The live layer manager instance.
+ * @returns {Promise<boolean>} True if import and application were successful.
  */
-export function importStateFromFile(file, state) {
+export async function importStateFromFile(file, globalState, layerManager) {
   return new Promise((resolve, reject) => {
+    if (!file) {
+      // console.error('No file provided for import.');
+      reject(new Error('No file provided for import.'));
+      return;
+    }
+
     const reader = new FileReader();
-    
     reader.onload = (event) => {
       try {
-        const importedState = JSON.parse(event.target.result);
-        const success = applyLoadedState(state, importedState);
-        resolve(success);
+        const importedData = JSON.parse(event.target.result);
+        
+        if (!importedData || typeof importedData !== 'object') {
+            throw new Error('Invalid file content: not a JSON object.');
+        }
+        
+        // Basic validation (can be more sophisticated, e.g., checking formatVersion)
+        if (!importedData.globalSettings || !Array.isArray(importedData.layers)) {
+          throw new Error('Invalid file format: missing globalSettings or layers array.');
+        }
+
+        // applyLoadedState will update the live state objects
+        const success = applyLoadedState(globalState, layerManager, {
+          globalSettings: importedData.globalSettings,
+          layersData: importedData.layers
+        });
+        
+        if (success) {
+          console.log('State imported from file and applied successfully.');
+          // Notify relevant systems about the state change
+          if (layerManager && typeof layerManager._notifySubscribers === 'function') {
+            layerManager._notifySubscribers(); // Ensure UI updates for layers
+          }
+          // Add a similar notification for globalState if a subscription system is implemented for it
+          // For example: if (typeof globalState._notifySubscribers === 'function') globalState._notifySubscribers();
+          resolve(true);
+        } else {
+          throw new Error('Failed to apply imported state. Check console for details.');
+        }
       } catch (error) {
-        console.error('Error parsing imported state file:', error);
-        reject(error);
+        console.error('Error processing imported file:', error);
+        reject(error); // Pass the error object itself
       }
     };
-    
     reader.onerror = (error) => {
       console.error('Error reading file:', error);
-      reject(error);
+      reject(error); // Pass the error object
     };
-    
     reader.readAsText(file);
   });
 }
 
 /**
- * Update UI elements to reflect the current state
- * @param {Object} state - The application state
- * @param {Object} uiElements - References to UI elements
+ * Setup auto-save functionality.
+ * @param {Object} globalState - The global application state.
+ * @param {LayerManager} layerManager - The layer manager instance.
+ * @param {number} interval - Auto-save interval in milliseconds.
  */
-export function updateUIFromState(state, uiElements) {
-  if (!state || !uiElements) return;
+export function setupAutoSave(globalState, layerManager, interval = 15000) {
+  // Clear any existing interval to prevent multiple auto-save loops
+  if (window.geomusicaAutoSaveIntervalId) { // Changed variable name for clarity
+    clearInterval(window.geomusicaAutoSaveIntervalId);
+  }
+
+  if (!globalState || !layerManager) {
+    console.warn("Auto-save setup skipped: globalState or layerManager is missing.");
+    return;
+  }
+
+  window.geomusicaAutoSaveIntervalId = setInterval(() => {
+    console.log('Auto-saving state...');
+    saveState(globalState, layerManager); // Uses the refactored saveState
+  }, interval);
+
+  console.log(`Auto-save enabled every ${interval / 1000} seconds.`);
+}
+
+// --- Functions below this line need careful review and major adaptation ---
+// Their full refactoring depends on changes in ui.js and audio.js.
+
+/**
+ * Update the UI from the current state. (NEEDS MAJOR REFACTORING)
+ * This function's structure will heavily depend on how ui.js is refactored.
+ * @param {Object} globalState - The global application state.
+ * @param {LayerManager} layerManager - The layer manager instance.
+ * @param {Object} uiElements - References to UI elements (this structure will likely change significantly).
+ */
+export function updateUIFromState(globalState, layerManager, uiElements) {
+  console.warn(
+    "updateUIFromState is a placeholder and needs a major refactor. " +
+    "It depends on the new UI structure and how UI elements are managed and referenced."
+  );
   
+  if (!globalState || !layerManager) {
+    // console.error('updateUIFromState: Missing globalState or layerManager.');
+    return;
+  }
+
+  // Conceptual: The UI should ideally subscribe to changes in globalState (if it has a notifier)
+  // and layerManager (which has _notifySubscribers) and update itself reactively.
+  // This function, if kept, would be a manual trigger for such an update.
+
+  // Example of what it might do (highly dependent on actual ui.js refactor):
+  // if (uiElements && uiElements.globalControls) {
+  //   Object.keys(uiElements.globalControls).forEach(key => {
+  //     const control = uiElements.globalControls[key];
+  //     if (globalState.hasOwnProperty(key) && control && typeof control.setValue === 'function') {
+  //       control.setValue(globalState[key]);
+  //     } else if (globalState.hasOwnProperty(key) && control && control.hasOwnProperty('value')) {
+  //       control.value = globalState[key];
+  //     }
+  //   });
+  // }
+
+  // const activeLayerState = layerManager.getActiveLayerState();
+  // if (activeLayerState && uiElements && uiElements.layerControls) {
+  //   Object.keys(uiElements.layerControls).forEach(key => {
+  //     const control = uiElements.layerControls[key];
+  //     if (activeLayerState.hasOwnProperty(key) && control && typeof control.setValue === 'function') {
+  //       control.setValue(activeLayerState[key]);
+  //     } else if (activeLayerState.hasOwnProperty(key) && control && control.hasOwnProperty('value')) {
+  //       control.value = activeLayerState[key];
+  //     }
+  //   });
+  // }
+  
+  // Example: Update the layer list UI (if managed here)
+  // if (uiElements && uiElements.layerListContainer) {
+  //   // Code to rebuild the layer list based on layerManager.getAllLayers()
+  //   // This would involve creating/updating DOM elements for each layer.
+  // }
+}
+
+/**
+ * Update the audio engine with values from the state. (NEEDS REVIEW/ADAPTATION)
+ * @param {Object} globalState - The global application state.
+ * @param {LayerManager} layerManager - The layer manager (for per-layer audio if applicable).
+ * @param {Object} audioModule - The audio module (e.g., containing setMasterVolume, applySynthParameters).
+ */
+export function updateAudioEngineFromState(globalState, layerManager, audioModule) {
+  console.warn(
+    "updateAudioEngineFromState needs review. " +
+    "Global audio settings (e.g., master volume) are applied. " +
+    "Per-layer audio depends on LayerState structure and audio.js capabilities."
+  );
+
+  if (!globalState || !audioModule) {
+    console.error("updateAudioEngineFromState: Missing globalState or audioModule.");
+    return false;
+  }
+
   try {
-    // Update BPM controls
-    if (uiElements.bpmRange && state.bpm !== undefined) {
-      uiElements.bpmRange.value = state.bpm;
-      if (uiElements.bpmNumber) uiElements.bpmNumber.value = state.bpm;
-      if (uiElements.bpmValue) uiElements.bpmValue.textContent = state.bpm;
+    // Apply global audio settings
+    if (audioModule.setMasterVolume && globalState.masterVolume !== undefined) {
+      audioModule.setMasterVolume(globalState.masterVolume);
     }
-    
-    // Update Radius controls
-    if (uiElements.radiusRange && state.radius !== undefined) {
-      uiElements.radiusRange.value = state.radius;
-      if (uiElements.radiusNumber) uiElements.radiusNumber.value = state.radius;
-      if (uiElements.radiusValue) uiElements.radiusValue.textContent = state.radius;
-    }
-    
-    // Update Copies controls
-    if (uiElements.copiesRange && state.copies !== undefined) {
-      uiElements.copiesRange.value = state.copies;
-      if (uiElements.copiesNumber) uiElements.copiesNumber.value = state.copies;
-      if (uiElements.copiesValue) uiElements.copiesValue.textContent = state.copies;
-    }
-    
-    // Update Segments/Number controls
-    if (uiElements.numberRange && state.segments !== undefined) {
-      uiElements.numberRange.value = state.segments;
-      if (uiElements.numberNumber) uiElements.numberNumber.value = state.segments;
-      if (uiElements.numberValue) uiElements.numberValue.textContent = state.segments;
-    }
-    
-    // Update Step Scale controls
-    if (uiElements.stepScaleRange && state.stepScale !== undefined) {
-      uiElements.stepScaleRange.value = state.stepScale;
-      if (uiElements.stepScaleNumber) uiElements.stepScaleNumber.value = state.stepScale;
-      if (uiElements.stepScaleValue) uiElements.stepScaleValue.textContent = state.stepScale.toFixed(2);
-    }
-    
-    // Update Angle controls
-    if (uiElements.angleRange && state.angle !== undefined) {
-      uiElements.angleRange.value = state.angle;
-      if (uiElements.angleNumber) uiElements.angleNumber.value = state.angle;
-      if (uiElements.angleValue) uiElements.angleValue.textContent = state.angle;
-    }
-    
-    // Update Scale Mod controls
-    if (uiElements.altScaleRange && state.altScale !== undefined) {
-      uiElements.altScaleRange.value = state.altScale;
-      if (uiElements.altScaleNumber) uiElements.altScaleNumber.value = state.altScale;
-      if (uiElements.altScaleValue) uiElements.altScaleValue.textContent = state.altScale.toFixed(2);
-    }
-    
-    if (uiElements.altStepNRange && state.altStepN !== undefined) {
-      uiElements.altStepNRange.value = state.altStepN;
-      if (uiElements.altStepNNumber) uiElements.altStepNNumber.value = state.altStepN;
-      if (uiElements.altStepNValue) uiElements.altStepNValue.textContent = state.altStepN;
-    }
-    
-    // Update Fractal controls
-    if (uiElements.fractalRange && state.fractalValue !== undefined) {
-      uiElements.fractalRange.value = state.fractalValue;
-      if (uiElements.fractalNumber) uiElements.fractalNumber.value = state.fractalValue;
-      if (uiElements.fractalValue) uiElements.fractalValue.textContent = state.fractalValue;
-    }
-    
-    // Update Euclidean rhythm controls
-    if (uiElements.useEuclidCheckbox && state.useEuclid !== undefined) {
-      uiElements.useEuclidCheckbox.checked = state.useEuclid;
-    }
-    
-    if (uiElements.euclidRange && state.euclidValue !== undefined) {
-      uiElements.euclidRange.value = state.euclidValue;
-      if (uiElements.euclidNumber) uiElements.euclidNumber.value = state.euclidValue;
-      if (uiElements.euclidValue) uiElements.euclidValue.textContent = state.euclidValue;
-    }
-    
-    if (uiElements.validEuclidInfo && state.euclidValue !== undefined && state.segments !== undefined) {
-      uiElements.validEuclidInfo.textContent = `Current Euclidean pattern: k=${state.euclidValue} out of n=${state.segments} vertices`;
-    }
-    
-    // Update checkbox states
-    if (uiElements.useLerpCheckbox && state.useLerp !== undefined) {
-      uiElements.useLerpCheckbox.checked = state.useLerp;
-    }
-    
-    if (uiElements.useModulusCheckbox && state.useModulus !== undefined) {
-      uiElements.useModulusCheckbox.checked = state.useModulus;
-    }
-    
-    if (uiElements.useTimeSubdivisionCheckbox && state.useTimeSubdivision !== undefined) {
-      uiElements.useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
-    }
-    
-    if (uiElements.useQuantizationCheckbox && state.useQuantization !== undefined) {
-      uiElements.useQuantizationCheckbox.checked = state.useQuantization;
-    }
-    
-    if (uiElements.useAltScaleCheckbox && state.useAltScale !== undefined) {
-      uiElements.useAltScaleCheckbox.checked = state.useAltScale;
-    }
-    
-    if (uiElements.useFractalCheckbox && state.useFractal !== undefined) {
-      uiElements.useFractalCheckbox.checked = state.useFractal;
-    }
-    
-    if (uiElements.useIntersectionsCheckbox && state.useIntersections !== undefined) {
-      uiElements.useIntersectionsCheckbox.checked = state.useIntersections;
-    }
-    
-    if (uiElements.showAxisFreqLabelsCheckbox && state.showAxisFreqLabels !== undefined) {
-      uiElements.showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;
-    }
-    
-    if (uiElements.showPointsFreqLabelsCheckbox && state.showPointsFreqLabels !== undefined) {
-      uiElements.showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
-    }
-    
-    // Update Lerp Time controls
-    if (uiElements.lerpTimeRange && state.lerpTime !== undefined) {
-      uiElements.lerpTimeRange.value = state.lerpTime;
-      if (uiElements.lerpTimeNumber) uiElements.lerpTimeNumber.value = state.lerpTime;
-      if (uiElements.lerpTimeValue) uiElements.lerpTimeValue.textContent = state.lerpTime.toFixed(1);
-    }
-    
-    // Update Synth controls if they exist
-    if (uiElements.attackRange && state.attack !== undefined) {
-      uiElements.attackRange.value = state.attack;
-      if (uiElements.attackNumber) uiElements.attackNumber.value = state.attack;
-      if (uiElements.attackValue) uiElements.attackValue.textContent = state.attack.toFixed(2);
-    }
-    
-    if (uiElements.decayRange && state.decay !== undefined) {
-      uiElements.decayRange.value = state.decay;
-      if (uiElements.decayNumber) uiElements.decayNumber.value = state.decay;
-      if (uiElements.decayValue) uiElements.decayValue.textContent = state.decay.toFixed(2);
-    }
-    
-    if (uiElements.sustainRange && state.sustain !== undefined) {
-      uiElements.sustainRange.value = state.sustain;
-      if (uiElements.sustainNumber) uiElements.sustainNumber.value = state.sustain;
-      if (uiElements.sustainValue) uiElements.sustainValue.textContent = state.sustain.toFixed(2);
-    }
-    
-    if (uiElements.releaseRange && state.release !== undefined) {
-      uiElements.releaseRange.value = state.release;
-      if (uiElements.releaseNumber) uiElements.releaseNumber.value = state.release;
-      if (uiElements.releaseValue) uiElements.releaseValue.textContent = state.release.toFixed(2);
-    }
-    
-    if (uiElements.brightnessRange && state.brightness !== undefined) {
-      uiElements.brightnessRange.value = state.brightness;
-      if (uiElements.brightnessNumber) uiElements.brightnessNumber.value = state.brightness;
-      if (uiElements.brightnessValue) uiElements.brightnessValue.textContent = state.brightness.toFixed(2);
-    }
-    
-    if (uiElements.volumeRange && state.volume !== undefined) {
-      uiElements.volumeRange.value = state.volume;
-      if (uiElements.volumeNumber) uiElements.volumeNumber.value = state.volume;
-      if (uiElements.volumeValue) uiElements.volumeValue.textContent = state.volume.toFixed(2);
-    }
+    // Add other global audio settings here if any (e.g., global effects controlled by globalState)
 
-    if (uiElements.useEqualTemperamentCheckbox && state.useEqualTemperament !== undefined) {
-      uiElements.useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
-    }    
-    
-    if (uiElements.referenceFreqRange && state.referenceFrequency !== undefined) {
-      uiElements.referenceFreqRange.value = state.referenceFrequency;
-      if (uiElements.referenceFreqNumber) uiElements.referenceFreqNumber.value = state.referenceFrequency;
-      if (uiElements.referenceFreqValue) uiElements.referenceFreqValue.textContent = state.referenceFrequency;
+    // Apply active layer's synth parameters (if synth is per-layer and controlled this way)
+    const activeLayerState = layerManager ? layerManager.getActiveLayerState() : null;
+    if (activeLayerState && audioModule.applySynthParameters) {
+        // This assumes applySynthParameters can take parameters relevant to a single layer's sound.
+        // The exact parameters would depend on how layerState's audio properties (attack, decay, etc.) are defined
+        // and how the audio engine expects to receive them for a specific layer/instrument.
+        // This might be more complex if each layer has its own synth instance.
+        const layerSynthParams = {
+            attack: activeLayerState.attack,
+            decay: activeLayerState.decay,
+            sustain: activeLayerState.sustain,
+            release: activeLayerState.release,
+            // Other params like layer-specific volume/brightness if applicable to its synth
+        };
+        // audioModule.applySynthParameters(layerSynthParams, activeLayerState.id); // Might need layerID
+        console.log("Conceptual: Would apply synth parameters for active layer:", activeLayerState.id, layerSynthParams);
+    } else if (activeLayerState && !audioModule.applySynthParameters) {
+        console.warn("audioModule.applySynthParameters not found. Cannot apply active layer synth settings.");
     }
     
-    // Update Note Parameters controls
-    
-    // Update Duration Mode radio buttons
-    if (uiElements.durationModeRadios && state.durationMode !== undefined) {
-      uiElements.durationModeRadios.forEach(radio => {
-        radio.checked = (radio.value === state.durationMode);
-      });
-    }
-    
-    // Update Duration Min/Max values
-    if (uiElements.minDurationRange && state.minDuration !== undefined) {
-      uiElements.minDurationRange.value = state.minDuration;
-      if (uiElements.minDurationNumber) uiElements.minDurationNumber.value = state.minDuration;
-      if (uiElements.minDurationValue) uiElements.minDurationValue.textContent = state.minDuration.toFixed(2);
-    }
-    
-    if (uiElements.maxDurationRange && state.maxDuration !== undefined) {
-      uiElements.maxDurationRange.value = state.maxDuration;
-      if (uiElements.maxDurationNumber) uiElements.maxDurationNumber.value = state.maxDuration;
-      if (uiElements.maxDurationValue) uiElements.maxDurationValue.textContent = state.maxDuration.toFixed(2);
-    }
-    
-    // Update Duration Phase
-    if (uiElements.durationPhaseRange && state.durationPhase !== undefined) {
-      uiElements.durationPhaseRange.value = state.durationPhase;
-      if (uiElements.durationPhaseNumber) uiElements.durationPhaseNumber.value = state.durationPhase;
-      if (uiElements.durationPhaseValue) uiElements.durationPhaseValue.textContent = state.durationPhase.toFixed(2);
-    }
-    
-    // Update Velocity Mode radio buttons
-    if (uiElements.velocityModeRadios && state.velocityMode !== undefined) {
-      uiElements.velocityModeRadios.forEach(radio => {
-        radio.checked = (radio.value === state.velocityMode);
-      });
-    }
-    
-    // Update Velocity Min/Max values
-    if (uiElements.minVelocityRange && state.minVelocity !== undefined) {
-      uiElements.minVelocityRange.value = state.minVelocity;
-      if (uiElements.minVelocityNumber) uiElements.minVelocityNumber.value = state.minVelocity;
-      if (uiElements.minVelocityValue) uiElements.minVelocityValue.textContent = state.minVelocity.toFixed(2);
-    }
-    
-    if (uiElements.maxVelocityRange && state.maxVelocity !== undefined) {
-      uiElements.maxVelocityRange.value = state.maxVelocity;
-      if (uiElements.maxVelocityNumber) uiElements.maxVelocityNumber.value = state.maxVelocity;
-      if (uiElements.maxVelocityValue) uiElements.maxVelocityValue.textContent = state.maxVelocity.toFixed(2);
-    }
-    
-    // Update Velocity Phase
-    if (uiElements.velocityPhaseRange && state.velocityPhase !== undefined) {
-      uiElements.velocityPhaseRange.value = state.velocityPhase;
-      if (uiElements.velocityPhaseNumber) uiElements.velocityPhaseNumber.value = state.velocityPhase;
-      if (uiElements.velocityPhaseValue) uiElements.velocityPhaseValue.textContent = state.velocityPhase.toFixed(2);
-    }
-
-    // Update modulus radio buttons
-    if (state.modulusValue !== undefined && uiElements.modulusRadioGroup) {
-      const radioButton = document.querySelector(`#modulus-${state.modulusValue}`);
-      if (radioButton) {
-        radioButton.checked = true;
-      }
-    }
-    
-    // Update duration modulo radio buttons
-    if (state.durationModulo !== undefined && uiElements.durationModuloRadioGroup) {
-      const radioButton = document.querySelector(`#durationModulo-${state.durationModulo}`);
-      if (radioButton) {
-        radioButton.checked = true;
-      }
-    }
-    
-    // Update velocity modulo radio buttons
-    if (state.velocityModulo !== undefined && uiElements.velocityModuloRadioGroup) {
-      const radioButton = document.querySelector(`#velocityModulo-${state.velocityModulo}`);
-      if (radioButton) {
-        radioButton.checked = true;
-      }
-    }
-    
-    // Update time subdivision radio buttons
-    if (state.timeSubdivisionValue !== undefined && uiElements.timeSubdivisionRadioGroup) {
-      // Create a CSS-safe selector by replacing slashes and dots with underscores
-      const safeValue = String(state.timeSubdivisionValue).replace(/[\/\.]/g, '_');
-      const radioButton = document.querySelector(`#timeSubdivision-${safeValue}`);
-      if (radioButton) {
-        radioButton.checked = true;
-      }
-    }
-    
-    // Update quantization radio buttons with CSS-safe selector
-    if (state.quantizationValue !== undefined && uiElements.quantizationRadioGroup) {
-      // Convert the quantization value to a CSS-safe selector by replacing slashes with underscores
-      const safeCssSelector = `#quantization-${state.quantizationValue.replace(/\//g, '_')}`;
-      
-      try {
-        const radioButton = document.querySelector(safeCssSelector);
-        if (radioButton) {
-          radioButton.checked = true;
-        } else {
-          console.warn(`Could not find quantization radio button with selector: ${safeCssSelector}`);
-        }
-      } catch (error) {
-        console.error(`Error selecting quantization radio button: ${error.message}`);
-      }
-    }
-    
-    // Update Skip radio button if it exists
-    if (state.starSkip !== undefined && uiElements.starSkipRadioGroup) {
-      // Find the radio button for the current skip value
-      const radioButton = document.querySelector(`#starSkip-${state.starSkip}`);
-      if (radioButton) {
-        radioButton.checked = true;
-      } else {
-        // If radio button doesn't exist (e.g., invalid skip for current n),
-        // recalculate valid skips and select the first valid one
-        const validSkips = state.getValidStarSkips();
-        if (validSkips.length > 0) {
-          state.setStarSkip(validSkips[0]);
-          const firstValidRadio = document.querySelector(`#starSkip-${validSkips[0]}`);
-          if (firstValidRadio) {
-            firstValidRadio.checked = true;
-          }
-        }
-      }
-    }
-    
-    if (uiElements.useStarsCheckbox && state.useStars !== undefined) {
-      uiElements.useStarsCheckbox.checked = state.useStars;
-    }
-    
-    if (uiElements.useCutsCheckbox && state.useCuts !== undefined) {
-      uiElements.useCutsCheckbox.checked = state.useCuts;
-    }
-    
-    console.log('UI updated from state successfully');
+    // console.log('Audio engine updated from state (global settings applied).');
     return true;
   } catch (error) {
-    console.error('Error updating UI from state:', error);
+    console.error('Error updating audio engine from state:', error);
     return false;
   }
 }

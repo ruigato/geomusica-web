@@ -164,10 +164,10 @@ export async function setupAudio() {
       }
     }, { once: true });
     
-    return csoundInstance;
+    return { csoundInstance, audioContext };
   } catch (error) {
     console.error("Setup error:", error);
-    return null;
+    return { csoundInstance: null, audioContext: null };
   }
 }
 

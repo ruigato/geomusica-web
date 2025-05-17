@@ -14,69 +14,60 @@ export const ParameterMode = {
 /**
  * Create a note object based on trigger data and state parameters
  * @param {Object} triggerData - Data from the trigger event
- * @param {Object} state - Application state
+ * @param {Object} layerState - Application state
  * @returns {Object} Complete note object
  */
-export function createNote(triggerData, state) {
-  const { x, y, copyIndex, vertexIndex, isIntersection, angle, lastAngle, globalIndex } = triggerData;
+export function createNote(triggerData, layerState) {
+  const { 
+    x, y, 
+    copyIndex, vertexIndex, // Still useful for context if needed, but pointIdInLayer is primary for sequence
+    isIntersection, 
+    // angle, lastAngle, // These were from old triggerData, not directly used for note properties other than pan maybe
+    // globalIndex, // Replaced by pointIdInLayer
+    pointIdInLayer, // This is the new sequential ID within the layer
+    layerId // For context, if note needs to know its layer source explicitly beyond layerState
+  } = triggerData;
   
-  // Calculate base frequency from coordinates
   let frequency = Math.hypot(x, y);
   let noteName = null;
   
-  // Apply equal temperament if enabled
-  if (state && state.useEqualTemperament) {
-    const refFreq = state.referenceFrequency || 440;
+  if (layerState && layerState.useEqualTemperament) {
+    const refFreq = layerState.referenceFrequency || 440;
     frequency = quantizeToEqualTemperament(frequency, refFreq);
     noteName = getNoteName(frequency, refFreq);
   }
   
-  // Determine point index for parameter calculations
-  let pointIndex = 0;
+  // Use pointIdInLayer directly as the pointIndex for parameter calculations
+  const pointIndex = pointIdInLayer !== undefined ? pointIdInLayer : 0;
   
-  // Use globalIndex if provided (new sequential approach)
-  if (globalIndex !== undefined) {
-    pointIndex = globalIndex;
-  } else if (isIntersection) {
-    // For intersection points, use point index from intersection array
-    const intersectionIndex = triggerData.intersectionIndex || 0;
-    const totalRegularPoints = state.copies * state.segments;
-    pointIndex = totalRegularPoints + intersectionIndex;
-  } else if (copyIndex !== undefined && vertexIndex !== undefined) {
-    // For regular vertices, combine copy index and vertex index
-    pointIndex = (copyIndex * state.segments) + vertexIndex;
-  }
+  const duration = calculateDuration(pointIndex, layerState);
+  const velocity = calculateVelocity(pointIndex, layerState);
   
-  // Calculate duration based on selected mode and parameters
-  const duration = calculateDuration(pointIndex, state);
+  // Pan calculation could use a current angle if available in triggerData or layerState
+  // For now, keeping it simple or assuming it might be set later if dynamic pan is needed.
+  // const angRad = (layerState.angle || 0) % (2 * Math.PI); // Example using layerState static angle
+  const pan = 0; // Default to center pan; dynamic pan might need more context
   
-  // Calculate velocity based on selected mode and parameters
-  const velocity = calculateVelocity(pointIndex, state);
-  
-  // Calculate pan (stereo position) based on angle
-  const angRad = angle % (2 * Math.PI);
-  const pan = Math.sin(angRad);
-  
-  // Create note object with all parameters
   return {
     frequency,
     duration,
     velocity,
     pan,
-    pointIndex,
-    copyIndex,
-    vertexIndex,
+    pointIndex, // This is now the sequential pointIdInLayer
+    copyIndex, // Keep for context if needed
+    vertexIndex, // Keep for context if needed
     isIntersection,
     coordinates: { x, y },
-    time: Date.now(), // Current time in ms
+    time: 0, // Will be set by trigger logic (tNow or quantizedTime)
     noteName,
+    layerId: layerState.id || layerId, // Ensure layerId is on the note
+    triggerPointId: pointIdInLayer, // Explicitly store the unique ID from the layer's geometry generation
     
-    // For visualization/debugging
     parameterInfo: {
-      durationType: state.durationMode,
-      velocityType: state.velocityMode,
-      durationModulo: state.durationModulo,
-      velocityModulo: state.velocityModulo
+      durationType: layerState.durationMode,
+      velocityType: layerState.velocityMode,
+      durationModulo: layerState.durationModulo,
+      velocityModulo: layerState.velocityModulo
     }
   };
 }
