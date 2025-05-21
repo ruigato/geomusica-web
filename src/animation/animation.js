@@ -59,7 +59,8 @@ export function animate(params) {
     renderer, 
     cam, 
     state,
-    triggerAudioCallback
+    triggerAudioCallback,
+    layerManager
   } = params;
 
   // Store the last angle for trigger detection
@@ -73,9 +74,21 @@ export function animate(params) {
     state.frame = 0;
   }
   
-  // Force initial setup of group if it's empty
-  if (group.children.length === 0 && state.copies > 0) {
-    // Initial group setup - always do this
+  // Handle layer-based geometry setup
+  if (layerManager) {
+    // Update all layers
+    const { layers } = state;
+    if (layers && layers.list) {
+      layers.list.forEach(layerId => {
+        const layer = layers.byId[layerId];
+        if (layer) {
+          // Update layer in the manager
+          layerManager.updateLayer(layer);
+        }
+      });
+    }
+  } else if (group.children.length === 0 && state.copies > 0) {
+    // Fallback to original behavior if no layer manager
     updateGroup(
       group, 
       state.copies, 
@@ -93,27 +106,198 @@ export function animate(params) {
     resetGlobalSequentialIndex();
   }
   
+  // Debug counter for logging
+  let lastLogTime = 0;
+  const LOG_INTERVAL = 2000; // Log every 2 seconds
+  let animationStartTime = Date.now();
+  
   // Main animation function that will be called recursively
   function animationLoop() {
-    // Request next frame at the beginning to maintain frame rate
-    requestAnimationFrame(animationLoop);
+    // Always request the next frame at the start
+    animationFrameId = requestAnimationFrame(animationLoop);
     
     // Start performance measurement
     stats.begin();
     
-    // Get accurate time from time module
-    const tNow = getCurrentTime();
-    const dt = tNow - state.lastTime;
+    // Get current time for logging
+    const now = Date.now();
+    const shouldLog = (now - lastLogTime > LOG_INTERVAL);
+    
+    // Always log basic frame info
+    if (shouldLog) {
+      console.group('=== ANIMATION LOOP DEBUG ===');
+      console.log('Frame:', state.frame, 'Time:', (now - animationStartTime) / 1000 + 's');
+      
+      // Check WebGL context
+      const gl = renderer.getContext();
+      if (!gl) {
+        console.error('WebGL context is not available!');
+      } else {
+        // Check for WebGL errors
+        const error = gl.getError();
+        if (error !== gl.NO_ERROR) {
+          console.warn('WebGL error at start of frame:', getGLErrorString(gl, error));
+        }
+      }
+      
+      // Log renderer state
+      console.log('Renderer state:', {
+        size: `${renderer.domElement.width}x${renderer.domElement.height}`,
+        pixelRatio: renderer.getPixelRatio(),
+        autoClear: renderer.autoClear,
+        antialias: renderer.antialias,
+        sortObjects: renderer.sortObjects,
+        context: renderer.getContext().getContextAttributes()
+      });
+      
+      // Log camera state
+      console.log('Camera state:', {
+        position: cam.position.toArray(),
+        rotation: cam.rotation.toArray(),
+        fov: cam.fov,
+        aspect: cam.aspect,
+        near: cam.near,
+        far: cam.far,
+        matrixWorldNeedsUpdate: cam.matrixWorldNeedsUpdate
+      });
+      
+      // Log scene state
+      console.log('Scene state:', {
+        children: scene.children.length,
+        background: scene.background,
+        fog: scene.fog ? 'exists' : 'none',
+        autoUpdate: scene.autoUpdate
+      });
+      
+      // Log group state
+      console.log('Group state:', {
+        visible: group.visible,
+        children: group.children.length,
+        position: group.position.toArray(),
+        rotation: group.rotation.toArray(),
+        scale: group.scale.toArray(),
+        matrixWorldNeedsUpdate: group.matrixWorldNeedsUpdate
+      });
+      
+      // Log scene hierarchy
+      console.log('Scene hierarchy:');
+      scene.traverse((obj) => {
+        if (shouldLog) { // Only log full hierarchy periodically
+          console.log(`- ${obj.name || obj.type} (${obj.uuid})`, {
+            visible: obj.visible,
+            position: obj.position ? obj.position.toArray() : 'no position',
+            parent: obj.parent ? (obj.parent.name || obj.parent.type || obj.parent.uuid) : 'none',
+            matrixWorldNeedsUpdate: obj.matrixWorldNeedsUpdate
+          });
+        }
+      });
+      
+      console.groupEnd();
+      lastLogTime = now;
+    }
+    
+    // Get time from performance.now() for consistent frame timing
+    const tNow = performance.now() / 1000; // Convert to seconds
+    
+    // Initialize lastTime if not set
+    if (state.lastTime === undefined) {
+      state.lastTime = tNow;
+      startAnimation();
+      return;
+    }
+    
+    // Calculate delta time, ensuring it's not too large (cap at 100ms for safety)
+    let dt = Math.min(tNow - state.lastTime, 0.1);
     state.lastTime = tNow;
+    
+    // Skip frame if dt is 0 to prevent division by zero
+    if (dt <= 0) {
+      startAnimation();
+      requestAnimationFrame(animationLoop);
+      return;
+    }
+    
+    // Update lerped values in state
+    if (state.updateLerp) {
+      state.updateLerp(dt);
+    }
     
     // Process any pending triggers that should execute now
     if (triggerAudioCallback) {
       processPendingTriggers(tNow, triggerAudioCallback, scene);
     }
-
-    // Update lerped values
-    state.updateLerp(dt);
-
+    
+    // Update all layers if layerManager exists
+    if (layerManager) {
+      // Get the current audio time for accurate animation timing
+      const audioTime = csound?.getControlChannel?.('currentTime') || tNow;
+      
+      // Update layer animations with audio-synced delta time
+      layerManager.layers.forEach(layerData => {
+        if (layerData && layerManager._updateLayerAnimation) {
+          layerManager._updateLayerAnimation(layerData, dt, audioTime);
+        }
+      });
+      
+      // Process any queued updates after animation updates
+      if (layerManager._processUpdateQueue) {
+        layerManager._processUpdateQueue();
+      }
+    }
+    
+    // Update camera if needed
+    if (cam && state.cameraDistance !== undefined && state.targetCameraDistance !== undefined) {
+      // Smooth camera movement
+      cam.position.z += (state.targetCameraDistance - cam.position.z) * 0.1;
+      cam.lookAt(0, 0, 0);
+      cam.updateMatrixWorld();
+    }
+    
+    // Ensure we have all required components
+    if (!renderer || !scene || !cam) {
+      console.error('Renderer, scene, or camera not available:', { 
+        renderer: !!renderer, 
+        scene: !!scene, 
+        camera: !!cam 
+      });
+      return;
+    }
+    
+    // Update all objects in the scene
+    scene.updateMatrixWorld();
+    
+    // Clear the screen
+    renderer.clear();
+    
+    // Render the scene
+    try {
+      renderer.render(scene, cam);
+      
+      // Debug: Log rendering info periodically
+      if (state.frame % 60 === 0) {
+        console.log(`Rendered frame ${state.frame} with ${scene.children.length} children in scene`);
+        
+        // Log first few objects in the scene
+        console.log('First few scene objects:', 
+          scene.children.slice(0, 3).map(obj => ({
+            type: obj.type,
+            name: obj.name || 'unnamed',
+            visible: obj.visible,
+            children: obj.children ? obj.children.length : 0
+          }))
+        );
+      }
+      
+      // Increment frame counter
+      state.frame++;
+      
+    } catch (error) {
+      console.error('Error during rendering:', error);
+    }
+    
+    // End performance measurement
+    stats.end();
+    
     // Check if geometry needs updating
     let needsNewGeometry = false;
     
@@ -373,43 +557,93 @@ export function animate(params) {
       group.clear();
     }
 
-    // Update the group with current parameters if needed
-    if (shouldUpdateGroup) {
+    // Update layers based on state changes
+    if (layerManager && state.layers) {
+      const { layers } = state;
+      const needsUpdate = layers.list.some(layerId => {
+        const layer = layers.byId[layerId];
+        return layer && (layer._needsUpdate || state.needsGroupUpdate);
+      });
+      
+      if (needsUpdate) {
+        layers.list.forEach(layerId => {
+          const layer = layers.byId[layerId];
+          if (layer) {
+            // Update layer in the manager
+            layerManager.updateLayer(layer);
+            layer._needsUpdate = false;
+          }
+        });
+        
+        // Reset flags after update
+        state.needsGroupUpdate = false;
+        state.forceGroupUpdate = false;
+        state.forceIntersectionUpdate = false;
+        
+        // Clear any parameter changes that were just processed
+        if (state.parameterChanges) {
+          Object.keys(state.parameterChanges).forEach(key => {
+            state.parameterChanges[key] = false;
+          });
+        }
+        
+        // Force a render after layer updates to ensure smooth transitions
+        renderer.render(scene, cam);
+        return;
+      }
+    } 
+    // Fallback to original group update if no layer manager
+    else if (state.needsGroupUpdate) {
       updateGroup(
         group, 
         state.copies, 
         state.stepScale, 
-        params.baseGeo, 
+        baseGeo, 
         mat, 
         state.segments, 
         state.angle, 
         state, 
-        isLerping, 
-        state.justCalculatedIntersections || state.needsPointFreqLabelsUpdate
+        state.forceGroupUpdate, 
+        state.forceIntersectionUpdate
       );
       
-      // Reset point frequency labels update flag
-      if (state.needsPointFreqLabelsUpdate) {
-        state.needsPointFreqLabelsUpdate = false;
+      // Reset flags after update
+      state.needsGroupUpdate = false;
+      state.forceGroupUpdate = false;
+      state.forceIntersectionUpdate = false;
+      
+      // Clear any parameter changes that were just processed
+      if (state.parameterChanges) {
+        Object.keys(state.parameterChanges).forEach(key => {
+          state.parameterChanges[key] = false;
+        });
       }
-    }
-
-    // Reset parameter change flags
-    if (state.hasParameterChanged) {
-      state.resetParameterChanges();
+      
+      // Force a render after group update to ensure smooth transitions
+      renderer.render(scene, cam);
+      return;
     }
 
     // Calculate rotation angle based on BPM with time subdivision
-    let dAng = (state.bpm / 240) * 2 * Math.PI * dt;
+    // Use a fixed time step for consistent rotation speed regardless of frame rate
+    const fixedTimeStep = 1/60; // 60 FPS
+    let dAng = (state.bpm / 240) * 2 * Math.PI * fixedTimeStep;
 
     // Apply time subdivision as a direct speed multiplier if enabled
     if (state.useTimeSubdivision) {
-      // Use the time subdivision value directly as a multiplier
       dAng *= state.timeSubdivisionValue;
     }
 
-    // Apply rotation
+    // Apply rotation using the fixed time step for consistency
     group.rotation.z += dAng;
+    
+    // Keep the angle in a reasonable range to prevent precision issues
+    if (group.rotation.z > Math.PI * 2) {
+      group.rotation.z -= Math.PI * 2;
+    } else if (group.rotation.z < 0) {
+      group.rotation.z += Math.PI * 2;
+    }
+    
     const currentAngle = group.rotation.z;
 
     // Only update rotating labels if enabled and frame is appropriate
@@ -468,13 +702,79 @@ export function animate(params) {
     // Increment frame counter
     state.frame = (state.frame + 1) % 10000; // Prevent overflow by cycling
     
-    // Render the scene
-    renderer.render(scene, cam);
+    try {
+      // Clear any existing errors
+      const gl = renderer.getContext();
+      while(gl.getError() !== gl.NO_ERROR) {}
+      
+      // Force clear the buffer
+      renderer.clear();
+      
+      // Render the scene
+      renderer.render(scene, cam);
+      
+      // Check for WebGL errors
+      const error = gl.getError();
+      if (error !== gl.NO_ERROR) {
+        console.warn('WebGL error after render:', getGLErrorString(gl, error));
+      }
+      
+      // Verify something was rendered
+      const pixels = new Uint8Array(4);
+      gl.readPixels(
+        Math.floor(renderer.domElement.width / 2),
+        Math.floor(renderer.domElement.height / 2),
+        1, 1,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        pixels
+      );
+      
+      if (state.frame % 60 === 0) {
+        console.log('Center pixel (RGBA):', Array.from(pixels));
+      }
+      
+    } catch (error) {
+      console.error('Error during render:', error);
+    }
     
     // End performance measurement
     stats.end();
   }
   
+  // Helper function to get WebGL error string
+  function getGLErrorString(gl, error) {
+    const errors = {
+      [gl.NO_ERROR]: 'NO_ERROR',
+      [gl.INVALID_ENUM]: 'INVALID_ENUM',
+      [gl.INVALID_VALUE]: 'INVALID_VALUE',
+      [gl.INVALID_OPERATION]: 'INVALID_OPERATION',
+      [gl.OUT_OF_MEMORY]: 'OUT_OF_MEMORY',
+      [gl.CONTEXT_LOST_WEBGL]: 'CONTEXT_LOST_WEBGL'
+    };
+    return errors[error] || `Unknown error (${error})`;
+  }
+  
+  // Animation loop state
+  let isRunning = true;
+  let animationFrameId = null;
+  
   // Start the animation loop
-  animationLoop();
+  function startAnimation() {
+    if (!isRunning) return;
+    animationFrameId = requestAnimationFrame(animationLoop);
+  }
+  
+  // Initial start
+  startAnimation();
+  
+  // Return cleanup function
+  return () => {
+    isRunning = false;
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
+    console.log('Animation loop stopped');
+  };
 }

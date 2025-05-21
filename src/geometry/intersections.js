@@ -574,3 +574,57 @@ export function createIntersectionMarkers(scene, intersectionPoints, group) {
     scene.userData.intersectionMarkers.push(marker);
   }
 }
+
+/**
+ * Clean up intersection markers from the scene
+ * @param {THREE.Scene} scene The scene containing the markers
+ * @param {THREE.Group} [group] Optional group containing markers
+ */
+export function cleanupIntersectionMarkers(scene, group = null) {
+  if (!scene) return;
+  
+  if (group) {
+    // Remove all children from the group
+    while (group.children.length > 0) {
+      const child = group.children[0];
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+      group.remove(child);
+    }
+  } else if (scene.userData?.intersectionMarkers) {
+    // Clean up markers stored in scene.userData
+    for (const marker of scene.userData.intersectionMarkers) {
+      if (marker.parent) {
+        marker.parent.remove(marker);
+      } else {
+        scene.remove(marker);
+      }
+      if (marker.geometry) marker.geometry.dispose();
+      if (marker.material) {
+        if (Array.isArray(marker.material)) {
+          marker.material.forEach(m => m.dispose());
+        } else {
+          marker.material.dispose();
+        }
+      }
+    }
+    scene.userData.intersectionMarkers = [];
+  }
+  
+  // Clean up marker group if it exists
+  if (scene.userData?.intersectionMarkerGroup) {
+    const markerGroup = scene.userData.intersectionMarkerGroup;
+    if (markerGroup.parent) {
+      markerGroup.parent.remove(markerGroup);
+    } else {
+      scene.remove(markerGroup);
+    }
+    delete scene.userData.intersectionMarkerGroup;
+  }
+}

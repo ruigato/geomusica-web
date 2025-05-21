@@ -33,42 +33,62 @@ export function setupSynthUI(state, csoundInstance) {
   const volumeNumber = document.getElementById('volumeNumber');
   const volumeValue = document.getElementById('volumeValue');
 
-  // Initialize values from state
-  if (state.attack !== undefined) {
-    attackRange.value = state.attack;
-    attackNumber.value = state.attack;
-    attackValue.textContent = state.attack.toFixed(2);
+  // Ensure state is valid
+  if (!state) {
+    console.error('setupSynthUI: State object is undefined');
+    return {};
   }
 
-  if (state.decay !== undefined) {
-    decayRange.value = state.decay;
-    decayNumber.value = state.decay;
-    decayValue.textContent = state.decay.toFixed(2);
-  }
+  // Set default values for synth parameters
+  const defaults = {
+    attack: 0.1,
+    decay: 0.3,
+    sustain: 0.7,
+    release: 0.5,
+    brightness: 0.5,
+    volume: 0.7
+  };
 
-  if (state.sustain !== undefined) {
-    sustainRange.value = state.sustain;
-    sustainNumber.value = state.sustain;
-    sustainValue.textContent = state.sustain.toFixed(2);
-  }
+  // Log initial state for debugging
+  console.log('SynthUI initial state:', { ...state });
 
-  if (state.release !== undefined) {
-    releaseRange.value = state.release;
-    releaseNumber.value = state.release;
-    releaseValue.textContent = state.release.toFixed(2);
-  }
+  // Initialize state with defaults if they don't exist
+  Object.entries(defaults).forEach(([key, defaultValue]) => {
+    try {
+      // Use nullish coalescing to ensure we have a value
+      state[key] = state[key] ?? defaultValue;
+      
+      // If there's a setter, call it to ensure proper initialization
+      const setterName = `set${key.charAt(0).toUpperCase() + key.slice(1)}`;
+      if (typeof state[setterName] === 'function') {
+        state[setterName](state[key]);
+      }
+    } catch (error) {
+      console.error(`Error initializing ${key}:`, error);
+      state[key] = defaultValue; // Ensure we have a valid value
+    }
+  });
 
-  if (state.brightness !== undefined) {
-    brightnessRange.value = state.brightness;
-    brightnessNumber.value = state.brightness;
-    brightnessValue.textContent = state.brightness.toFixed(2);
-  }
+  // Helper function to safely set UI values
+  const safeSetValue = (rangeEl, numEl, spanEl, value, defaultValue) => {
+    if (!rangeEl || !numEl || !spanEl) return;
+    try {
+      const safeValue = value !== undefined ? value : defaultValue;
+      rangeEl.value = safeValue;
+      numEl.value = safeValue;
+      spanEl.textContent = safeValue.toFixed(2);
+    } catch (error) {
+      console.error(`Error setting UI value for ${rangeEl?.id || 'unknown'}:`, error);
+    }
+  };
 
-  if (state.volume !== undefined) {
-    volumeRange.value = state.volume;
-    volumeNumber.value = state.volume;
-    volumeValue.textContent = state.volume.toFixed(2);
-  }
+  // Initialize UI elements with safe values
+  safeSetValue(attackRange, attackNumber, attackValue, state.attack, defaults.attack);
+  safeSetValue(decayRange, decayNumber, decayValue, state.decay, defaults.decay);
+  safeSetValue(sustainRange, sustainNumber, sustainValue, state.sustain, defaults.sustain);
+  safeSetValue(releaseRange, releaseNumber, releaseValue, state.release, defaults.release);
+  safeSetValue(brightnessRange, brightnessNumber, brightnessValue, state.brightness, defaults.brightness);
+  safeSetValue(volumeRange, volumeNumber, volumeValue, state.volume, defaults.volume);
 
   // Helper function to sync a pair of range and number inputs
   const syncPair = (rangeEl, numEl, spanEl, setter, callback) => {

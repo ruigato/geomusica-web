@@ -6,6 +6,45 @@ import { ParameterMode } from '../notes/notes.js';
 import { createInitialLayersState, createLayerState } from './layerState.js';
 
 /**
+ * Simple event emitter implementation
+ */
+function createEventEmitter() {
+  const listeners = new Map();
+  
+  return {
+    on(event, callback) {
+      if (!listeners.has(event)) {
+        listeners.set(event, new Set());
+      }
+      listeners.get(event).add(callback);
+      return () => this.off(event, callback);
+    },
+    
+    off(event, callback) {
+      if (listeners.has(event)) {
+        listeners.get(event).delete(callback);
+      }
+    },
+    
+    emit(event, ...args) {
+      if (listeners.has(event)) {
+        for (const callback of listeners.get(event)) {
+          try {
+            callback(...args);
+          } catch (error) {
+            console.error(`Error in ${event} handler:`, error);
+          }
+        }
+      }
+    },
+    
+    clear() {
+      listeners.clear();
+    }
+  };
+}
+
+/**
  * Generate sequence from 1/modulus to 1.0 in even steps
  * @param {number} n Modulus value
  * @returns {Array<number>} Sequence of scale factors
@@ -26,9 +65,44 @@ export function generateSequence(n) {
  * @returns {Object} Application state object
  */
 export function createAppState() {
-  return {
+  const emitter = createEventEmitter();
+  
+  // Helper to create state with event emission
+  function createState(initialState) {
+    return new Proxy(initialState, {
+      get(target, prop) {
+        // Return undefined for non-existent properties without throwing
+        return target[prop];
+      },
+      set(target, prop, value) {
+        const oldValue = target[prop];
+        target[prop] = value;
+        emitter.emit('change', { prop, value, oldValue });
+        emitter.emit(`change:${prop}`, value, oldValue);
+        return true;
+      }
+    });
+  }
+  
+  // Default values for synth parameters
+  const defaultSynthParams = {
+    attack: 0.1,
+    decay: 0.3,
+    sustain: 0.7,
+    release: 0.5,
+    brightness: 0.5,
+    volume: 0.7,
+    useEuclid: false,  // Add default for Euclidean rhythm toggle
+    euclidValue: 4     // Default Euclidean rhythm value
+  };
+
+  // Create the state object with all properties
+  const state = {
     // Layer management
     layers: createInitialLayersState(),
+    
+    // Synth parameters with defaults
+    ...defaultSynthParams,
     
     // Track parameter changes (for the active layer)
     parameterChanges: {
@@ -44,6 +118,7 @@ export function createAppState() {
       altStepN: false,
       durationMode: false,
       durationModulo: false,
+      durationPhase: false,
       minDuration: false,
       maxDuration: false,
       velocityMode: false,
@@ -56,7 +131,9 @@ export function createAppState() {
       useStars: false,
       useCuts: false,
       euclidValue: false,
-      useEuclid: false
+      useEuclid: false,
+      layerVisibility: false,
+      layerOrder: false
     },
     
     // Performance and frame tracking
@@ -79,6 +156,9 @@ export function createAppState() {
     lastStepScale: DEFAULT_VALUES.STEP_SCALE,
     lastAngle: DEFAULT_VALUES.ANGLE,
 
+    // Layer management
+    needsLayerUpdate: false,
+    
     // User configurable parameters
     bpm: DEFAULT_VALUES.BPM,
     radius: DEFAULT_VALUES.RADIUS,
@@ -120,6 +200,7 @@ export function createAppState() {
     // Duration parameters
     durationMode: ParameterMode.MODULO, // Default to modulo mode
     durationModulo: 3, // Default modulo value
+    durationPhase: 0, // Default phase offset for duration
     minDuration: 0.1, // Minimum duration in seconds
     maxDuration: 0.5, // Maximum duration in seconds
     
@@ -185,15 +266,29 @@ export function createAppState() {
      * @returns {boolean} True if any parameters changed
      */
     hasParameterChanged() {
-      return Object.values(this.parameterChanges).some(changed => changed);
+      return Object.values(this.parameterChanges).some(hasChanged => hasChanged) || 
+             this.needsLayerUpdate;
+    },
+    
+    // Mark a layer as needing update
+    markLayerForUpdate(layerId) {
+      if (this.layers.byId[layerId]) {
+        this.layers.byId[layerId]._needsUpdate = true;
+        this.needsLayerUpdate = true;
+      }
     },
     
     /**
      * Reset all parameter change flags
      */
     resetParameterChanges() {
-      for (const key in this.parameterChanges) {
+      Object.keys(this.parameterChanges).forEach(key => {
         this.parameterChanges[key] = false;
+      });
+      
+      // Mark layers for update if any layer-related parameters changed
+      if (this.parameterChanges.layerVisibility || this.parameterChanges.layerOrder) {
+        this.needsLayerUpdate = true;
       }
     },
     
@@ -1067,6 +1162,68 @@ export function createAppState() {
       return a;
     },
   };
+  
+  // Create the final state object with all methods and properties
+  const finalState = createState({
+    ...state,
+    // Add event emitter methods
+    on: emitter.on.bind(emitter),
+    off: emitter.off.bind(emitter),
+    emit: emitter.emit.bind(emitter),
+    // Add all methods
+    setEuclidValue: function(value) {
+      const newValue = Math.max(1, Math.min(12, Math.round(Number(value))));
+      if (this.euclidValue !== newValue) {
+        this.euclidValue = newValue;
+        this.parameterChanges.euclidValue = true;
+        this.needsIntersectionUpdate = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo && this.useEuclid) {
+          console.log("Forcing geometry update due to Euclidean value change");
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null;
+        }
+      }
+    },
+    
+    setUseEuclid: function(value) {
+      const newValue = Boolean(value);
+      if (this.useEuclid !== newValue) {
+        this.useEuclid = newValue;
+        this.parameterChanges.useEuclid = true;
+        this.needsIntersectionUpdate = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo) {
+          console.log("Forcing geometry update due to Euclidean toggle");
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null;
+        }
+      }
+    },
+    
+    // Other methods...
+    setStarSkip: state.setStarSkip,
+    setUseStars: state.setUseStars,
+    setUseCuts: state.setUseCuts,
+    getValidStarSkips: state.getValidStarSkips,
+    gcd: state.gcd,
+    
+    // Calculate scale factor for a specific copy when using modulus
+    getScaleFactorForCopy: function(copyIndex) {
+      if (this.modulus <= 1) return 1.0;
+      
+      // Calculate the step size between scale factors
+      const step = (1.0 - (1.0 / this.modulus)) / (this.modulus - 1);
+      
+      // Calculate the scale factor for this copy, cycling through the sequence
+      const sequenceIndex = copyIndex % this.modulus;
+      return (1.0 / this.modulus) + (sequenceIndex * step);
+    }
+  });
+  
+  return finalState;
 }
 
 /**
@@ -1083,25 +1240,52 @@ export function getActiveLayerState(state) {
  * @param {Object} state - Current application state
  * @param {string} layerId - ID of the layer to update
  * @param {Object} updates - Updates to apply to the layer
- * @returns {Object} New application state
+ * @returns {Object} New application state with the updated layer
  */
 export function updateLayerState(state, layerId, updates) {
-  const layer = state.layers.byId[layerId];
-  if (!layer) return state;
+  if (!state.layers.byId[layerId]) return state;
   
-  return {
+  // Check if any geometry-related properties are being updated
+  const geometryProps = ['radius', 'segments', 'stepScale', 'angle', 'copies', 
+                       'useFractal', 'fractalValue', 'useStars', 'starSkip', 
+                       'useEuclid', 'euclidValue', 'useModulus', 'modulus'];
+  
+  const isGeometryUpdate = Object.keys(updates).some(key => 
+    geometryProps.includes(key)
+  );
+  
+  // Create updated layer with new values
+  const updatedLayer = {
+    ...state.layers.byId[layerId],
+    ...updates,
+    updatedAt: Date.now()
+  };
+  
+  const newState = {
     ...state,
     layers: {
       ...state.layers,
       byId: {
         ...state.layers.byId,
-        [layerId]: {
-          ...layer,
-          ...updates
-        }
+        [layerId]: updatedLayer
       }
     }
   };
+  
+  // If this is a geometry update, ensure the layer manager knows to update
+  if (isGeometryUpdate) {
+    // Emit a specific event for geometry changes
+    if (state.emit) {
+      state.emit('geometry:changed', { layerId, updates });
+    }
+    
+    // Also emit the general layers changed event
+    if (state.emit) {
+      state.emit('layers:changed');
+    }
+  }
+  
+  return newState;
 }
 
 /**
@@ -1111,8 +1295,10 @@ export function updateLayerState(state, layerId, updates) {
  * @returns {Object} New application state with the added layer
  */
 export function addLayer(state, options = {}) {
+  console.log('addLayer called with options:', options);
   const newLayerId = `layer-${Date.now()}`;
   const activeLayer = getActiveLayerState(state);
+  console.log('Active layer:', activeLayer ? { id: activeLayer.id, name: activeLayer.name } : 'none');
   
   // Create new layer, optionally copying properties from active layer
   const newLayer = createLayerState(newLayerId, {
@@ -1132,7 +1318,8 @@ export function addLayer(state, options = {}) {
       useStars: activeLayer.useStars,
       starSkip: activeLayer.starSkip,
       useEuclid: activeLayer.useEuclid,
-      euclidValue: activeLayer.euclidValue
+      euclidValue: activeLayer.euclidValue,
+      modulus: activeLayer.modulus
     } : {}),
     ...options
   });

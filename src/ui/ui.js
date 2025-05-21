@@ -1,23 +1,78 @@
-// src/ui/ui.js - Updated with Number parameter rounding fix
+// src/ui/ui.js - Updated with robust state access and error handling
 import { UI_RANGES, QUANTIZATION_VALUES } from '../config/constants.js';
 import { ParameterMode } from '../notes/notes.js';
 
-// Function to set up modulus radio buttons - MOVED TO TOP OF FILE
+/**
+ * Safely access state properties with defaults
+ * @param {Object} state - Application state object
+ * @param {string} prop - Property path to access (e.g., 'timeSubdivisionValue')
+ * @param {*} defaultValue - Default value if property is undefined
+ * @returns {*} The property value or default
+ */
+function getStateValue(state, prop, defaultValue) {
+  if (!state) return defaultValue;
+  
+  // Special handling for nested properties if needed
+  const value = state[prop];
+  return value !== undefined ? value : defaultValue;
+}
+
+// Define default values for all state properties
+const defaultState = {
+  // Modulus values
+  modulusValue: 2,
+  durationModulo: 3,
+  velocityModulo: 4,
+  
+  // Time and subdivision
+  timeSubdivisionValue: 1.0,
+  
+  // Duration and velocity
+  minDuration: 0.1,
+  maxDuration: 0.5,
+  minVelocity: 0.3,
+  maxVelocity: 0.9,
+  
+  // Toggles and flags
+  showAxisFreqLabels: false,
+  showPointsFreqLabels: false,
+  useAltScale: false,
+  useTimeSubdivision: false,
+  useEqualTemperament: false,
+  useQuantization: false,
+  useFractal: false,
+  useStars: false,
+  useCuts: false,
+  
+  // Other numeric values
+  referenceFrequency: 440.0,
+  altScale: 1.0,
+  altStepN: 1,
+  
+  // Add other state properties with defaults as needed
+};
+
+/**
+ * Set up modulus radio buttons with safe state access
+ * @param {HTMLElement} container - Container for radio buttons
+ * @param {Object} state - Application state
+ * @param {string} [type=null] - Type of modulus ('duration', 'velocity', or null for default)
+ */
 function setupModulusRadioButtons(container, state, type = null) {
-  if (!container) return; // Null check
+  if (!container || !state) return; // Null check
   
   // Clear any existing content
   container.innerHTML = '';
   
-  // Get current value from state based on type
+  // Get current value from state with safe defaults
   let currentValue;
   
   if (type === 'duration') {
-    currentValue = state.durationModulo;
+    currentValue = getStateValue(state, 'durationModulo', defaultState.durationModulo);
   } else if (type === 'velocity') {
-    currentValue = state.velocityModulo;
+    currentValue = getStateValue(state, 'velocityModulo', defaultState.velocityModulo);
   } else {
-    currentValue = state.modulusValue;
+    currentValue = getStateValue(state, 'modulusValue', defaultState.modulusValue);
   }
   
   // Create a radio button for each value from 1 to 12
@@ -58,12 +113,19 @@ function setupModulusRadioButtons(container, state, type = null) {
   }
 }
 
-// Function to set up time subdivision radio buttons - MOVED TO TOP OF FILE
+/**
+ * Set up time subdivision radio buttons with safe state access
+ * @param {HTMLElement} container - Container for radio buttons
+ * @param {Object} state - Application state
+ */
 function setupTimeSubdivisionRadioButtons(container, state) {
   if (!container) return; // Null check
   
   // Clear any existing content
   container.innerHTML = '';
+  
+  // Get current value with safe default
+  const currentValue = getStateValue(state, 'timeSubdivisionValue', defaultState.timeSubdivisionValue);
   
   // Create radio buttons for each division option
   // Format: [displayed value, actual multiplier]
@@ -98,7 +160,7 @@ function setupTimeSubdivisionRadioButtons(container, state) {
     radioInput.id = safeCssId;
     radioInput.name = 'timeSubdivision';
     radioInput.value = value;
-    radioInput.checked = (Math.abs(value - state.timeSubdivisionValue) < 0.001);
+    radioInput.checked = (Math.abs(value - currentValue) < 0.001);
     
     // Add event listener
     radioInput.addEventListener('change', () => {
@@ -124,20 +186,23 @@ function setupQuantizationRadioButtons(container, state) {
   // Clear any existing content
   container.innerHTML = '';
   
-  // Create a radio button for each quantization value
-  for (const value of QUANTIZATION_VALUES) {
+  // Get current value with safe default (default to 1/4 if not set)
+  const currentValue = getStateValue(state, 'quantizationValue', 0.25);
+  
+  // Create radio buttons for each quantization value
+  for (const [label, value] of QUANTIZATION_VALUES) {
     const radioItem = document.createElement('div');
     radioItem.className = 'radio-item';
     
     // Create a CSS-safe ID by replacing slashes with underscores
-    const safeCssId = `quantization-${value.replace(/\//g, '_')}`;
+    const safeCssId = `quantization-${String(value).replace(/\//g, '_')}`;
     
     const radioInput = document.createElement('input');
     radioInput.type = 'radio';
     radioInput.id = safeCssId;
     radioInput.name = 'quantization';
     radioInput.value = value;
-    radioInput.checked = (value === state.quantizationValue);
+    radioInput.checked = (Math.abs(value - currentValue) < 0.001);
     
     // Store the original value as a data attribute for reference
     radioInput.dataset.originalValue = value;
@@ -166,36 +231,33 @@ function setupStarSkipRadioButtons(container, state) {
   // Clear any existing content
   container.innerHTML = '';
   
-  // Get valid skips for the current number of segments
-  const validSkips = state.getValidStarSkips();
+  // Get current value with safe default (default to 2 if not set)
+  const currentValue = getStateValue(state, 'starSkip', 2);
   
-  // Get current value from state
-  const currentValue = state.starSkip;
-  
-  // Create a radio button for each valid skip value
-  for (const skipValue of validSkips) {
+  // Create radio buttons for star skip values (1-12)
+  for (let i = 1; i <= 12; i++) {
     const radioItem = document.createElement('div');
     radioItem.className = 'radio-item';
     
-    const radioId = `starSkip-${skipValue}`;
+    const radioId = `starSkip-${i}`;
     
     const radioInput = document.createElement('input');
     radioInput.type = 'radio';
     radioInput.id = radioId;
     radioInput.name = 'starSkip';
-    radioInput.value = skipValue;
-    radioInput.checked = (skipValue === currentValue);
+    radioInput.value = i;
+    radioInput.checked = (i === currentValue);
     
     // Add event listener
     radioInput.addEventListener('change', () => {
       if (radioInput.checked) {
-        state.setStarSkip(skipValue);
+        state.setStarSkip(i);
       }
     });
     
     const radioLabel = document.createElement('label');
     radioLabel.htmlFor = radioId;
-    radioLabel.textContent = skipValue;
+    radioLabel.textContent = i; // Use the loop counter as the skip value
     
     radioItem.appendChild(radioInput);
     radioItem.appendChild(radioLabel);
@@ -310,11 +372,31 @@ export function setupUI(state) {
   const durationPhaseNumber = document.getElementById('durationPhaseNumber');
   const durationPhaseValue = document.getElementById('durationPhaseValue');
   
-  // Set initial values for duration phase with null checks
-  if (durationPhaseRange && durationPhaseNumber && durationPhaseValue) {
-    durationPhaseRange.value = state.durationPhase || 0;
-    durationPhaseNumber.value = state.durationPhase || 0;
-    durationPhaseValue.textContent = (state.durationPhase || 0).toFixed(2);
+  // Set initial values for duration phase with robust error handling
+  try {
+    if (durationPhaseRange && durationPhaseNumber && durationPhaseValue) {
+      // Safely get durationPhase with fallback to 0
+      const durationPhase = (state && (state.durationPhase !== undefined)) ? state.durationPhase : 0;
+      
+      // Ensure values are valid numbers
+      const safeValue = typeof durationPhase === 'number' ? durationPhase : 0;
+      
+      // Update UI elements
+      durationPhaseRange.value = safeValue;
+      durationPhaseNumber.value = safeValue;
+      durationPhaseValue.textContent = safeValue.toFixed(2);
+      
+      // Initialize state if not set
+      if (state && state.setDurationPhase) {
+        state.setDurationPhase(safeValue);
+      }
+    }
+  } catch (error) {
+    console.warn('Error initializing duration phase controls:', error);
+    // Set safe defaults
+    if (durationPhaseRange) durationPhaseRange.value = 0;
+    if (durationPhaseNumber) durationPhaseNumber.value = 0;
+    if (durationPhaseValue) durationPhaseValue.textContent = '0.00';
   }
   
   // Check if required elements exist before proceeding
@@ -323,62 +405,124 @@ export function setupUI(state) {
     // Continue with other elements that are available
   }
   
-  // Initialize checkbox states from app state with null checks
-  if (showAxisFreqLabelsCheckbox) showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;
-  if (showPointsFreqLabelsCheckbox) showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
-  if (useAltScaleCheckbox) useAltScaleCheckbox.checked = state.useAltScale;
-  if (useTimeSubdivisionCheckbox) useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
-  if (useEqualTemperamentCheckbox) useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
-  if (useQuantizationCheckbox) useQuantizationCheckbox.checked = state.useQuantization;
-  if (useFractalCheckbox) useFractalCheckbox.checked = state.useFractal;
-  if (useStarsCheckbox) useStarsCheckbox.checked = state.useStars;
-  if (useCutsCheckbox) useCutsCheckbox.checked = state.useCuts;
+
+  /**
+   * Safely gets a number from state with a default value
+   * @param {Object} state - The state object
+   * @param {string} prop - The property name to get
+   * @param {number} defaultValue - Default value if property is missing or invalid
+   * @returns {number} The safe number value
+   */
+  const safeNumberState = (state, prop, defaultValue = 0) => {
+    if (state && (state[prop] !== undefined)) {
+      const value = parseFloat(state[prop]);
+      return isNaN(value) ? defaultValue : value;
+    }
+    return defaultValue;
+  };
+
+  /**
+   * Initialize a number control with range and number inputs
+   * @param {HTMLInputElement} range - Range input element
+   * @param {HTMLInputElement} number - Number input element
+   * @param {HTMLElement} value - Element to display the value
+   * @param {string} stateProp - State property name
+   * @param {number} defaultValue - Default value
+   * @param {number} precision - Number of decimal places
+   */
+  const initNumberControl = (range, number, value, stateProp, defaultValue = 0, precision = 2) => {
+    if (!range || !number || !value) return;
+    
+    // Get value from state with safe fallback
+    const safeValue = getStateValue(state, stateProp, defaultValue);
+    const numValue = typeof safeValue === 'number' ? safeValue : parseFloat(safeValue) || defaultValue;
+    
+    // Update UI elements
+    range.value = numValue;
+    number.value = numValue;
+    value.textContent = numValue.toFixed(precision);
+    
+    // Add event listeners for changes
+    const updateState = (newValue) => {
+      const num = parseFloat(newValue);
+      if (!isNaN(num) && state && state[`set${stateProp.charAt(0).toUpperCase() + stateProp.slice(1)}`]) {
+        state[`set${stateProp.charAt(0).toUpperCase() + stateProp.slice(1)}`](num);
+      }
+    };
+    
+    range.addEventListener('input', (e) => {
+      const num = parseFloat(e.target.value);
+      if (!isNaN(num)) {
+        number.value = num;
+        value.textContent = num.toFixed(precision);
+        updateState(num);
+      }
+    });
+    
+    number.addEventListener('change', (e) => {
+      const num = parseFloat(e.target.value);
+      if (!isNaN(num)) {
+        range.value = num;
+        value.textContent = num.toFixed(precision);
+        updateState(num);
+      } else {
+        // Reset to current value if invalid
+        e.target.value = numValue;
+      }
+    });
+  };
+
+  // Initialize scale mod controls
+  initNumberControl(altScaleRange, altScaleNumber, altScaleValue, 'altScale', 1.0);
+  initNumberControl(altStepNRange, altStepNNumber, altStepNValue, 'altStepN', 1, 0);
   
-  // Set initial values for scale mod controls from state with null checks
-  if (altScaleRange && altScaleNumber && altScaleValue) {
-    altScaleRange.value = state.altScale;
-    altScaleNumber.value = state.altScale;
-    altScaleValue.textContent = state.altScale.toFixed(2);
-  }
+  // Initialize equal temperament controls with safe defaults
+  initNumberControl(
+    referenceFreqRange, 
+    referenceFreqNumber, 
+    referenceFreqValue, 
+    'referenceFrequency', 
+    440.0,  // Standard A4 frequency
+    1       // No decimal places for frequency
+  );
   
-  if (altStepNRange && altStepNNumber && altStepNValue) {
-    altStepNRange.value = state.altStepN;
-    altStepNNumber.value = state.altStepN;
-    altStepNValue.textContent = state.altStepN;
-  }
+  // Initialize duration controls with safe defaults
+  initNumberControl(
+    minDurationRange,
+    minDurationNumber,
+    minDurationValue,
+    'minDuration',
+    0.1,   // Default minimum duration in seconds
+    2       // 2 decimal places for duration
+  );
   
-  // Set initial values for equal temperament controls with null checks
-  if (referenceFreqRange && referenceFreqNumber && referenceFreqValue) {
-    referenceFreqRange.value = state.referenceFrequency;
-    referenceFreqNumber.value = state.referenceFrequency;
-    referenceFreqValue.textContent = state.referenceFrequency;
-  }
+  initNumberControl(
+    maxDurationRange,
+    maxDurationNumber,
+    maxDurationValue,
+    'maxDuration',
+    0.5,   // Default maximum duration in seconds
+    2       // 2 decimal places for duration
+  );
   
-  // Set initial values for duration controls with null checks
-  if (minDurationRange && minDurationNumber && minDurationValue) {
-    minDurationRange.value = state.minDuration;
-    minDurationNumber.value = state.minDuration;
-    minDurationValue.textContent = state.minDuration.toFixed(2);
-  }
+  // Initialize velocity controls with safe defaults
+  initNumberControl(
+    minVelocityRange,
+    minVelocityNumber,
+    minVelocityValue,
+    'minVelocity',
+    0.3,   // Default minimum velocity (0-1)
+    2       // 2 decimal places for velocity
+  );
   
-  if (maxDurationRange && maxDurationNumber && maxDurationValue) {
-    maxDurationRange.value = state.maxDuration;
-    maxDurationNumber.value = state.maxDuration;
-    maxDurationValue.textContent = state.maxDuration.toFixed(2);
-  }
-  
-  // Set initial values for velocity controls with null checks
-  if (minVelocityRange && minVelocityNumber && minVelocityValue) {
-    minVelocityRange.value = state.minVelocity;
-    minVelocityNumber.value = state.minVelocity;
-    minVelocityValue.textContent = state.minVelocity.toFixed(2);
-  }
-  
-  if (maxVelocityRange && maxVelocityNumber && maxVelocityValue) {
-    maxVelocityRange.value = state.maxVelocity;
-    maxVelocityNumber.value = state.maxVelocity;
-    maxVelocityValue.textContent = state.maxVelocity.toFixed(2);
-  }
+  initNumberControl(
+    maxVelocityRange,
+    maxVelocityNumber,
+    maxVelocityValue,
+    'maxVelocity',
+    0.9,   // Default maximum velocity (0-1)
+    2       // 2 decimal places for velocity
+  );
   
   // Setup event listeners for new checkboxes with null checks
   if (showAxisFreqLabelsCheckbox) {
@@ -417,106 +561,126 @@ export function setupUI(state) {
     setupModulusRadioButtons(velocityModuloRadioGroup, state, 'velocity');
   }
   
-  // Setup modulus checkbox with null check
+  // Setup modulus checkbox with null check and safe state access
   if (useModulusCheckbox) {
-    useModulusCheckbox.checked = state.useModulus;
+    useModulusCheckbox.checked = getStateValue(state, 'useModulus', defaultState.useModulus);
     useModulusCheckbox.addEventListener('change', e => {
-      state.setUseModulus(e.target.checked);
+      if (state && state.setUseModulus) {
+        state.setUseModulus(e.target.checked);
+      }
     });
   }
   
-  // Setup time subdivision checkbox with null check
+  // Setup time subdivision checkbox with safe state access
   if (useTimeSubdivisionCheckbox) {
-    useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
+    useTimeSubdivisionCheckbox.checked = getStateValue(state, 'useTimeSubdivision', defaultState.useTimeSubdivision);
     useTimeSubdivisionCheckbox.addEventListener('change', e => {
-      state.setUseTimeSubdivision(e.target.checked);
+      if (state && state.setUseTimeSubdivision) {
+        state.setUseTimeSubdivision(e.target.checked);
+      }
     });
   }
   
-  // Setup quantization checkbox with null check
+  // Setup quantization checkbox with safe state access
   if (useQuantizationCheckbox) {
-    useQuantizationCheckbox.checked = state.useQuantization;
+    useQuantizationCheckbox.checked = getStateValue(state, 'useQuantization', defaultState.useQuantization);
     useQuantizationCheckbox.addEventListener('change', e => {
-      state.setUseQuantization(e.target.checked);
+      if (state && state.setUseQuantization) {
+        state.setUseQuantization(e.target.checked);
+      }
     });
   }
   
-  // Setup alt scale checkbox with null check
+  // Setup alt scale checkbox with safe state access
   if (useAltScaleCheckbox) {
-    useAltScaleCheckbox.checked = state.useAltScale;
+    useAltScaleCheckbox.checked = getStateValue(state, 'useAltScale', defaultState.useAltScale);
     useAltScaleCheckbox.addEventListener('change', e => {
-      state.setUseAltScale(e.target.checked);
+      if (state && state.setUseAltScale) {
+        state.setUseAltScale(e.target.checked);
+      }
     });
   }
   
-  // Setup equal temperament checkbox with null check
+  // Setup equal temperament checkbox with safe state access
   if (useEqualTemperamentCheckbox) {
-    useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
+    useEqualTemperamentCheckbox.checked = getStateValue(state, 'useEqualTemperament', defaultState.useEqualTemperament);
     useEqualTemperamentCheckbox.addEventListener('change', e => {
-      state.setUseEqualTemperament(e.target.checked);
+      if (state && state.setUseEqualTemperament) {
+        state.setUseEqualTemperament(e.target.checked);
+      }
     });
   }
   
-  // Setup fractal checkbox with null check
+  // Setup fractal checkbox with safe state access
   if (useFractalCheckbox) {
-    useFractalCheckbox.checked = state.useFractal;
+    useFractalCheckbox.checked = getStateValue(state, 'useFractal', defaultState.useFractal);
     useFractalCheckbox.addEventListener('change', e => {
-      state.setUseFractal(e.target.checked);
+      if (state && state.setUseFractal) {
+        state.setUseFractal(e.target.checked);
+      }
     });
   }
   
-  // Setup stars checkbox with null check
+  // Setup stars checkbox with safe state access
   if (useStarsCheckbox) {
-    useStarsCheckbox.checked = state.useStars;
+    useStarsCheckbox.checked = getStateValue(state, 'useStars', defaultState.useStars);
     useStarsCheckbox.addEventListener('change', e => {
-      state.setUseStars(e.target.checked);
+      if (state && state.setUseStars) {
+        state.setUseStars(e.target.checked);
+      }
     });
   }
   
-  // Setup cuts checkbox with null check
+  // Setup cuts checkbox with safe state access
   if (useCutsCheckbox) {
-    useCutsCheckbox.checked = state.useCuts;
+    useCutsCheckbox.checked = getStateValue(state, 'useCuts', defaultState.useCuts);
     useCutsCheckbox.addEventListener('change', e => {
-      state.setUseCuts(e.target.checked);
+      if (state && state.setUseCuts) {
+        state.setUseCuts(e.target.checked);
+      }
     });
   }
   
-  // Setup intersections checkbox with null check
+  // Setup intersections checkbox with safe state access
   if (useIntersectionsCheckbox) {
-    useIntersectionsCheckbox.checked = state.useIntersections;
+    useIntersectionsCheckbox.checked = getStateValue(state, 'useIntersections', defaultState.useIntersections);
     useIntersectionsCheckbox.addEventListener('change', e => {
-      state.setUseIntersections(e.target.checked);
+      if (state && state.setUseIntersections) {
+        state.setUseIntersections(e.target.checked);
+      }
     });
   }
 
-  // Setup duration mode radio buttons with null check
+  // Setup duration mode radio buttons with safe state access
   if (durationModeRadios && durationModeRadios.length > 0) {
+    // Get current duration mode with safe default ('fixed' if not set)
+    const currentMode = getStateValue(state, 'durationMode', 'fixed');
+    
     durationModeRadios.forEach(radio => {
       // Check the one that matches the current state
-      if (radio.value === state.durationMode) {
-        radio.checked = true;
-      }
+      radio.checked = (radio.value === currentMode);
       
-      // Add event listener
+      // Add event listener with null check
       radio.addEventListener('change', e => {
-        if (e.target.checked) {
+        if (e.target.checked && state && state.setDurationMode) {
           state.setDurationMode(e.target.value);
         }
       });
     });
   }
   
-  // Setup velocity mode radio buttons with null check
+  // Setup velocity mode radio buttons with safe state access
   if (velocityModeRadios && velocityModeRadios.length > 0) {
+    // Get current velocity mode with safe default ('fixed' if not set)
+    const currentMode = getStateValue(state, 'velocityMode', 'fixed');
+    
     velocityModeRadios.forEach(radio => {
       // Check the one that matches the current state
-      if (radio.value === state.velocityMode) {
-        radio.checked = true;
-      }
+      radio.checked = (radio.value === currentMode);
       
-      // Add event listener
+      // Add event listener with null check
       radio.addEventListener('change', e => {
-        if (e.target.checked) {
+        if (e.target.checked && state && state.setVelocityMode) {
           state.setVelocityMode(e.target.value);
         }
       });
@@ -692,24 +856,32 @@ export function setupUI(state) {
       Number);
   }
 
-  // Add velocity phase UI elements
+  // Add velocity phase UI elements with safe state access
   const velocityPhaseRange = document.getElementById('velocityPhaseRange');
   const velocityPhaseNumber = document.getElementById('velocityPhaseNumber');
   const velocityPhaseValue = document.getElementById('velocityPhaseValue');
   
-  // Set initial values for velocity phase with null checks
+  // Set initial values for velocity phase with null checks and safe defaults
   if (velocityPhaseRange && velocityPhaseNumber && velocityPhaseValue) {
-    velocityPhaseRange.value = state.velocityPhase || 0;
-    velocityPhaseNumber.value = state.velocityPhase || 0;
-    velocityPhaseValue.textContent = (state.velocityPhase || 0).toFixed(2);
+    const velocityPhase = getStateValue(state, 'velocityPhase', 0);
+    const phaseValue = typeof velocityPhase === 'number' ? velocityPhase : 0;
+    
+    velocityPhaseRange.value = phaseValue;
+    velocityPhaseNumber.value = phaseValue;
+    velocityPhaseValue.textContent = phaseValue.toFixed(2);
   }
 
-  // Add this alongside the other velocity controls
+  // Setup velocity phase controls with safe state updates
   if (velocityPhaseRange && velocityPhaseNumber && velocityPhaseValue) {
-    syncPair(velocityPhaseRange, velocityPhaseNumber, velocityPhaseValue,
-      value => state.setVelocityPhase(Number(value)),
-      0, 1.0,
-      Number);
+    syncPair(
+      velocityPhaseRange, 
+      velocityPhaseNumber, 
+      velocityPhaseValue,
+      value => state && state.setVelocityPhase && state.setVelocityPhase(Number(value)),
+      0, 
+      1.0,
+      Number
+    );
   }
 
   // Link star polygon controls
@@ -719,34 +891,62 @@ export function setupUI(state) {
 
   // Update valid skips information when segments change
   if (numberRange && validSkipsInfo) {
-    numberRange.addEventListener('input', updateValidSkips);
-    numberNumber.addEventListener('input', updateValidSkips);
-    
-    // Initial update
-    updateValidSkips();
-    
-    // Function to update valid skips information
-    function updateValidSkips() {
-      const n = state.segments;
-      const validSkips = state.getValidStarSkips();
-      validSkipsInfo.textContent = `Valid skips for ${getPolygonName(n)} (n=${n}): ${validSkips.join(', ')}`;
+    // Function to update valid skips information with safe state access
+    const updateValidSkips = () => {
+      if (!state) return;
       
-      // Update the star skip radio buttons 
+      // Safely get segments with default value of 5
+      const n = getStateValue(state, 'segments', 5);
+      
+      // Safely get valid skips with fallback
+      let validSkips = [];
+      if (typeof state.getValidStarSkips === 'function') {
+        validSkips = state.getValidStarSkips();
+      } else {
+        // Fallback to a reasonable default if getValidStarSkips is not available
+        validSkips = Array.from({length: Math.min(n, 12)}, (_, i) => i + 1);
+      }
+      
+      // Update the UI if the element exists
+      if (validSkipsInfo) {
+        validSkipsInfo.textContent = `Valid skips for ${getPolygonName(n)} (n=${n}): ${validSkips.join(', ')}`;
+      }
+      
+      // Update the star skip radio buttons if the container exists
       if (starSkipRadioGroup) {
         setupStarSkipRadioButtons(starSkipRadioGroup, state);
       }
       
       // Ensure the current skip value is valid
       if (validSkips.length > 0) {
+        // Safely get current skip value with default of 2
+        const currentSkip = getStateValue(state, 'starSkip', 2);
+        
         // Set skip to first valid skip if current value is not valid
-        if (!validSkips.includes(state.starSkip)) {
-          console.log(`Current skip ${state.starSkip} is not valid. Setting to ${validSkips[0]}`);
-          state.setStarSkip(validSkips[0]);
+        if (!validSkips.includes(currentSkip)) {
+          console.log(`Current skip ${currentSkip} is not valid. Setting to ${validSkips[0]}`);
+          if (state.setStarSkip) {
+            state.setStarSkip(validSkips[0]);
+          }
         } else {
-          console.log(`Current skip ${state.starSkip} is valid among ${validSkips.join(',')}`);
+          console.log(`Current skip ${currentSkip} is valid among ${validSkips.join(',')}`);
         }
       }
+    };
+    
+    // Add event listeners for number inputs
+    if (numberRange) {
+      numberRange.addEventListener('input', updateValidSkips);
+      numberRange.addEventListener('change', updateValidSkips);
     }
+    
+    if (numberNumber) {
+      numberNumber.addEventListener('input', updateValidSkips);
+      numberNumber.addEventListener('change', updateValidSkips);
+    }
+    
+    // Initial update
+    updateValidSkips();
     
     // Helper function to get polygon name
     function getPolygonName(sides) {
@@ -772,29 +972,49 @@ export function setupUI(state) {
   const useEuclidCheckbox = document.getElementById('useEuclidCheckbox');
   const validEuclidInfo = document.getElementById('validEuclidInfo');
   
-  // Setup Euclidean rhythm checkbox with null check
+  // Setup Euclidean rhythm checkbox with null check and safe state access
   if (useEuclidCheckbox) {
-    useEuclidCheckbox.checked = state.useEuclid;
-    useEuclidCheckbox.addEventListener('change', e => {
-      state.setUseEuclid(e.target.checked);
-    });
+    // Safely get useEuclid with default value of false
+    const useEuclid = getStateValue(state, 'useEuclid', false);
+    useEuclidCheckbox.checked = useEuclid;
+    
+    // Safely add change listener if setUseEuclid exists
+    if (state && typeof state.setUseEuclid === 'function') {
+      useEuclidCheckbox.addEventListener('change', e => {
+        state.setUseEuclid(e.target.checked);
+      });
+    } else {
+      console.warn('setUseEuclid method not available on state object');
+    }
   }
   
-  // Update Euclidean rhythm info
+  // Update Euclidean rhythm info with safe state access
   function updateEuclidInfo() {
-    if (validEuclidInfo) {
-      const n = state.segments;
-      const k = state.euclidValue;
+    if (!validEuclidInfo || !state) return;
+    
+    try {
+      // Safely get segments with default value of 5
+      const n = getStateValue(state, 'segments', 5);
+      
+      // Safely get euclidValue with default value of 3
+      const k = getStateValue(state, 'euclidValue', 3);
+      
+      // Ensure we have valid numbers
+      const segments = typeof n === 'number' ? n : 5;
+      const euclidValue = typeof k === 'number' ? k : 3;
       
       // Make sure k is at most n
-      const effectiveK = Math.min(k, n);
+      const effectiveK = Math.min(euclidValue, segments);
       
-      validEuclidInfo.textContent = `Current Euclidean pattern: ${effectiveK} vertices evenly distributed from a ${n}-sided polygon`;
+      validEuclidInfo.textContent = `Current Euclidean pattern: ${effectiveK} vertices evenly distributed from a ${segments}-sided polygon`;
       
       // If k > n, add a warning
-      if (k > n) {
-        validEuclidInfo.innerHTML += `<br><span style="color: #ff8866;">Note: Only using ${n} vertices since that's the maximum for this shape</span>`;
+      if (euclidValue > segments) {
+        validEuclidInfo.innerHTML += `<br><span style="color: #ff8866;">Note: Only using ${segments} vertices since that's the maximum for this shape</span>`;
       }
+    } catch (error) {
+      console.error('Error updating Euclidean info:', error);
+      validEuclidInfo.textContent = 'Error: Could not update Euclidean pattern info';
     }
   }
   

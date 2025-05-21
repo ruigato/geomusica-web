@@ -62,47 +62,74 @@ export function createPolygonGeometry(radius, segments, state = null) {
     }
   }
   
-  // Otherwise create a standard polygon
+  // Create vertices for the polygon outline
   const vertices = [];
+  const indices = [];
   
-  // Collect base vertices of the polygon
-  const baseVertices = [];
+  // Add vertices around the circle in order
   for (let i = 0; i < numSegments; i++) {
     const angle = (i / numSegments) * Math.PI * 2;
     const x = Math.cos(angle) * radius;
     const y = Math.sin(angle) * radius;
-    baseVertices.push(new THREE.Vector3(x, y, 0));
+    vertices.push(x, y, 0);
+    
+    // Create line segments between consecutive vertices
+    if (i > 0) {
+      indices.push(i - 1, i);
+    }
+  }
+  
+  // Close the polygon by connecting last vertex to first
+  if (numSegments > 1) {
+    indices.push(numSegments - 1, 0);
   }
   
   // If fractal subdivision is enabled and value > 1, subdivide each line segment
   if (useFractal && fractalValue > 1) {
-    const subdivisions = fractalValue;
+    const subdivisions = Math.max(2, Math.floor(fractalValue));
+    const baseVertices = [];
     
-    for (let i = 0; i < numSegments; i++) {
-      const startVertex = baseVertices[i];
-      const endVertex = baseVertices[(i + 1) % numSegments];
+    // Store the original vertices
+    for (let i = 0; i < vertices.length; i += 3) {
+      baseVertices.push(new THREE.Vector3(
+        vertices[i],
+        vertices[i + 1],
+        vertices[i + 2]
+      ));
+    }
+    
+    // Clear and rebuild vertices array
+    vertices.length = 0;
+    indices.length = 0;
+    
+    // Subdivide each edge
+    for (let i = 0; i < baseVertices.length; i++) {
+      const start = baseVertices[i];
+      const end = baseVertices[(i + 1) % baseVertices.length];
       
-      // Add the start vertex
-      vertices.push(startVertex.x, startVertex.y, startVertex.z);
+      // Add start vertex
+      const startIdx = vertices.length / 3;
+      vertices.push(start.x, start.y, start.z);
       
-      // Create subdivision points between start and end
+      // Add subdivisions
       for (let j = 1; j < subdivisions; j++) {
         const t = j / subdivisions;
-        const x = startVertex.x + (endVertex.x - startVertex.x) * t;
-        const y = startVertex.y + (endVertex.y - startVertex.y) * t;
+        const x = start.x + (end.x - start.x) * t;
+        const y = start.y + (end.y - start.y) * t;
         vertices.push(x, y, 0);
       }
     }
-  } else {
-    // No subdivision - just use base vertices
-    for (let i = 0; i < numSegments; i++) {
-      const vertex = baseVertices[i];
-      vertices.push(vertex.x, vertex.y, vertex.z);
+    
+    // Create line segments for the subdivided polygon
+    const numPoints = vertices.length / 3;
+    for (let i = 0; i < numPoints; i++) {
+      indices.push(i, (i + 1) % numPoints);
     }
   }
   
   // Set up the attributes
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
   return geometry;
 }
 
@@ -417,33 +444,145 @@ export function cleanupIntersectionMarkers(scene) {
  * @param {boolean} justCalculatedIntersections - Whether we just calculated intersections
  */
 export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, angle = 0, state = null, isLerping = false, justCalculatedIntersections = false) {
+  console.log('=== updateGroup called ===');
+  console.log('Parameters:', { 
+    copies, 
+    stepScale, 
+    segments, 
+    angle, 
+    hasState: !!state,
+    isLerping,
+    justCalculatedIntersections,
+    groupChildren: group.children.length
+  });
+  
+  // Debug the base geometry
+  if (baseGeo) {
+    console.log('Base geometry:', {
+      type: baseGeo.type,
+      attributes: Object.keys(baseGeo.attributes),
+      index: !!baseGeo.index,
+      boundingSphere: baseGeo.boundingSphere ? 'exists' : 'none',
+      uuid: baseGeo.uuid
+    });
+  } else {
+    console.error('Base geometry is null or undefined!');
+    return;
+  }
+  
   // Ensure segments is a proper integer
   const numSegments = Math.round(segments);
+  
+  // Debug base geometry
+  if (baseGeo) {
+    console.log('Base geometry:', {
+      type: baseGeo.type,
+      attributes: Object.keys(baseGeo.attributes),
+      index: !!baseGeo.index,
+      boundingSphere: baseGeo.boundingSphere ? 'exists' : 'none'
+    });
+  } else {
+    console.error('Base geometry is null or undefined!');
+    return; // Exit if no geometry
+  }
 
   // Clean up existing point frequency labels if they exist
   if (state && state.pointFreqLabels) {
     state.cleanupPointFreqLabels();
   }
   
-  // Clean up the group
-  group.clear();
+  console.log('Cleaning up old polygon copies...');
+  const childrenToRemove = [];
+  group.traverse(child => {
+    const isPolygonCopy = child.userData?.isPolygonCopy || 
+                         (child.parent && child.parent.userData?.isPolygonCopy);
+    
+    if (isPolygonCopy) {
+      console.log(`Marking for removal: ${child.name || 'unnamed'} (${child.type})`);
+      childrenToRemove.push(child);
+    } else {
+      console.log(`Keeping: ${child.name || 'unnamed'} (${child.type})`);
+    }
+  });
   
-  // Cache the base radius once to use for all modulus calculations
-  const baseRadius = state ? state.radius : 0;
+  // Remove the identified children
+  childrenToRemove.forEach(child => {
+    if (child.parent) {
+      child.parent.remove(child);
+    }
+    // Clean up geometry and materials
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) {
+      if (Array.isArray(child.material)) {
+        child.material.forEach(m => m.dispose());
+      } else {
+        child.material.dispose();
+      }
+    }
+  });
   
-  // Only create markers if we have multiple copies
-  const hasEnoughCopiesForIntersections = copies > 1;
-
+  // If copies is 0, we're done
+  if (copies === 0) {
+    return;
+  }
+  
+  console.log('=== Creating', copies, 'copies ===');
+  
+  // Clear existing geometry
+  while(group.children.length > 0) { 
+    group.remove(group.children[0]); 
+  }
+  
+  // Default radius if not provided
+  const baseRadius = state?.radius || 100;
+  
+  // Create multiple cubes in a circle
+  const count = Math.max(1, copies);
+  const radius = 200;
+  
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    
+    const testGeo = new THREE.BoxGeometry(50, 50, 50);
+    const testMat = new THREE.MeshBasicMaterial({ 
+      color: 0x00ff00, 
+      wireframe: true 
+    });
+    
+    const testMesh = new THREE.Mesh(testGeo, testMat);
+    testMesh.position.set(x, y, 0);
+    group.add(testMesh);
+  }
+  
+  // If we have no copies, we're done (this is a safeguard, should be handled earlier)
+  if (copies <= 0) {
+    return;
+  }
+  
+  // Clear any existing geometry
+  while(group.children.length > 0) { 
+    const child = group.children[0];
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) {
+      if (Array.isArray(child.material)) {
+        child.material.forEach(m => m.dispose());
+      } else {
+        child.material.dispose();
+      }
+    }
+    group.remove(child);
+  }
+  
   // For intersection detection, we'll need to create a temporary group to calculate intersections
   // before they're added to the actual group
   let tempGroup = null;
   let intersectionPoints = [];
   
   // Check if we need to find intersections and have multiple copies
-  // OPTIMIZATION: Only do this when needsIntersectionUpdate is true to avoid per-frame recalculation
-  if (state && (state.useIntersections || (state.useStars && state.useCuts)) && 
-      state.needsIntersectionUpdate && 
-      (copies > 1 || (state.useStars && state.useCuts))) {
+  // Only do this when needsIntersectionUpdate is true to avoid per-frame recalculation
+  if (state && hasEnoughCopiesForIntersections && state.needsIntersectionUpdate) {
     // Create a temporary group for intersection calculation
     tempGroup = new THREE.Group();
     tempGroup.position.copy(group.position);
@@ -480,19 +619,36 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       // Convert to radians only when setting the actual Three.js rotation
       const cumulativeAngleRadians = (cumulativeAngleDegrees * Math.PI) / 180;
       
-      // Create a group for this copy to hold both the lines and vertex circles
-      const copyGroup = new THREE.Group();
+      // Create a simple line loop for testing
+      const geometry = new THREE.BufferGeometry();
+      const points = [];
+      const radius = 100 * finalScale;
       
-      // Create line for the polygon outline - use the original geometry here
-      const lines = new THREE.LineLoop(baseGeo, mat.clone());
-      lines.scale.set(finalScale, finalScale, 1);
-      copyGroup.add(lines);
+      // Create a simple circle
+      for (let i = 0; i <= 32; i++) {
+        const angle = (i / 32) * Math.PI * 2;
+        points.push(new THREE.Vector3(
+          Math.cos(angle) * radius,
+          Math.sin(angle) * radius,
+          0
+        ));
+      }
       
-      // Apply rotation to the copy group
-      copyGroup.rotation.z = cumulativeAngleRadians;
+      geometry.setFromPoints(points);
       
-      // Add the whole copy group to the temp group
-      tempGroup.add(copyGroup);
+      // Create the line with a visible color
+      const lineMaterial = new THREE.LineBasicMaterial({ 
+        color: 0x00ff00,
+        linewidth: 2
+      });
+      
+      const line = new THREE.LineLoop(geometry, lineMaterial);
+      line.rotation.z = cumulativeAngleRadians;
+      
+      // Add directly to the group for now
+      group.add(line);
+      
+      console.log(`Added copy ${i} with radius ${radius}`);
     }
     
     // Find all intersection points between the copies in the temp group
@@ -547,8 +703,18 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     tempGroup = null;
   }
   
+  // Create a container group for all copies
+  const copiesContainer = new THREE.Group();
+  copiesContainer.name = 'copies-container';
+  copiesContainer.userData.isPolygonCopy = true; // Mark the container
+  group.add(copiesContainer);
+  console.log('Created copies container:', copiesContainer);
+  
+  console.log(`Creating ${copies} polygon copies...`);
+  
   // Now create the actual polygon copies for display
   for (let i = 0; i < copies; i++) {
+    console.log(`Creating copy ${i + 1}/${copies}...`);
     // Base scale factor from step scale
     let stepScaleFactor = Math.pow(stepScale, i);
     
@@ -558,9 +724,18 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     // Determine scale based on different features
     if (state) {
       if (state.useModulus) {
-        // Get the sequence value (increasing from 1/modulus to 1.0)
-        const modulusScale = state.getScaleFactorForCopy(i);
-        finalScale = modulusScale * stepScaleFactor;  // Apply both modulus scale and step scale
+        try {
+          // Ensure getScaleFactorForCopy exists, provide a fallback if not
+          const getScale = typeof state.getScaleFactorForCopy === 'function' 
+            ? state.getScaleFactorForCopy.bind(state)
+            : (i) => 1.0; // Fallback function
+            
+          const modulusScale = getScale(i);
+          finalScale = modulusScale * stepScaleFactor;  // Apply both modulus scale and step scale
+        } catch (error) {
+          console.error('Error in modulus scale calculation:', error);
+          finalScale = stepScaleFactor; // Fallback to just step scale
+        }
       } else if (state.useAltScale) {
         // Apply alt scale multiplier if this is an Nth copy (without modulus)
         if ((i + 1) % state.altStepN === 0) {
@@ -684,8 +859,16 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     // Apply rotation to the copy group
     copyGroup.rotation.z = cumulativeAngleRadians;
     
-    // Add the whole copy group to the main group
-    group.add(copyGroup);
+    // Mark as polygon copy for future cleanup
+    copyGroup.userData.isPolygonCopy = true;
+    copyGroup.children.forEach(child => {
+      child.userData = child.userData || {};
+      child.userData.isPolygonCopy = true;
+    });
+    
+    // Add the copy group to the container
+    copiesContainer.add(copyGroup);
+    console.log(`Added copy ${i + 1} to container. Container now has ${copiesContainer.children.length} children.`);
   }
   
   // Finally, add the intersection point markers to the group (so they rotate with everything)

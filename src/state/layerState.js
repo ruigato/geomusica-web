@@ -7,7 +7,8 @@ import { DEFAULT_VALUES } from '../config/constants.js';
  * @returns {Object} New layer state
  */
 export function createLayerState(id, overrides = {}) {
-  return {
+  // Create the base state object
+  const layerState = {
     id,
     name: `Layer ${id.split('-').pop()}`,
     visible: true,
@@ -19,6 +20,7 @@ export function createLayerState(id, overrides = {}) {
     stepScale: DEFAULT_VALUES.STEP_SCALE,
     angle: DEFAULT_VALUES.ANGLE,
     copies: DEFAULT_VALUES.COPIES,
+    modulus: 1,  // Default modulus value
     
     // Visual properties
     color: 0xffffff,
@@ -33,9 +35,35 @@ export function createLayerState(id, overrides = {}) {
     useEuclid: DEFAULT_VALUES.USE_EUCLID,
     euclidValue: DEFAULT_VALUES.EUCLID_VALUE,
     
-    // Apply any overrides
+    // Apply any overrides (this will override any of the above defaults)
     ...overrides
   };
+  
+  // Add the method to the state object, properly bound to the state
+  layerState.getScaleFactorForCopy = function(copyIndex) {
+    console.log('getScaleFactorForCopy called with:', { 
+      copyIndex, 
+      modulus: this.modulus,
+      hasMethod: typeof this.getScaleFactorForCopy === 'function',
+      props: Object.keys(this)
+    });
+    
+    if (!this.modulus || this.modulus <= 1) return 1.0;
+    
+    try {
+      // Calculate the step size between scale factors
+      const step = (1.0 - (1.0 / this.modulus)) / (this.modulus - 1);
+      
+      // Calculate the scale factor for this copy, cycling through the sequence
+      const sequenceIndex = copyIndex % this.modulus;
+      return (1.0 / this.modulus) + (sequenceIndex * step);
+    } catch (error) {
+      console.error('Error in getScaleFactorForCopy:', error);
+      return 1.0;
+    }
+  }.bind(layerState);
+  
+  return layerState;
 }
 
 /**
