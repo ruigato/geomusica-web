@@ -1,8 +1,9 @@
-// src/state/state.js - Updated with fixes for segments rounding issue
+// src/state/state.js - Updated to support layer management
 import { getCurrentTime } from '../time/time.js';
 import { DEFAULT_VALUES, UI_RANGES, TICKS_PER_BEAT, TICKS_PER_MEASURE } from '../config/constants.js';
 import { clearLabels } from '../ui/domLabels.js';
 import { ParameterMode } from '../notes/notes.js';
+import { createInitialLayersState, createLayerState } from './layerState.js';
 
 /**
  * Generate sequence from 1/modulus to 1.0 in even steps
@@ -26,7 +27,10 @@ export function generateSequence(n) {
  */
 export function createAppState() {
   return {
-    // Track parameter changes
+    // Layer management
+    layers: createInitialLayersState(),
+    
+    // Track parameter changes (for the active layer)
     parameterChanges: {
       copies: false,
       segments: false,
@@ -1063,4 +1067,147 @@ export function createAppState() {
       return a;
     },
   };
+}
+
+/**
+ * Get the active layer state
+ * @param {Object} state - Application state
+ * @returns {Object} Active layer state or null if none
+ */
+export function getActiveLayerState(state) {
+  return state.layers.byId[state.layers.activeLayerId] || null;
+}
+
+/**
+ * Update a layer's state
+ * @param {Object} state - Current application state
+ * @param {string} layerId - ID of the layer to update
+ * @param {Object} updates - Updates to apply to the layer
+ * @returns {Object} New application state
+ */
+export function updateLayerState(state, layerId, updates) {
+  const layer = state.layers.byId[layerId];
+  if (!layer) return state;
+  
+  return {
+    ...state,
+    layers: {
+      ...state.layers,
+      byId: {
+        ...state.layers.byId,
+        [layerId]: {
+          ...layer,
+          ...updates
+        }
+      }
+    }
+  };
+}
+
+/**
+ * Add a new layer
+ * @param {Object} state - Current application state
+ * @param {Object} options - Options for the new layer
+ * @returns {Object} New application state with the added layer
+ */
+export function addLayer(state, options = {}) {
+  const newLayerId = `layer-${Date.now()}`;
+  const activeLayer = getActiveLayerState(state);
+  
+  // Create new layer, optionally copying properties from active layer
+  const newLayer = createLayerState(newLayerId, {
+    name: `Layer ${state.layers.list.length + 1}`,
+    ...(activeLayer ? {
+      // Copy properties from active layer
+      radius: activeLayer.radius,
+      segments: activeLayer.segments,
+      stepScale: activeLayer.stepScale,
+      angle: activeLayer.angle,
+      copies: activeLayer.copies,
+      color: activeLayer.color,
+      opacity: activeLayer.opacity,
+      wireframe: activeLayer.wireframe,
+      useFractal: activeLayer.useFractal,
+      fractalValue: activeLayer.fractalValue,
+      useStars: activeLayer.useStars,
+      starSkip: activeLayer.starSkip,
+      useEuclid: activeLayer.useEuclid,
+      euclidValue: activeLayer.euclidValue
+    } : {}),
+    ...options
+  });
+  
+  return {
+    ...state,
+    layers: {
+      ...state.layers,
+      list: [...state.layers.list, newLayerId],
+      byId: {
+        ...state.layers.byId,
+        [newLayerId]: newLayer
+      },
+      activeLayerId: newLayerId // Make new layer active
+    }
+  };
+}
+
+/**
+ * Remove a layer
+ * @param {Object} state - Current application state
+ * @param {string} layerId - ID of the layer to remove
+ * @returns {Object} New application state with the layer removed
+ */
+export function removeLayer(state, layerId) {
+  // Don't remove the last layer
+  if (state.layers.list.length <= 1) return state;
+  
+  const layerIndex = state.layers.list.indexOf(layerId);
+  if (layerIndex === -1) return state;
+  
+  const newState = {
+    ...state,
+    layers: {
+      ...state.layers,
+      list: state.layers.filter(id => id !== layerId)
+    }
+  };
+  
+  // Remove from byId
+  delete newState.layers.byId[layerId];
+  
+  // If active layer was removed, set a new active layer
+  if (newState.layers.activeLayerId === layerId) {
+    const newActiveIndex = Math.min(layerIndex, newState.layers.list.length - 1);
+    newState.layers.activeLayerId = newState.layers.list[newActiveIndex] || null;
+  }
+  
+  return newState;
+}
+
+/**
+ * Set the active layer
+ * @param {Object} state - Current application state
+ * @param {string} layerId - ID of the layer to make active
+ * @returns {Object} New application state with updated active layer
+ */
+export function setActiveLayer(state, layerId) {
+  if (!state.layers.byId[layerId]) return state;
+  
+  return {
+    ...state,
+    layers: {
+      ...state.layers,
+      activeLayerId: layerId
+    }
+  };
+}
+
+// Helper function to calculate Greatest Common Divisor
+function calculateGCD(a, b) {
+  while (b) {
+    const temp = b;
+    b = a % b;
+    a = temp;
+  }
+  return a;
 }
