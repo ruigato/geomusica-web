@@ -18,17 +18,34 @@ export const ParameterMode = {
  * @returns {Object} Complete note object
  */
 export function createNote(triggerData, state) {
-  const { x, y, copyIndex, vertexIndex, isIntersection, angle, lastAngle, globalIndex } = triggerData;
+  // Ensure triggerData is not null/undefined
+  if (!triggerData) {
+    triggerData = {};
+  }
+  
+  const { 
+    x = 0, 
+    y = 0, 
+    copyIndex, 
+    vertexIndex, 
+    isIntersection = false, 
+    angle = 0, 
+    lastAngle = 0, 
+    globalIndex 
+  } = triggerData;
   
   // Calculate base frequency from coordinates
   let frequency = Math.hypot(x, y);
   let noteName = null;
   
-  // Apply equal temperament if enabled
-  if (state && state.useEqualTemperament) {
-    const refFreq = state.referenceFrequency || 440;
-    frequency = quantizeToEqualTemperament(frequency, refFreq);
-    noteName = getNoteName(frequency, refFreq);
+  // Check if state is valid
+  if (state) {
+    // Apply equal temperament if enabled
+    if (state.useEqualTemperament) {
+      const refFreq = state.referenceFrequency || 440;
+      frequency = quantizeToEqualTemperament(frequency, refFreq);
+      noteName = getNoteName(frequency, refFreq);
+    }
   }
   
   // Determine point index for parameter calculations
@@ -40,11 +57,12 @@ export function createNote(triggerData, state) {
   } else if (isIntersection) {
     // For intersection points, use point index from intersection array
     const intersectionIndex = triggerData.intersectionIndex || 0;
-    const totalRegularPoints = state.copies * state.segments;
+    const totalRegularPoints = state ? (state.copies * state.segments) : 0;
     pointIndex = totalRegularPoints + intersectionIndex;
   } else if (copyIndex !== undefined && vertexIndex !== undefined) {
     // For regular vertices, combine copy index and vertex index
-    pointIndex = (copyIndex * state.segments) + vertexIndex;
+    const segments = state ? state.segments : 3;
+    pointIndex = (copyIndex * segments) + vertexIndex;
   }
   
   // Calculate duration based on selected mode and parameters
@@ -57,6 +75,14 @@ export function createNote(triggerData, state) {
   const angRad = angle % (2 * Math.PI);
   const pan = Math.sin(angRad);
   
+  // Create parameter info object with safe defaults
+  const parameterInfo = {
+    durationType: state?.durationMode || ParameterMode.MODULO,
+    velocityType: state?.velocityMode || ParameterMode.MODULO,
+    durationModulo: state?.durationModulo || 3,
+    velocityModulo: state?.velocityModulo || 4
+  };
+  
   // Create note object with all parameters
   return {
     frequency,
@@ -64,20 +90,15 @@ export function createNote(triggerData, state) {
     velocity,
     pan,
     pointIndex,
-    copyIndex,
-    vertexIndex,
+    copyIndex: copyIndex || 0,
+    vertexIndex: vertexIndex || 0,
     isIntersection,
     coordinates: { x, y },
     time: Date.now(), // Current time in ms
     noteName,
     
     // For visualization/debugging
-    parameterInfo: {
-      durationType: state.durationMode,
-      velocityType: state.velocityMode,
-      durationModulo: state.durationModulo,
-      velocityModulo: state.velocityModulo
-    }
+    parameterInfo
   };
 }
 
@@ -88,11 +109,16 @@ export function createNote(triggerData, state) {
  * @returns {number} Duration in seconds
  */
 function calculateDuration(pointIndex, state) {
-  const min = state.minDuration || 0.01;
-  const max = state.maxDuration || 0.5;
-  const modulo = state.durationModulo || 3;
+  // Make sure state exists, otherwise use defaults
+  if (!state) {
+    return 0.3; // Default duration if state is undefined
+  }
+  
+  const min = state.minDuration !== undefined ? state.minDuration : 0.1;
+  const max = state.maxDuration !== undefined ? state.maxDuration : 0.5;
+  const modulo = state.durationModulo !== undefined ? state.durationModulo : 3;
   const mode = state.durationMode || ParameterMode.MODULO;
-  const phase = state.durationPhase || 0;
+  const phase = state.durationPhase !== undefined ? state.durationPhase : 0;
   
   // Apply phase shift - shift the index by phase * modulo (scaled to index space)
   let phaseShiftedIndex = pointIndex;
@@ -123,11 +149,16 @@ function calculateDuration(pointIndex, state) {
  * @returns {number} Velocity (0-1)
  */
 function calculateVelocity(pointIndex, state) {
-  const min = state.minVelocity != undefined ? state.minVelocity : 0.3;
-  const max = state.maxVelocity != undefined ? state.maxVelocity : 0.9;
-  const modulo = state.velocityModulo || 4;
+  // Make sure state exists, otherwise use defaults
+  if (!state) {
+    return 0.7; // Default velocity if state is undefined
+  }
+  
+  const min = state.minVelocity !== undefined ? state.minVelocity : 0.3;
+  const max = state.maxVelocity !== undefined ? state.maxVelocity : 0.9;
+  const modulo = state.velocityModulo !== undefined ? state.velocityModulo : 4;
   const mode = state.velocityMode || ParameterMode.MODULO;
-  const phase = state.velocityPhase || 0;
+  const phase = state.velocityPhase !== undefined ? state.velocityPhase : 0;
   
   // Apply phase shift - shift the index by phase * modulo (scaled to index space)
   let phaseShiftedIndex = pointIndex;

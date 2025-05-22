@@ -104,25 +104,28 @@ export function saveState(state) {
 
 /**
  * Load state from localStorage
- * @returns {Object|null} The loaded state or null if not found
+ * @returns {Promise<Object|null>} Promise that resolves to the loaded state or null if not found
  */
 export function loadState() {
-  try {
-    const saveString = localStorage.getItem(STORAGE_KEY);
-    
-    if (!saveString) {
-      console.log('No saved state found');
-      return null;
+  return new Promise((resolve) => {
+    try {
+      const saveString = localStorage.getItem(STORAGE_KEY);
+      
+      if (!saveString) {
+        console.log('No saved state found');
+        resolve(null);
+        return;
+      }
+      
+      const loadedState = JSON.parse(saveString);
+      console.log('State loaded successfully');
+      
+      resolve(loadedState);
+    } catch (error) {
+      console.error('Error loading state:', error);
+      resolve(null);
     }
-    
-    const loadedState = JSON.parse(saveString);
-    console.log('State loaded successfully');
-    
-    return loadedState;
-  } catch (error) {
-    console.error('Error loading state:', error);
-    return null;
-  }
+  });
 }
 
 /**
@@ -219,72 +222,373 @@ export function applyLoadedState(state, loadedState) {
   
   try {
     // Apply each property if it exists in the loaded state
-    if (loadedState.bpm !== undefined) state.setBpm(loadedState.bpm);
-    if (loadedState.radius !== undefined) state.setRadius(loadedState.radius);
-    if (loadedState.copies !== undefined) state.setCopies(loadedState.copies);
-    if (loadedState.segments !== undefined) state.setSegments(loadedState.segments);
-    if (loadedState.stepScale !== undefined) state.setStepScale(loadedState.stepScale);
-    if (loadedState.angle !== undefined) state.setAngle(loadedState.angle);
+    // Support both function-based and direct property assignment
+    if (loadedState.bpm !== undefined) {
+      if (typeof state.setBpm === 'function') {
+        state.setBpm(loadedState.bpm);
+      } else {
+        state.bpm = loadedState.bpm;
+      }
+    }
     
-    if (loadedState.modulusValue !== undefined) state.setModulusValue(loadedState.modulusValue);
-    if (loadedState.useModulus !== undefined) state.setUseModulus(loadedState.useModulus);
+    if (loadedState.radius !== undefined) {
+      if (typeof state.setRadius === 'function') {
+        state.setRadius(loadedState.radius);
+      } else {
+        state.radius = loadedState.radius;
+      }
+    }
+    
+    if (loadedState.copies !== undefined) {
+      if (typeof state.setCopies === 'function') {
+        state.setCopies(loadedState.copies);
+      } else {
+        state.copies = loadedState.copies;
+      }
+    }
+    
+    if (loadedState.segments !== undefined) {
+      if (typeof state.setSegments === 'function') {
+        state.setSegments(loadedState.segments);
+      } else {
+        state.segments = loadedState.segments;
+      }
+    }
+    
+    if (loadedState.stepScale !== undefined) {
+      if (typeof state.setStepScale === 'function') {
+        state.setStepScale(loadedState.stepScale);
+      } else {
+        state.stepScale = loadedState.stepScale;
+      }
+    }
+    
+    if (loadedState.angle !== undefined) {
+      if (typeof state.setAngle === 'function') {
+        state.setAngle(loadedState.angle);
+      } else {
+        state.angle = loadedState.angle;
+      }
+    }
+    
+    if (loadedState.modulusValue !== undefined) {
+      if (typeof state.setModulusValue === 'function') {
+        state.setModulusValue(loadedState.modulusValue);
+      } else {
+        state.modulusValue = loadedState.modulusValue;
+      }
+    }
+    
+    if (loadedState.useModulus !== undefined) {
+      if (typeof state.setUseModulus === 'function') {
+        state.setUseModulus(loadedState.useModulus);
+      } else {
+        state.useModulus = loadedState.useModulus;
+      }
+    }
     
     // Apply time subdivision parameters
-    if (loadedState.timeSubdivisionValue !== undefined) state.setTimeSubdivisionValue(loadedState.timeSubdivisionValue);
-    if (loadedState.useTimeSubdivision !== undefined) state.setUseTimeSubdivision(loadedState.useTimeSubdivision);
+    if (loadedState.timeSubdivisionValue !== undefined) {
+      if (typeof state.setTimeSubdivisionValue === 'function') {
+        state.setTimeSubdivisionValue(loadedState.timeSubdivisionValue);
+      } else {
+        state.timeSubdivisionValue = loadedState.timeSubdivisionValue;
+      }
+    }
+    
+    if (loadedState.useTimeSubdivision !== undefined) {
+      if (typeof state.setUseTimeSubdivision === 'function') {
+        state.setUseTimeSubdivision(loadedState.useTimeSubdivision);
+      } else {
+        state.useTimeSubdivision = loadedState.useTimeSubdivision;
+      }
+    }
     
     // Apply time quantization parameters
-    if (loadedState.quantizationValue !== undefined) state.setQuantizationValue(loadedState.quantizationValue);
-    if (loadedState.useQuantization !== undefined) state.setUseQuantization(loadedState.useQuantization);
+    if (loadedState.quantizationValue !== undefined) {
+      if (typeof state.setQuantizationValue === 'function') {
+        state.setQuantizationValue(loadedState.quantizationValue);
+      } else {
+        state.quantizationValue = loadedState.quantizationValue;
+      }
+    }
+    
+    if (loadedState.useQuantization !== undefined) {
+      if (typeof state.setUseQuantization === 'function') {
+        state.setUseQuantization(loadedState.useQuantization);
+      } else {
+        state.useQuantization = loadedState.useQuantization;
+      }
+    }
     
     // Apply scale mod parameters
-    if (loadedState.altScale !== undefined) state.setAltScale(loadedState.altScale);
-    if (loadedState.altStepN !== undefined) state.setAltStepN(loadedState.altStepN);
-    if (loadedState.useAltScale !== undefined) state.setUseAltScale(loadedState.useAltScale);
+    if (loadedState.altScale !== undefined) {
+      if (typeof state.setAltScale === 'function') {
+        state.setAltScale(loadedState.altScale);
+      } else {
+        state.altScale = loadedState.altScale;
+      }
+    }
+    
+    if (loadedState.altStepN !== undefined) {
+      if (typeof state.setAltStepN === 'function') {
+        state.setAltStepN(loadedState.altStepN);
+      } else {
+        state.altStepN = loadedState.altStepN;
+      }
+    }
+    
+    if (loadedState.useAltScale !== undefined) {
+      if (typeof state.setUseAltScale === 'function') {
+        state.setUseAltScale(loadedState.useAltScale);
+      } else {
+        state.useAltScale = loadedState.useAltScale;
+      }
+    }
     
     // Apply fractal parameters
-    if (loadedState.fractalValue !== undefined) state.setFractalValue(loadedState.fractalValue);
-    if (loadedState.useFractal !== undefined) state.setUseFractal(loadedState.useFractal);
+    if (loadedState.fractalValue !== undefined) {
+      if (typeof state.setFractalValue === 'function') {
+        state.setFractalValue(loadedState.fractalValue);
+      } else {
+        state.fractalValue = loadedState.fractalValue;
+      }
+    }
+    
+    if (loadedState.useFractal !== undefined) {
+      if (typeof state.setUseFractal === 'function') {
+        state.setUseFractal(loadedState.useFractal);
+      } else {
+        state.useFractal = loadedState.useFractal;
+      }
+    }
     
     // Apply Euclidean rhythm parameters
-    if (loadedState.euclidValue !== undefined) state.setEuclidValue(loadedState.euclidValue);
-    if (loadedState.useEuclid !== undefined) state.setUseEuclid(loadedState.useEuclid);
+    if (loadedState.euclidValue !== undefined) {
+      if (typeof state.setEuclidValue === 'function') {
+        state.setEuclidValue(loadedState.euclidValue);
+      } else {
+        state.euclidValue = loadedState.euclidValue;
+      }
+    }
     
-    if (loadedState.useIntersections !== undefined) state.setUseIntersections(loadedState.useIntersections);
+    if (loadedState.useEuclid !== undefined) {
+      if (typeof state.setUseEuclid === 'function') {
+        state.setUseEuclid(loadedState.useEuclid);
+      } else {
+        state.useEuclid = loadedState.useEuclid;
+      }
+    }
     
-    if (loadedState.useLerp !== undefined) state.setUseLerp(loadedState.useLerp);
-    if (loadedState.lerpTime !== undefined) state.setLerpTime(loadedState.lerpTime);
+    if (loadedState.useIntersections !== undefined) {
+      if (typeof state.setUseIntersections === 'function') {
+        state.setUseIntersections(loadedState.useIntersections);
+      } else {
+        state.useIntersections = loadedState.useIntersections;
+      }
+    }
     
-    if (loadedState.attack !== undefined) state.setAttack(loadedState.attack);
-    if (loadedState.decay !== undefined) state.setDecay(loadedState.decay);
-    if (loadedState.sustain !== undefined) state.setSustain(loadedState.sustain);
-    if (loadedState.release !== undefined) state.setRelease(loadedState.release);
-    if (loadedState.brightness !== undefined) state.setBrightness(loadedState.brightness);
-    if (loadedState.volume !== undefined) state.setVolume(loadedState.volume);
+    if (loadedState.useLerp !== undefined) {
+      if (typeof state.setUseLerp === 'function') {
+        state.setUseLerp(loadedState.useLerp);
+      } else {
+        state.useLerp = loadedState.useLerp;
+      }
+    }
     
-    if (loadedState.useEqualTemperament !== undefined) state.setUseEqualTemperament(loadedState.useEqualTemperament);
-    if (loadedState.referenceFrequency !== undefined) state.setReferenceFrequency(loadedState.referenceFrequency);
+    if (loadedState.lerpTime !== undefined) {
+      if (typeof state.setLerpTime === 'function') {
+        state.setLerpTime(loadedState.lerpTime);
+      } else {
+        state.lerpTime = loadedState.lerpTime;
+      }
+    }
+    
+    if (loadedState.attack !== undefined) {
+      if (typeof state.setAttack === 'function') {
+        state.setAttack(loadedState.attack);
+      } else {
+        state.attack = loadedState.attack;
+      }
+    }
+    
+    if (loadedState.decay !== undefined) {
+      if (typeof state.setDecay === 'function') {
+        state.setDecay(loadedState.decay);
+      } else {
+        state.decay = loadedState.decay;
+      }
+    }
+    
+    if (loadedState.sustain !== undefined) {
+      if (typeof state.setSustain === 'function') {
+        state.setSustain(loadedState.sustain);
+      } else {
+        state.sustain = loadedState.sustain;
+      }
+    }
+    
+    if (loadedState.release !== undefined) {
+      if (typeof state.setRelease === 'function') {
+        state.setRelease(loadedState.release);
+      } else {
+        state.release = loadedState.release;
+      }
+    }
+    
+    if (loadedState.brightness !== undefined) {
+      if (typeof state.setBrightness === 'function') {
+        state.setBrightness(loadedState.brightness);
+      } else {
+        state.brightness = loadedState.brightness;
+      }
+    }
+    
+    if (loadedState.volume !== undefined) {
+      if (typeof state.setVolume === 'function') {
+        state.setVolume(loadedState.volume);
+      } else {
+        state.volume = loadedState.volume;
+      }
+    }
+    
+    if (loadedState.useEqualTemperament !== undefined) {
+      if (typeof state.setUseEqualTemperament === 'function') {
+        state.setUseEqualTemperament(loadedState.useEqualTemperament);
+      } else {
+        state.useEqualTemperament = loadedState.useEqualTemperament;
+      }
+    }
+    
+    if (loadedState.referenceFrequency !== undefined) {
+      if (typeof state.setReferenceFrequency === 'function') {
+        state.setReferenceFrequency(loadedState.referenceFrequency);
+      } else {
+        state.referenceFrequency = loadedState.referenceFrequency;
+      }
+    }
   
-    if (loadedState.showAxisFreqLabels !== undefined) state.setShowAxisFreqLabels(loadedState.showAxisFreqLabels);
-    if (loadedState.showPointsFreqLabels !== undefined) state.setShowPointsFreqLabels(loadedState.showPointsFreqLabels);
+    if (loadedState.showAxisFreqLabels !== undefined) {
+      if (typeof state.setShowAxisFreqLabels === 'function') {
+        state.setShowAxisFreqLabels(loadedState.showAxisFreqLabels);
+      } else {
+        state.showAxisFreqLabels = loadedState.showAxisFreqLabels;
+      }
+    }
+    
+    if (loadedState.showPointsFreqLabels !== undefined) {
+      if (typeof state.setShowPointsFreqLabels === 'function') {
+        state.setShowPointsFreqLabels(loadedState.showPointsFreqLabels);
+      } else {
+        state.showPointsFreqLabels = loadedState.showPointsFreqLabels;
+      }
+    }
     
     // Apply note parameter settings
-    if (loadedState.durationMode !== undefined) state.setDurationMode(loadedState.durationMode);
-    if (loadedState.durationModulo !== undefined) state.setDurationModulo(loadedState.durationModulo);
-    if (loadedState.minDuration !== undefined) state.setMinDuration(loadedState.minDuration);
-    if (loadedState.maxDuration !== undefined) state.setMaxDuration(loadedState.maxDuration);
-    if (loadedState.durationPhase !== undefined) state.setDurationPhase(loadedState.durationPhase);
+    if (loadedState.durationMode !== undefined) {
+      if (typeof state.setDurationMode === 'function') {
+        state.setDurationMode(loadedState.durationMode);
+      } else {
+        state.durationMode = loadedState.durationMode;
+      }
+    }
     
-    if (loadedState.velocityMode !== undefined) state.setVelocityMode(loadedState.velocityMode);
-    if (loadedState.velocityModulo !== undefined) state.setVelocityModulo(loadedState.velocityModulo);
-    if (loadedState.minVelocity !== undefined) state.setMinVelocity(loadedState.minVelocity);
-    if (loadedState.maxVelocity !== undefined) state.setMaxVelocity(loadedState.maxVelocity);
-    if (loadedState.velocityPhase !== undefined) state.setVelocityPhase(loadedState.velocityPhase);
+    if (loadedState.durationModulo !== undefined) {
+      if (typeof state.setDurationModulo === 'function') {
+        state.setDurationModulo(loadedState.durationModulo);
+      } else {
+        state.durationModulo = loadedState.durationModulo;
+      }
+    }
+    
+    if (loadedState.minDuration !== undefined) {
+      if (typeof state.setMinDuration === 'function') {
+        state.setMinDuration(loadedState.minDuration);
+      } else {
+        state.minDuration = loadedState.minDuration;
+      }
+    }
+    
+    if (loadedState.maxDuration !== undefined) {
+      if (typeof state.setMaxDuration === 'function') {
+        state.setMaxDuration(loadedState.maxDuration);
+      } else {
+        state.maxDuration = loadedState.maxDuration;
+      }
+    }
+    
+    if (loadedState.durationPhase !== undefined) {
+      if (typeof state.setDurationPhase === 'function') {
+        state.setDurationPhase(loadedState.durationPhase);
+      } else {
+        state.durationPhase = loadedState.durationPhase;
+      }
+    }
+    
+    if (loadedState.velocityMode !== undefined) {
+      if (typeof state.setVelocityMode === 'function') {
+        state.setVelocityMode(loadedState.velocityMode);
+      } else {
+        state.velocityMode = loadedState.velocityMode;
+      }
+    }
+    
+    if (loadedState.velocityModulo !== undefined) {
+      if (typeof state.setVelocityModulo === 'function') {
+        state.setVelocityModulo(loadedState.velocityModulo);
+      } else {
+        state.velocityModulo = loadedState.velocityModulo;
+      }
+    }
+    
+    if (loadedState.minVelocity !== undefined) {
+      if (typeof state.setMinVelocity === 'function') {
+        state.setMinVelocity(loadedState.minVelocity);
+      } else {
+        state.minVelocity = loadedState.minVelocity;
+      }
+    }
+    
+    if (loadedState.maxVelocity !== undefined) {
+      if (typeof state.setMaxVelocity === 'function') {
+        state.setMaxVelocity(loadedState.maxVelocity);
+      } else {
+        state.maxVelocity = loadedState.maxVelocity;
+      }
+    }
+    
+    if (loadedState.velocityPhase !== undefined) {
+      if (typeof state.setVelocityPhase === 'function') {
+        state.setVelocityPhase(loadedState.velocityPhase);
+      } else {
+        state.velocityPhase = loadedState.velocityPhase;
+      }
+    }
     
     // Star polygon parameters
-    if (loadedState.starSkip !== undefined) state.setStarSkip(loadedState.starSkip);
-    if (loadedState.useStars !== undefined) state.setUseStars(loadedState.useStars);
-    if (loadedState.useCuts !== undefined) state.setUseCuts(loadedState.useCuts);
+    if (loadedState.starSkip !== undefined) {
+      if (typeof state.setStarSkip === 'function') {
+        state.setStarSkip(loadedState.starSkip);
+      } else {
+        state.starSkip = loadedState.starSkip;
+      }
+    }
+    
+    if (loadedState.useStars !== undefined) {
+      if (typeof state.setUseStars === 'function') {
+        state.setUseStars(loadedState.useStars);
+      } else {
+        state.useStars = loadedState.useStars;
+      }
+    }
+    
+    if (loadedState.useCuts !== undefined) {
+      if (typeof state.setUseCuts === 'function') {
+        state.setUseCuts(loadedState.useCuts);
+      } else {
+        state.useCuts = loadedState.useCuts;
+      }
+    }
     
     console.log('State applied successfully');
     return true;

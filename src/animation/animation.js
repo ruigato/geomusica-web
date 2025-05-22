@@ -62,6 +62,9 @@ export function animate(params) {
     triggerAudioCallback
   } = params;
 
+  // Get the layer manager if it exists
+  const layerManager = window._layers;
+
   // Store the last angle for trigger detection
   let lastAngle = state.lastAngle || 0;
   
@@ -111,6 +114,44 @@ export function animate(params) {
       processPendingTriggers(tNow, triggerAudioCallback, scene);
     }
 
+    // If we have a layer manager, update all layers
+    if (layerManager) {
+      // Get the current angle
+      const angle = calculateRotation(tNow, state.bpm, state);
+      
+      // Create animation parameters for each layer
+      const animationParams = {
+        scene,
+        stats,
+        csound,
+        renderer,
+        cam,
+        tNow,
+        dt,
+        angle,
+        lastAngle,
+        triggerAudioCallback
+      };
+      
+      // Update all layers
+      layerManager.updateLayers(animationParams);
+      
+      // Update camera
+      if (state.cameraDistance !== state.targetCameraDistance) {
+        state.updateCameraLerp(dt);
+        cam.position.z = state.cameraDistance;
+      }
+      
+      // End performance measurement
+      stats.end();
+      
+      // Store the last angle for the next frame
+      lastAngle = angle;
+      
+      return;
+    }
+    
+    // Legacy code for single layer if layer manager is not available
     // Update lerped values
     state.updateLerp(dt);
 
@@ -248,231 +289,66 @@ export function animate(params) {
       cleanupIntersectionMarkers(scene);
       
       // Remove marker group if present
-      if (group.userData && group.userData.intersectionMarkerGroup) {
-        group.remove(group.userData.intersectionMarkerGroup);
-        group.userData.intersectionMarkerGroup.traverse(child => {
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) {
-            if (Array.isArray(child.material)) {
-              child.material.forEach(m => m.dispose());
-            } else {
-              child.material.dispose();
-            }
-          }
-        });
-        group.userData.intersectionMarkerGroup = null;
+      const markerGroup = scene.getObjectByName("markers");
+      if (markerGroup) {
+        scene.remove(markerGroup);
       }
     }
     
-    // Handle intersection toggle changes
-    if (state.lastUseIntersections !== state.useIntersections || state.lastUseCuts !== state.useCuts) {
-      state.lastUseIntersections = state.useIntersections;
-      state.lastUseCuts = state.useCuts;
-      state.needsIntersectionUpdate = true;
-      
-      // Clean up intersections and markers if both features are disabled
-      // or if copies is 0 (force cleanup)
-      if ((!state.useIntersections && !state.useCuts) || state.copies === 0) {
-        // Clean up markers
-        cleanupIntersectionMarkers(scene);
-        
-        // Clear intersection points
-        state.intersectionPoints = [];
-        
-        // Clean up marker group if present
-        if (group.userData && group.userData.intersectionMarkerGroup) {
-          group.remove(group.userData.intersectionMarkerGroup);
-          group.userData.intersectionMarkerGroup.traverse(child => {
-            if (child.geometry) child.geometry.dispose();
-            if (child.material) {
-              if (Array.isArray(child.material)) {
-                child.material.forEach(m => m.dispose());
-              } else {
-                child.material.dispose();
-              }
-            }
-          });
-          group.userData.intersectionMarkerGroup = null;
-        }
-      }
-    }
+    // Get current rotation angle
+    const angle = calculateRotation(tNow, state.bpm, state);
     
-    // Determine if intersections need recalculation
-    const needsIntersectionRecalculation = 
-      (state.useIntersections || (state.useStars && state.useCuts)) && 
-      (hasEnoughCopiesForIntersections || (state.useStars && state.useCuts)) && 
-      state.needsIntersectionUpdate;  // Only recalculate when this flag is set
-      
-    // Calculate intersections if needed
-    if (needsIntersectionRecalculation) {
-      // Clean up existing markers
-      cleanupIntersectionMarkers(scene);
-      
-      // Reset intersection points
-      state.intersectionPoints = [];
-      
-      // Create temporary group for calculations
-      const tempGroup = new THREE.Group();
-      tempGroup.position.copy(group.position);
-      tempGroup.userData.state = state;
-      
-      // Add copies to temp group (this is all we need to do, the intersections.js 
-      // function now properly handles star polygon geometry internally)
-      updateGroup(
-        tempGroup, 
-        state.copies, 
-        state.stepScale, 
-        params.baseGeo, 
-        mat, 
-        state.segments, 
-        state.angle, 
-        state, 
-        false, 
-        false
-      );
-      
-      // Process intersections
-      const newGeometry = processIntersections(state, params.baseGeo, tempGroup);
-      
-      // Update geometry if needed
-      if (newGeometry !== params.baseGeo) {
-        params.baseGeo = newGeometry;
-        state.baseGeo = newGeometry;
+    // If we have a valid group, update it
+    if (group && baseGeo) {
+      // Check if we should detect triggers
+      if (state.copies > 0) {
+        // Detect and handle triggers
+        detectTriggers(
+          baseGeo,
+          lastAngle,
+          angle,
+          state.copies,
+          group,
+          state.lastTrig,
+          tNow,
+          triggerAudioCallback
+        );
       }
       
-      // Clean up temp group
-      tempGroup.traverse(obj => {
-        if (obj.geometry && obj !== params.baseGeo) obj.geometry.dispose();
-        if (obj.material) obj.material.dispose();
-      });
-      
-      // Reset update flag
-      state.needsIntersectionUpdate = false;
-      state.justCalculatedIntersections = true;
-    } else {
-      state.justCalculatedIntersections = false;
-    }
-
-    // Determine when we need to update the group
-    const shouldUpdateGroup = 
-      paramsChanged || 
-      noteParamsChanged || // Add note parameters change detection
-      state.parameterChanges.copies ||
-      state.parameterChanges.euclidValue ||  // Add Euclidean rhythm parameter
-      state.parameterChanges.useEuclid ||    // Add Euclidean rhythm toggle
-      state.justCalculatedIntersections || 
-      state.needsPointFreqLabelsUpdate ||
-      needsNewGeometry ||
-      cameraDistanceChanged || // Update when camera changes significantly
-      state.segmentsChanged || // New check for segments changes      
-      state.frame < 5 || // Always update first few frames
-      group.children.length === 0; // Always update if group is empty
-
-    // If copies parameter has changed, clear the group first
-    if (state.parameterChanges.copies) {
-      group.clear();
-    }
-
-    // Update the group with current parameters if needed
-    if (shouldUpdateGroup) {
+      // Update group with current parameters
       updateGroup(
         group, 
         state.copies, 
         state.stepScale, 
-        params.baseGeo, 
+        baseGeo, 
         mat, 
         state.segments, 
-        state.angle, 
+        angle, 
         state, 
         isLerping, 
-        state.justCalculatedIntersections || state.needsPointFreqLabelsUpdate
+        state.justCalculatedIntersections
       );
       
-      // Reset point frequency labels update flag
-      if (state.needsPointFreqLabelsUpdate) {
-        state.needsPointFreqLabelsUpdate = false;
+      // Update DOM label positions
+      updateLabelPositions(cam, renderer);
+      
+      // Clear out expired markers
+      if (state.markers && state.markers.length > 0) {
+        clearExpiredMarkers(scene, state.markers);
       }
     }
-
-    // Reset parameter change flags
-    if (state.hasParameterChanged) {
-      state.resetParameterChanges();
+    
+    // Update camera position if target has changed
+    if (state.cameraDistance !== state.targetCameraDistance) {
+      state.updateCameraLerp(dt);
+      cam.position.z = state.cameraDistance;
     }
-
-    // Calculate rotation angle based on BPM with time subdivision
-    let dAng = (state.bpm / 240) * 2 * Math.PI * dt;
-
-    // Apply time subdivision as a direct speed multiplier if enabled
-    if (state.useTimeSubdivision) {
-      // Use the time subdivision value directly as a multiplier
-      dAng *= state.timeSubdivisionValue;
-    }
-
-    // Apply rotation
-    group.rotation.z += dAng;
-    const currentAngle = group.rotation.z;
-
-    // Only update rotating labels if enabled and frame is appropriate
-    if (state.showPointsFreqLabels && state.frame % 3 === 0) {
-      updateRotatingLabels(group, cam, renderer);
-    }
-    
-    // Handle audio triggers every frame for smooth audio
-    if (state.copies > 0) {
-      const triggeredNow = detectTriggers(
-        params.baseGeo, 
-        lastAngle, 
-        currentAngle, 
-        state.copies, 
-        group, 
-        state.lastTrig, 
-        tNow, 
-        triggerAudioCallback
-      );
-      
-      // Update state
-      state.lastTrig = triggeredNow;
-    }
-    
-    // Update last angle for next frame
-    lastAngle = currentAngle;
-    
-    // Handle marker cleanup only every few frames
-    if (state.frame % 2 === 0) {
-      clearExpiredMarkers(scene, state.markers);
-    }
-    
-    // Update axis labels only every few frames
-    if (state.frame % 3 === 0) {
-      updateAxisLabels();
-      updateLabelPositions(cam, renderer);
-    }
-    
-    // Calculate camera distance only every 10 frames or when needed
-    if (state.frame % 10 === 0 || shouldUpdateGroup) {
-      // Calculate the appropriate camera distance to show all geometry
-      const boundingSphere = calculateBoundingSphere(group, state);
-      
-      // Set target camera distance based on bounding sphere
-      // Use a multiplier to ensure everything is in view
-      const targetDistance = boundingSphere * 2.5;
-      state.setCameraDistance(targetDistance);
-    }
-    
-    // Update camera lerping
-    state.updateCameraLerp(dt);
-    
-    // Update the camera position
-    cam.position.z = state.cameraDistance;
-    
-    // Increment frame counter
-    state.frame = (state.frame + 1) % 10000; // Prevent overflow by cycling
-    
-    // Render the scene
-    renderer.render(scene, cam);
     
     // End performance measurement
     stats.end();
+    
+    // Store the last angle for the next frame
+    lastAngle = angle;
   }
   
   // Start the animation loop
