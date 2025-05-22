@@ -18,91 +18,67 @@ import { createNote } from '../notes/notes.js';
 const vertexCircleGeometry = new THREE.CircleGeometry(1, 12); // Fewer segments (12) for performance
 
 /**
- * Create a regular polygon outline
- * @param {number} radius - Radius of the polygon
- * @param {number} segments - Number of sides
- * @param {Object} state - Application state for additional parameters
- * @returns {THREE.BufferGeometry} Polygon geometry
+ * Create a polygon geometry with the given parameters
+ * @param {number} radius Radius of the polygon
+ * @param {number} segments Number of segments in the polygon
+ * @param {Object} state Application state for additional parameters
+ * @returns {THREE.BufferGeometry} The created geometry
  */
 export function createPolygonGeometry(radius, segments, state = null) {
-  // Fix for rounding bug: Ensure we have a valid integer number of segments
-  const numSegments = Math.max(2, Math.round(segments));
+  // Get layer ID from state if available for debugging
+  const layerId = state && state.layerId !== undefined ? state.layerId : 'unknown';
   
-  // Get state parameters with defaults
-  const useFractal = state?.useFractal || false;
-  const fractalValue = state?.fractalValue || 1;
-  const useStars = state?.useStars || false;
-  const starSkip = state?.starSkip || 1;
-  const useEuclid = state?.useEuclid || false;
-  const euclidValue = state?.euclidValue || 3;
-  const debug = false; // Set to true only when debugging is needed
+  console.log(`[GEOMETRY CREATE] Creating polygon geometry for layer ${layerId} with radius=${radius}, segments=${segments}`);
   
-  // Always create a completely fresh geometry
+  // Ensure segments is a proper integer and at least 3
+  const numSegments = Math.max(3, Math.round(segments));
+  
+  // We'll be creating geometry from scratch to support star polygons, fractal geometry, etc.
+  let points = [];
+  
+  // Use appropriate creation method based on state parameters
+  if (state && state.useStars) {
+    // Create a star polygon using the specified skip value
+    points = createStarPolygonPoints(radius, numSegments, state.starSkip, state);
+  } else if (state && state.useEuclid) {
+    // Create a subset of points using Euclidean rhythm
+    points = createEuclideanPoints(radius, numSegments, state.euclidValue, state);
+  } else if (state && state.useFractal) {
+    // Create a fractal polygon
+    points = createFractalPolygonPoints(radius, numSegments, state.fractalValue, state);
+  } else {
+    // Create a regular polygon
+    points = createRegularPolygonPoints(radius, numSegments, state);
+  }
+  
+  // Create geometry from points
   const geometry = new THREE.BufferGeometry();
   
-  // If Euclidean rhythm is enabled, create a polygon based on Euclidean distribution
-  if (useEuclid && euclidValue > 0 && euclidValue <= numSegments) {
-    return createEuclideanPolygonGeometry(radius, numSegments, euclidValue, useFractal, fractalValue, debug);
+  // Convert points to Float32Array for position attribute
+  const positionArray = new Float32Array(points.length * 3);
+  
+  for (let i = 0; i < points.length; i++) {
+    positionArray[i * 3] = points[i].x;
+    positionArray[i * 3 + 1] = points[i].y;
+    positionArray[i * 3 + 2] = 0; // Z-coordinate is always 0 in 2D
   }
   
-  // If a valid skip is specified and stars are enabled, create a star polygon
-  if (useStars && starSkip > 1 && starSkip < numSegments) {
-    // Calculate GCD to determine if this creates a proper star
-    const gcd = calculateGCD(numSegments, starSkip);
-    if (debug) {
-      console.log(`Creating star polygon with: useStars=${useStars}, starSkip=${starSkip}, segments=${numSegments}, gcd=${gcd}`);
-    }
-    
-    // Only use star pattern when gcd=1 (ensures a single connected path)
-    if (gcd === 1 || starSkip === 1) {
-      return createStarPolygonGeometry(radius, numSegments, starSkip, useFractal, fractalValue, debug);
-    } else if (debug) {
-      console.log(`Warning: Skip ${starSkip} with ${numSegments} segments has gcd=${gcd}, would create multiple disconnected shapes`);
-      // Fall through to create a regular polygon instead
-    }
+  // Set the position attribute
+  geometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
+  
+  // For audio trigger detection - add the vertex count to the geometry userData
+  if (geometry.userData === undefined) {
+    geometry.userData = {};
   }
   
-  // Otherwise create a standard polygon
-  const vertices = [];
-  
-  // Collect base vertices of the polygon
-  const baseVertices = [];
-  for (let i = 0; i < numSegments; i++) {
-    const angle = (i / numSegments) * Math.PI * 2;
-    const x = Math.cos(angle) * radius;
-    const y = Math.sin(angle) * radius;
-    baseVertices.push(new THREE.Vector3(x, y, 0));
+  // Set the layer ID in the geometry userData
+  if (state && state.layerId !== undefined) {
+    geometry.userData.layerId = state.layerId;
   }
   
-  // If fractal subdivision is enabled and value > 1, subdivide each line segment
-  if (useFractal && fractalValue > 1) {
-    const subdivisions = fractalValue;
-    
-    for (let i = 0; i < numSegments; i++) {
-      const startVertex = baseVertices[i];
-      const endVertex = baseVertices[(i + 1) % numSegments];
-      
-      // Add the start vertex
-      vertices.push(startVertex.x, startVertex.y, startVertex.z);
-      
-      // Create subdivision points between start and end
-      for (let j = 1; j < subdivisions; j++) {
-        const t = j / subdivisions;
-        const x = startVertex.x + (endVertex.x - startVertex.x) * t;
-        const y = startVertex.y + (endVertex.y - startVertex.y) * t;
-        vertices.push(x, y, 0);
-      }
-    }
-  } else {
-    // No subdivision - just use base vertices
-    for (let i = 0; i < numSegments; i++) {
-      const vertex = baseVertices[i];
-      vertices.push(vertex.x, vertex.y, vertex.z);
-    }
-  }
+  // Store number of vertices for use in trigger detection
+  geometry.userData.vertexCount = points.length;
   
-  // Set up the attributes
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
   return geometry;
 }
 
@@ -117,99 +93,63 @@ export function createPolygonGeometry(radius, segments, state = null) {
  * @returns {THREE.BufferGeometry} Star polygon geometry
  */
 function createStarPolygonGeometry(radius, n, k, useFractal, fractalValue, debug = false) {
+  // This function is now obsolete - replaced by createStarPolygonPoints
+  console.warn("createStarPolygonGeometry is deprecated, use createStarPolygonPoints instead");
+  
+  // Create points using our new implementation
+  const points = createStarPolygonPoints(radius, n, k, { useFractal, fractalValue, useCuts: false });
+  
+  // Create geometry from points
   const geometry = new THREE.BufferGeometry();
-  const vertices = [];
   
-  // Calculate GCD to determine if we'll get a single star or multiple shapes
-  const gcd = calculateGCD(n, k);
+  // Convert points to Float32Array for position attribute
+  const positionArray = new Float32Array(points.length * 3);
   
-  if (debug) {
-    console.log(`Creating star polygon {${n}/${k}} - GCD: ${gcd}`);
+  for (let i = 0; i < points.length; i++) {
+    positionArray[i * 3] = points[i].x;
+    positionArray[i * 3 + 1] = points[i].y;
+    positionArray[i * 3 + 2] = 0; // Z-coordinate is always 0 in 2D
   }
   
-  // Collect base vertices of the polygon in a circle
-  const baseVertices = [];
-  for (let i = 0; i < n; i++) {
-    const angle = (i / n) * Math.PI * 2;
-    const x = Math.cos(angle) * radius;
-    const y = Math.sin(angle) * radius;
-    baseVertices.push(new THREE.Vector3(x, y, 0));
-  }
-  
-  // If gcd > 1, we'll get multiple disconnected figures
-  // The figure will repeat after visiting n/gcd vertices
-  const verticesPerFigure = n / gcd;
-  if (debug) {
-    console.log(`This will create ${gcd} separate figure(s) with ${verticesPerFigure} vertices each`);
-  }
-  
-  // If fractal subdivision is enabled and value > 1, subdivide each line segment
-  if (useFractal && fractalValue > 1) {
-    const subdivisions = fractalValue;
-    
-    // For star polygons with fractal subdivision
-    let visited = new Set();  // Track visited vertices
-    let currentIndex = 0;     // Start at vertex 0
-    
-    // Continue until we've visited all vertices or completed a cycle
-    while (visited.size < n && !visited.has(currentIndex)) {
-      visited.add(currentIndex);
-      const startVertex = baseVertices[currentIndex];
-      
-      // Calculate next vertex based on skip pattern
-      const nextIndex = (currentIndex + k) % n;
-      const endVertex = baseVertices[nextIndex];
-      
-      // Add the start vertex
-      vertices.push(startVertex.x, startVertex.y, startVertex.z);
-      
-      // Create subdivision points between start and end
-      for (let j = 1; j < subdivisions; j++) {
-        const t = j / subdivisions;
-        const x = startVertex.x + (endVertex.x - startVertex.x) * t;
-        const y = startVertex.y + (endVertex.y - startVertex.y) * t;
-        vertices.push(x, y, 0);
-      }
-      
-      // Move to the next vertex in the star pattern
-      currentIndex = nextIndex;
-    }
-  } else {
-    // For standard star polygon with no subdivision
-    let visited = new Set();  // Track visited vertices
-    let currentIndex = 0;     // Start at vertex 0
-    
-    // Continue until we've visited all vertices or completed a cycle
-    while (visited.size < n && !visited.has(currentIndex)) {
-      visited.add(currentIndex);
-      const vertex = baseVertices[currentIndex];
-      vertices.push(vertex.x, vertex.y, vertex.z);
-      
-      // Calculate next vertex based on skip pattern
-      currentIndex = (currentIndex + k) % n;
-    }
-    
-    // Add the first vertex again to close the loop if we didn't already
-    if (vertices.length > 0 && currentIndex === 0) {
-      const firstVertex = baseVertices[0];
-      vertices.push(firstVertex.x, firstVertex.y, firstVertex.z);
-    }
-  }
-  
-  // Set up the attributes
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  // Set the position attribute
+  geometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
   
   return geometry;
 }
 
-// Helper function to calculate Greatest Common Divisor
-function calculateGCD(a, b) {
-  while (b) {
-    const temp = b;
-    b = a % b;
-    a = temp;
+/**
+ * Create a polygon geometry based on Euclidean rhythm
+ * @param {number} radius - Radius of the polygon
+ * @param {number} n - Total number of vertices in the complete polygon
+ * @param {number} k - Number of vertices to distribute according to Euclidean rhythm
+ * @param {boolean} useFractal - Whether to use fractal subdivision
+ * @param {number} fractalValue - Fractal subdivision level
+ * @param {boolean} debug - Enable debug logging
+ * @returns {THREE.BufferGeometry} Euclidean rhythm polygon geometry
+ */
+function createEuclideanPolygonGeometry(radius, n, k, useFractal, fractalValue, debug = false) {
+  // This function is now obsolete - replaced by createEuclideanPoints
+  console.warn("createEuclideanPolygonGeometry is deprecated, use createEuclideanPoints instead");
+  
+  // Create points using our new implementation
+  const points = createEuclideanPoints(radius, n, k, { useFractal, fractalValue });
+  
+  // Create geometry from points
+  const geometry = new THREE.BufferGeometry();
+  
+  // Convert points to Float32Array for position attribute
+  const positionArray = new Float32Array(points.length * 3);
+  
+  for (let i = 0; i < points.length; i++) {
+    positionArray[i * 3] = points[i].x;
+    positionArray[i * 3 + 1] = points[i].y;
+    positionArray[i * 3 + 2] = 0; // Z-coordinate is always 0 in 2D
   }
-  return a;
+  
+  // Set the position attribute
+  geometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
+  
+  return geometry;
 }
 
 /**
@@ -541,7 +481,11 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       lineMaterial.opacity = 1.0;
       lineMaterial.depthTest = false;
       lineMaterial.depthWrite = false;
-      lineMaterial.color = new THREE.Color(0x00ff00); // Bright green
+      
+      // IMPORTANT: Use the original material's color instead of hardcoding green
+      // This ensures each layer maintains its own color
+      // lineMaterial.color = new THREE.Color(0x00ff00); // Bright green (REMOVED)
+      
       lineMaterial.linewidth = 5; // Much thicker lines
       
       // Create line loop with the enhanced material
@@ -651,7 +595,11 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     lineMaterial.opacity = 1.0;
     lineMaterial.depthTest = false;
     lineMaterial.depthWrite = false;
-    lineMaterial.color = new THREE.Color(0x00ff00); // Bright green
+    
+    // IMPORTANT: Use the original material's color instead of hardcoding green
+    // This ensures each layer maintains its own color
+    // lineMaterial.color = new THREE.Color(0x00ff00); // Bright green (REMOVED)
+    
     lineMaterial.linewidth = 5; // Much thicker lines
     
     // Create line loop with the enhanced material
@@ -944,7 +892,7 @@ export function getFrequency(x, y) {
  * @param {number} k Number of pulses to distribute
  * @returns {Array<boolean>} Array where true indicates a pulse
  */
-function generateEuclideanRhythm(n, k) {
+function calculateEuclideanRhythm(n, k) {
   // Edge cases
   if (k <= 0) return Array(n).fill(false);
   if (k >= n) return Array(n).fill(true);
@@ -1033,116 +981,172 @@ function generateEuclideanRhythm(n, k) {
 }
 
 /**
- * Create a polygon geometry based on Euclidean rhythm
- * @param {number} radius - Radius of the polygon
- * @param {number} n - Total number of vertices in the complete polygon
- * @param {number} k - Number of vertices to distribute according to Euclidean rhythm
- * @param {boolean} useFractal - Whether to use fractal subdivision
- * @param {number} fractalValue - Fractal subdivision level
- * @param {boolean} debug - Enable debug logging
- * @returns {THREE.BufferGeometry} Euclidean rhythm polygon geometry
+ * Create points for a regular polygon
+ * @param {number} radius Radius of the polygon
+ * @param {number} numSegments Number of segments
+ * @param {Object} state Application state
+ * @returns {Array<THREE.Vector2>} Array of points
  */
-function createEuclideanPolygonGeometry(radius, n, k, useFractal, fractalValue, debug = false) {
-  const geometry = new THREE.BufferGeometry();
+function createRegularPolygonPoints(radius, numSegments, state = null) {
+  const points = [];
+  const angleStep = (Math.PI * 2) / numSegments;
   
-  if (debug) {
-    console.log(`Creating Euclidean rhythm polygon with n=${n}, k=${k}`);
-  }
-  
-  // Generate Euclidean rhythm pattern
-  const pattern = generateEuclideanRhythm(n, k);
-  
-  // Debug: log the generated pattern
-  console.log(`Euclidean rhythm pattern for n=${n}, k=${k}: ${JSON.stringify(pattern)}`);
-  
-  // Generate all vertex positions on the circle
-  const allVertices = [];
-  for (let i = 0; i < n; i++) {
-    const angle = (i / n) * Math.PI * 2;
+  // Create a regular polygon
+  for (let i = 0; i < numSegments; i++) {
+    const angle = i * angleStep;
     const x = Math.cos(angle) * radius;
     const y = Math.sin(angle) * radius;
-    allVertices.push(new THREE.Vector3(x, y, 0));
+    points.push(new THREE.Vector2(x, y));
   }
   
-  // Filter vertices based on the Euclidean pattern
-  const selectedVertices = [];
-  for (let i = 0; i < n; i++) {
-    if (pattern[i]) {
-      selectedVertices.push(allVertices[i]);
-    }
-  }
+  return points;
+}
+
+/**
+ * Create points for a star polygon
+ * @param {number} radius Radius of the polygon
+ * @param {number} numSegments Number of segments
+ * @param {number} skip Skip value for star
+ * @param {Object} state Application state
+ * @returns {Array<THREE.Vector2>} Array of points
+ */
+function createStarPolygonPoints(radius, numSegments, skip, state = null) {
+  const points = [];
+  const angleStep = (Math.PI * 2) / numSegments;
   
-  // Ensure we have the correct number of vertices based on k
-  console.log(`Selected ${selectedVertices.length} vertices from pattern, expected ${k}`);
+  // If skip is invalid, fall back to 1 (regular polygon)
+  skip = skip || 1;
   
-  // If we have fewer vertices than k, there might be an issue with the pattern generation
-  if (selectedVertices.length < k) {
-    console.warn(`Got fewer vertices (${selectedVertices.length}) than expected (${k}). Forcing selection of ${k} vertices.`);
-    
-    // Force selection of k evenly distributed vertices
-    selectedVertices.length = 0;
-    const step = Math.floor(n / k);
-    for (let i = 0; i < k; i++) {
-      const index = (i * step) % n;
-      selectedVertices.push(allVertices[index]);
-    }
-  }
-  
-  // Sort vertices by angle to maintain order around the circle
-  selectedVertices.sort((a, b) => {
-    const angleA = Math.atan2(a.y, a.x);
-    const angleB = Math.atan2(b.y, b.x);
-    return angleA - angleB;
-  });
-  
-  // If no vertices were selected, return empty geometry
-  if (selectedVertices.length === 0) {
-    if (debug) {
-      console.warn("Euclidean pattern resulted in no vertices");
-    }
-    return geometry;
-  }
-  
-  // Create position array for geometry
-  const vertices = [];
-  
-  // If fractal subdivision is enabled, add subdivision points
-  if (useFractal && fractalValue > 1) {
-    const subdivisions = fractalValue;
-    
-    for (let i = 0; i < selectedVertices.length; i++) {
-      const startVertex = selectedVertices[i];
-      const endVertex = selectedVertices[(i + 1) % selectedVertices.length];
+  // If useCuts is enabled, create star with cuts to the center
+  if (state && state.useCuts) {
+    // Create a star polygon with cuts
+    for (let i = 0; i < numSegments; i++) {
+      // Outer point
+      const outerAngle = i * angleStep;
+      const outerX = Math.cos(outerAngle) * radius;
+      const outerY = Math.sin(outerAngle) * radius;
+      points.push(new THREE.Vector2(outerX, outerY));
       
-      // Add the start vertex
-      vertices.push(startVertex.x, startVertex.y, startVertex.z);
+      // Inner point (at center)
+      points.push(new THREE.Vector2(0, 0));
+    }
+  } else {
+    // Standard star polygon using skip value
+    let vertex = 0;
+    const visited = new Array(numSegments).fill(false);
+    
+    for (let i = 0; i < numSegments; i++) {
+      if (!visited[vertex]) {
+        const angle = vertex * angleStep;
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+        points.push(new THREE.Vector2(x, y));
+        visited[vertex] = true;
+      }
       
-      // Create subdivision points between vertices
-      for (let j = 1; j < subdivisions; j++) {
-        const t = j / subdivisions;
-        const x = startVertex.x + (endVertex.x - startVertex.x) * t;
-        const y = startVertex.y + (endVertex.y - startVertex.y) * t;
-        vertices.push(x, y, 0);
+      // Jump by skip amount
+      vertex = (vertex + skip) % numSegments;
+      
+      // If we get back to where we started and not all vertices are visited,
+      // move to the next unvisited vertex and continue
+      if (vertex === 0 && i < numSegments - 1) {
+        let nextVertex = 0;
+        while (nextVertex < numSegments && visited[nextVertex]) {
+          nextVertex++;
+        }
+        vertex = nextVertex;
       }
     }
-    
-    // We don't need to add the first vertex again because the last subdivision 
-    // connects back to the first vertex already
-  } else {
-    // Just add the selected vertices without subdivision
-    for (const vertex of selectedVertices) {
-      vertices.push(vertex.x, vertex.y, vertex.z);
-    }
-    
-    // Add the first vertex again to close the loop
-    if (selectedVertices.length > 0) {
-      const firstVertex = selectedVertices[0];
-      vertices.push(firstVertex.x, firstVertex.y, firstVertex.z);
+  }
+  
+  return points;
+}
+
+/**
+ * Create points using Euclidean rhythm
+ * @param {number} radius Radius of the polygon
+ * @param {number} numSegments Total number of segments in a complete polygon
+ * @param {number} pulseCount Number of points to include (Euclidean k value)
+ * @param {Object} state Application state
+ * @returns {Array<THREE.Vector2>} Array of points
+ */
+function createEuclideanPoints(radius, numSegments, pulseCount, state = null) {
+  const points = [];
+  const angleStep = (Math.PI * 2) / numSegments;
+  
+  // Calculate Euclidean rhythm
+  const pattern = calculateEuclideanRhythm(numSegments, pulseCount);
+  
+  // Create points based on the pattern
+  for (let i = 0; i < numSegments; i++) {
+    if (pattern[i]) {
+      const angle = i * angleStep;
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius;
+      points.push(new THREE.Vector2(x, y));
     }
   }
   
-  // Set up the attributes
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  return points;
+}
+
+/**
+ * Create points for a fractal polygon
+ * @param {number} radius Radius of the polygon
+ * @param {number} numSegments Number of segments
+ * @param {number} fractalValue Fractal iteration value
+ * @param {Object} state Application state
+ * @returns {Array<THREE.Vector2>} Array of points
+ */
+function createFractalPolygonPoints(radius, numSegments, fractalValue, state = null) {
+  // Start with a regular polygon
+  let points = createRegularPolygonPoints(radius, numSegments, state);
   
-  return geometry;
+  // Apply fractal iterations
+  const iterations = Math.floor(fractalValue);
+  
+  // For each iteration, apply the fractal transformation
+  for (let i = 0; i < iterations; i++) {
+    points = applyFractalIteration(points, fractalValue - Math.floor(fractalValue));
+  }
+  
+  return points;
+}
+
+/**
+ * Apply a fractal iteration to the points
+ * @param {Array<THREE.Vector2>} points Input points
+ * @param {number} fractalFactor Fractional part of fractal value for scaling
+ * @returns {Array<THREE.Vector2>} New points after fractal iteration
+ */
+function applyFractalIteration(points, fractalFactor) {
+  const newPoints = [];
+  const factor = 0.3 + fractalFactor * 0.4; // Scale between 0.3 and 0.7
+  
+  // Add original vertices
+  for (let i = 0; i < points.length; i++) {
+    newPoints.push(points[i]);
+    
+    // Add a new point between this vertex and the next
+    const nextIndex = (i + 1) % points.length;
+    const midX = points[i].x + (points[nextIndex].x - points[i].x) * factor;
+    const midY = points[i].y + (points[nextIndex].y - points[i].y) * factor;
+    
+    newPoints.push(new THREE.Vector2(midX, midY));
+  }
+  
+  return newPoints;
+}
+
+/**
+ * Generate a Euclidean rhythm pattern
+ * Distributes k pulses over n steps as evenly as possible
+ * @param {number} n Total number of steps
+ * @param {number} k Number of pulses to distribute
+ * @returns {Array<boolean>} Array where true indicates a pulse
+ */
+function generateEuclideanRhythm(n, k) {
+  // This function is now obsolete - replaced by calculateEuclideanRhythm
+  console.warn("generateEuclideanRhythm is deprecated, use calculateEuclideanRhythm instead");
+  return calculateEuclideanRhythm(n, k);
 }

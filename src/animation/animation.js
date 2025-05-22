@@ -58,7 +58,8 @@ export function animate(params) {
     renderer,
     cam,
     stats,
-    state,
+    state, // This is now a proxy object
+    globalState,
     triggerAudioCallback
   } = params;
 
@@ -70,43 +71,41 @@ export function animate(params) {
 
   // Time tracking
   const tNow = window.performance.now();
-  const dt = Math.min(tNow - state.lastTime, 100); // Cap delta time at 100ms
   
-  // Get BPM from state
-  const bpm = state.bpm || 120;
+  // Get active layer's state from layer manager if available
+  const layerManager = scene._layerManager;
+  const activeLayer = layerManager?.getActiveLayer();
+  const activeState = activeLayer?.state || state;
   
-  // Calculate angle based on time and BPM (simple rotation)
-  // Calculate the angular velocity in degrees per millisecond
-  const anglePerSecond = (bpm / 60) * 360; // Full rotation per beat
-  const anglePerMs = anglePerSecond / 1000;
+  // Add debug frame counter
+  animationFrameCounter++;
+  const shouldLogDebug = animationFrameCounter % 300 === 0;
   
-  // Calculate the angle delta based on elapsed time
-  const angleDelta = anglePerMs * dt;
+  // Log active layer debug info occasionally
+  if (shouldLogDebug && activeLayer) {
+    console.log(`[ANIMATION] Frame ${animationFrameCounter}, active layer ID: ${layerManager?.activeLayerId}`);
+    console.log(`[ANIMATION] Active layer state: radius=${activeState.radius}, segments=${activeState.segments}, copies=${activeState.copies}`);
+  }
   
-  // Get the last angle and calculate the new angle
-  const lastAngle = state.lastAngle || 0;
-  const angle = (lastAngle + angleDelta) % 360;
-  
-  // Store for next frame
-  state.lastAngle = angle;
-  
-  // Update state's time
-  state.lastTime = tNow;
+  // Get angle from global state manager (BPM is global)
+  const { angle, lastAngle } = globalState.updateAngle(tNow);
   
   // Create animation parameters for layers
   const animationParams = {
     scene,
     tNow,
-    dt,
-    angle: angle,
+    dt: Math.min(tNow - (activeState.lastTime || tNow - 16.67), 100),
+    angle,
     lastAngle,
     triggerAudioCallback,
-    camera: cam
+    camera: cam,
+    activeLayerId: layerManager?.activeLayerId, // Add active layer ID to params
+    layerManager // Pass the layer manager directly
   };
   
   // Update the layer manager if available
-  if (scene._layerManager) {
-    scene._layerManager.updateLayers(animationParams);
+  if (layerManager) {
+    layerManager.updateLayers(animationParams);
   }
   
   // Update any DOM labels
@@ -119,8 +118,7 @@ export function animate(params) {
   stats.end();
   
   // Log occasionally
-  animationFrameCounter++;
   if (animationFrameCounter % 300 === 0) {
-    console.log(`Animation frame ${animationFrameCounter}, angle: ${angle.toFixed(2)}`);
+    console.log(`Animation frame ${animationFrameCounter}, angle: ${angle.toFixed(2)}, BPM: ${globalState.bpm}`);
   }
 }

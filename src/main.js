@@ -33,6 +33,8 @@ import { setupHeaderTabs } from './ui/headerTabs.js';
 // Import the new layer modules
 import { LayerManager } from './state/LayerManager.js';
 import { setupLayersUI, updateLayersUI } from './ui/layersUI.js';
+// Import the global state manager
+import { GlobalStateManager } from './state/GlobalStateManager.js';
 
 // Initialize stats for performance monitoring
 const stats = new Stats();
@@ -48,13 +50,18 @@ stats.dom.style.top = '10px';
 // Create application state
 const appState = createAppState();
 
-// Make state globally accessible for debugging
+// Create global state manager
+const globalState = new GlobalStateManager();
+
+// Make states globally accessible for debugging
 window._appState = appState;
+window._globalState = globalState;
 
 // Store UI references globally
 let uiReferences = null;
 let synthUIReferences = null;
 let layerUIReferences = null;
+let globalUIReferences = null;
 
 // References to core components
 let audioInstance = null;
@@ -66,30 +73,59 @@ let layerManager = null;
  * Call this whenever the state changes in important ways
  */
 function syncStateAcrossSystems() {
-  // Get active layer's state
-  const activeLayer = layerManager?.getActiveLayer();
-  const state = activeLayer?.state || appState;
+  // Get active layer's state using the getActiveState function if available
+  const state = window.getActiveState ? window.getActiveState() : appState;
+  const activeLayerId = layerManager?.activeLayerId;
+  
+  console.log(`[STATE SYNC] Syncing state for active layer ID: ${activeLayerId}`);
   
   // Make sure all core components have access to the state
   if (sceneInstance) {
     sceneInstance.userData.state = state;
+    sceneInstance.userData.globalState = globalState;
   }
   
+  const activeLayer = layerManager?.getActiveLayer();
   if (activeLayer?.group) {
     activeLayer.group.userData.state = state;
+    activeLayer.group.userData.globalState = globalState;
+    
+    // Verify the active layer's state is correctly set
+    console.log(`[STATE SYNC] Active layer ${activeLayerId} state:`, {
+      radius: activeLayer.state.radius,
+      segments: activeLayer.state.segments,
+      copies: activeLayer.state.copies
+    });
   }
   
   if (audioInstance) {
     // Update audio state
     audioInstance.userData = {
       ...audioInstance.userData,
-      state: state
+      state: state,
+      globalState: globalState
     };
   }
   
-  // Update UI to reflect the active layer's state
-  if (uiReferences && activeLayer) {
+  // Update layer-specific UI to reflect the active layer's state
+  if (uiReferences && state) {
+    // Log to show what state values we're updating to
+    console.log(`Updating UI to match active layer state: radius=${state.radius}, segments=${state.segments}, copies=${state.copies}`);
     updateUIFromState(state, uiReferences);
+  }
+  
+  // Update global UI with global state
+  if (globalUIReferences && globalState) {
+    console.log(`Updating global UI: BPM=${globalState.bpm}`);
+    // Update BPM display
+    const bpmValue = document.getElementById('bpmValue');
+    if (bpmValue) bpmValue.textContent = globalState.bpm;
+    
+    const bpmRange = document.getElementById('bpmRange');
+    if (bpmRange) bpmRange.value = globalState.bpm;
+    
+    const bpmNumber = document.getElementById('bpmNumber');
+    if (bpmNumber) bpmNumber.value = globalState.bpm;
   }
   
   // Force more immediate intersection update on critical parameter changes
@@ -343,6 +379,7 @@ function initializeApplication() {
   // Store camera and renderer references in scene userData for layer manager to access
   scene.userData.camera = camera;
   scene.userData.renderer = renderer;
+  scene.userData.globalState = globalState;
   
   console.log("Camera position:", camera.position);
   console.log("Camera field of view:", camera.fov);
@@ -365,7 +402,7 @@ function initializeApplication() {
   createAxis(scene);
   
   // Create the layer manager
-  const layerManager = new LayerManager(scene);
+  layerManager = new LayerManager(scene);
   
   // Add reference to the scene for easy access
   scene._layerManager = layerManager;
@@ -412,12 +449,145 @@ function initializeApplication() {
   debugButton.addEventListener('click', () => {
     const activeLayer = layerManager.getActiveLayer();
     if (activeLayer) {
+      // Get the current layer state before recreation
+      const layerId = activeLayer.id;
+      console.log(`[DEBUG] Before geometry recreation for layer ${layerId}:`, {
+        radius: activeLayer.state.radius,
+        segments: activeLayer.state.segments,
+        copies: activeLayer.state.copies
+      });
+      
+      // Force recreation
       activeLayer.recreateGeometry();
-      console.log("Manually recreated geometry");
+      
+      // Log after recreation
+      console.log(`[DEBUG] After geometry recreation for layer ${layerId}:`, {
+        radius: activeLayer.state.radius,
+        segments: activeLayer.state.segments,
+        copies: activeLayer.state.copies
+      });
+      
+      console.log(`[DEBUG] Manually recreated geometry for active layer ${layerId}`);
+    }
+  });
+  
+  // Add a second debug button to compare layers
+  const compareLayersButton = document.createElement('button');
+  compareLayersButton.textContent = 'Compare Layers';
+  compareLayersButton.style.position = 'absolute';
+  compareLayersButton.style.bottom = '90px';
+  compareLayersButton.style.left = '10px';
+  compareLayersButton.style.zIndex = '1000';
+  compareLayersButton.style.padding = '10px';
+  compareLayersButton.style.backgroundColor = '#00f';
+  compareLayersButton.style.color = '#fff';
+  compareLayersButton.style.border = 'none';
+  compareLayersButton.style.borderRadius = '5px';
+  compareLayersButton.style.cursor = 'pointer';
+  
+  compareLayersButton.addEventListener('click', () => {
+    if (layerManager && layerManager.layers.length > 0) {
+      console.log(`[DEBUG] Current active layer ID: ${layerManager.activeLayerId}`);
+      
+      // Log state of all layers
+      layerManager.layers.forEach(layer => {
+        console.log(`[DEBUG] Layer ${layer.id} state:`, {
+          active: layer.active,
+          radius: layer.state.radius,
+          segments: layer.state.segments,
+          copies: layer.state.copies,
+          visible: layer.visible,
+          groupVisible: layer.group.visible
+        });
+      });
+    }
+  });
+  
+  // Add a third debug button to recreate ALL layers' geometries
+  const recreateAllButton = document.createElement('button');
+  recreateAllButton.textContent = 'Recreate ALL Geometries';
+  recreateAllButton.style.position = 'absolute';
+  recreateAllButton.style.bottom = '130px';
+  recreateAllButton.style.left = '10px';
+  recreateAllButton.style.zIndex = '1000';
+  recreateAllButton.style.padding = '10px';
+  recreateAllButton.style.backgroundColor = '#f0f';
+  recreateAllButton.style.color = '#fff';
+  recreateAllButton.style.border = 'none';
+  recreateAllButton.style.borderRadius = '5px';
+  recreateAllButton.style.cursor = 'pointer';
+  
+  recreateAllButton.addEventListener('click', () => {
+    if (layerManager && layerManager.layers.length > 0) {
+      console.log(`[DEBUG] Recreating geometry for ALL layers`);
+      
+      // Force recreation of all layers' geometries
+      layerManager.layers.forEach(layer => {
+        // Log before state
+        console.log(`[DEBUG] Layer ${layer.id} BEFORE recreation:`, {
+          radius: layer.state.radius,
+          segments: layer.state.segments,
+          copies: layer.state.copies
+        });
+        
+        // Force parameter changes to trigger geometry update
+        layer.state.parameterChanges.radius = true;
+        layer.state.parameterChanges.segments = true;
+        layer.state.parameterChanges.copies = true;
+        
+        // Recreate geometry
+        layer.recreateGeometry();
+        
+        // Log after recreation
+        console.log(`[DEBUG] Layer ${layer.id} AFTER recreation:`, {
+          radius: layer.state.radius,
+          segments: layer.state.segments,
+          copies: layer.state.copies
+        });
+      });
+      
+      console.log(`[DEBUG] All geometries recreated`);
+    }
+  });
+  
+  // Add a fourth debug button to fix layer colors
+  const fixLayerColorsButton = document.createElement('button');
+  fixLayerColorsButton.textContent = 'Fix Layer Colors';
+  fixLayerColorsButton.style.position = 'absolute';
+  fixLayerColorsButton.style.bottom = '170px';
+  fixLayerColorsButton.style.left = '10px';
+  fixLayerColorsButton.style.zIndex = '1000';
+  fixLayerColorsButton.style.padding = '10px';
+  fixLayerColorsButton.style.backgroundColor = '#0ff'; // Cyan
+  fixLayerColorsButton.style.color = '#000'; // Black text for better contrast
+  fixLayerColorsButton.style.border = 'none';
+  fixLayerColorsButton.style.borderRadius = '5px';
+  fixLayerColorsButton.style.cursor = 'pointer';
+  
+  fixLayerColorsButton.addEventListener('click', () => {
+    if (layerManager && typeof layerManager.forceSyncLayerColors === 'function') {
+      console.log(`[DEBUG] Fixing all layer colors`);
+      layerManager.forceSyncLayerColors();
+      
+      // Also force geometry recreation to ensure the colors are applied
+      layerManager.layers.forEach(layer => {
+        // Force parameter changes to trigger geometry update
+        layer.state.parameterChanges.radius = true;
+        
+        // Recreate geometry
+        layer.recreateGeometry();
+      });
+      
+      console.log(`[DEBUG] Layer colors fixed and geometries recreated`);
+    } else {
+      console.error(`[DEBUG] Cannot fix layer colors: layerManager.forceSyncLayerColors is not a function`);
     }
   });
   
   document.body.appendChild(debugButton);
+  document.body.appendChild(compareLayersButton);
+  document.body.appendChild(recreateAllButton);
+  document.body.appendChild(fixLayerColorsButton);
   
   // Ensure visibility
   initialLayer.setVisible(true);
@@ -440,12 +610,12 @@ function initializeApplication() {
     .then(csound => {
       audioInstance = csound;
       
-      // Setup envelope from state
-      setEnvelope(state.attack, state.decay, state.sustain, state.release)
+      // Setup envelope from global state
+      setEnvelope(globalState.attack, globalState.decay, globalState.sustain, globalState.release)
         .then(() => {
-          // Set initial brightness and volume
-          setBrightness(state.brightness);
-          setMasterVolume(state.volume);
+          // Set initial brightness and volume from global state
+          setBrightness(globalState.brightness);
+          setMasterVolume(globalState.volume);
           
           // Enable Csound timing system
           enableCsoundTiming(csound);
@@ -455,7 +625,7 @@ function initializeApplication() {
             triggerAudio(note, csound);
           };
           
-          // Start animation with the first layer's parameters
+          // Start animation with global state for timing
           animate({
             scene,
             group: activeLayer.group,
@@ -465,7 +635,15 @@ function initializeApplication() {
             csound,
             renderer,
             cam: camera,
-            state,
+            state: {
+              // Create a proxy to always get the active layer's state
+              get bpm() { return globalState.bpm; }, // BPM is now in global state
+              get lastTime() { return layerManager.getActiveLayer()?.state.lastTime || tNow; },
+              set lastTime(value) { if (layerManager.getActiveLayer()) layerManager.getActiveLayer().state.lastTime = value; },
+              get lastAngle() { return globalState.lastAngle; }, // lastAngle is now in global state
+              set lastAngle(value) { globalState.lastAngle = value; }
+            },
+            globalState,
             triggerAudioCallback: handleAudioTrigger
           });
           
@@ -478,25 +656,39 @@ function initializeApplication() {
             return noteCopy;
           };
           
-          // Load state from localStorage if available
-          loadState().then(loadedState => {
-            if (loadedState) {
-              applyLoadedState(loadedState, state);
-              console.log("Loaded state from localStorage", state);
-            }
-          });
-          
-          // Setup auto-save
-          setupAutoSave(state);
-          
           // Setup UI controls and bind events
           uiReferences = setupUI(state, syncStateAcrossSystems, silentAudioTrigger);
           
+          // Setup global UI controls
+          setupGlobalUI(globalState);
+          
           // Setup synth UI controls
-          synthUIReferences = setupSynthUI(state, syncStateAcrossSystems);
+          synthUIReferences = setupSynthUI(globalState, syncStateAcrossSystems);
           
           // Setup layers UI
           layerUIReferences = setupLayersUI(layerManager);
+          
+          // Make active layer state globally accessible
+          window.getActiveState = () => {
+            const activeLayer = layerManager?.getActiveLayer();
+            const activeLayerId = layerManager?.activeLayerId;
+            
+            if (activeLayer && activeLayer.state) {
+              // Only log if there's a mismatch between active layer and layer ID
+              if (activeLayer.id !== activeLayerId) {
+                console.warn(`[getActiveState] Layer ID mismatch: activeLayer.id=${activeLayer.id}, activeLayerId=${activeLayerId}`);
+              }
+              return activeLayer.state;
+            } else {
+              console.warn(`[getActiveState] Unable to find active layer state, falling back to default state`);
+              return state;
+            }
+          };
+          
+          // Update UI to reflect active layer state
+          if (typeof window.syncStateAcrossSystems === 'function') {
+            window.syncStateAcrossSystems();
+          }
           
           // Setup collapsible sections
           setupCollapsibleSections();
@@ -538,6 +730,48 @@ function initializeApplication() {
     .catch(error => {
       console.error("Failed to initialize audio:", error);
     });
+}
+
+/**
+ * Setup global UI controls
+ * @param {GlobalStateManager} globalState The global state manager
+ */
+function setupGlobalUI(globalState) {
+  // Get BPM controls
+  const bpmRange = document.getElementById('bpmRange');
+  const bpmNumber = document.getElementById('bpmNumber');
+  const bpmValue = document.getElementById('bpmValue');
+  
+  // Set initial values
+  if (bpmRange) bpmRange.value = globalState.bpm;
+  if (bpmNumber) bpmNumber.value = globalState.bpm;
+  if (bpmValue) bpmValue.textContent = globalState.bpm;
+  
+  // Add event listeners
+  if (bpmRange) {
+    bpmRange.addEventListener('input', e => {
+      const value = Number(e.target.value);
+      globalState.setBpm(value);
+      if (bpmNumber) bpmNumber.value = value;
+      if (bpmValue) bpmValue.textContent = value;
+    });
+  }
+  
+  if (bpmNumber) {
+    bpmNumber.addEventListener('input', e => {
+      const value = Number(e.target.value);
+      globalState.setBpm(value);
+      if (bpmRange) bpmRange.value = value;
+      if (bpmValue) bpmValue.textContent = value;
+    });
+  }
+  
+  // Store references to global UI controls
+  globalUIReferences = {
+    bpmRange,
+    bpmNumber,
+    bpmValue
+  };
 }
 
 // Check if DOM is loaded, otherwise wait for it

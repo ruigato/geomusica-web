@@ -3,11 +3,11 @@ import { setEnvelope, setBrightness, setMasterVolume } from '../audio/audio.js';
 
 /**
  * Setup synth UI controls and connect them to the audio engine
- * @param {Object} state - Application state object
- * @param {Object} csoundInstance - Csound instance
+ * @param {GlobalStateManager} globalState - Global state object containing synth parameters
+ * @param {function} syncCallback - Callback to sync state across systems
  * @returns {Object} References to UI elements
  */
-export function setupSynthUI(state, csoundInstance) {
+export function setupSynthUI(globalState, syncCallback) {
   // Get all ADSR UI elements
   const attackRange = document.getElementById('attackRange');
   const attackNumber = document.getElementById('attackNumber');
@@ -33,41 +33,41 @@ export function setupSynthUI(state, csoundInstance) {
   const volumeNumber = document.getElementById('volumeNumber');
   const volumeValue = document.getElementById('volumeValue');
 
-  // Initialize values from state
-  if (state.attack !== undefined) {
-    attackRange.value = state.attack;
-    attackNumber.value = state.attack;
-    attackValue.textContent = state.attack.toFixed(2);
+  // Initialize values from global state
+  if (globalState.attack !== undefined) {
+    attackRange.value = globalState.attack;
+    attackNumber.value = globalState.attack;
+    attackValue.textContent = globalState.attack.toFixed(2);
   }
 
-  if (state.decay !== undefined) {
-    decayRange.value = state.decay;
-    decayNumber.value = state.decay;
-    decayValue.textContent = state.decay.toFixed(2);
+  if (globalState.decay !== undefined) {
+    decayRange.value = globalState.decay;
+    decayNumber.value = globalState.decay;
+    decayValue.textContent = globalState.decay.toFixed(2);
   }
 
-  if (state.sustain !== undefined) {
-    sustainRange.value = state.sustain;
-    sustainNumber.value = state.sustain;
-    sustainValue.textContent = state.sustain.toFixed(2);
+  if (globalState.sustain !== undefined) {
+    sustainRange.value = globalState.sustain;
+    sustainNumber.value = globalState.sustain;
+    sustainValue.textContent = globalState.sustain.toFixed(2);
   }
 
-  if (state.release !== undefined) {
-    releaseRange.value = state.release;
-    releaseNumber.value = state.release;
-    releaseValue.textContent = state.release.toFixed(2);
+  if (globalState.release !== undefined) {
+    releaseRange.value = globalState.release;
+    releaseNumber.value = globalState.release;
+    releaseValue.textContent = globalState.release.toFixed(2);
   }
 
-  if (state.brightness !== undefined) {
-    brightnessRange.value = state.brightness;
-    brightnessNumber.value = state.brightness;
-    brightnessValue.textContent = state.brightness.toFixed(2);
+  if (globalState.brightness !== undefined) {
+    brightnessRange.value = globalState.brightness;
+    brightnessNumber.value = globalState.brightness;
+    brightnessValue.textContent = globalState.brightness.toFixed(2);
   }
 
-  if (state.volume !== undefined) {
-    volumeRange.value = state.volume;
-    volumeNumber.value = state.volume;
-    volumeValue.textContent = state.volume.toFixed(2);
+  if (globalState.volume !== undefined) {
+    volumeRange.value = globalState.volume;
+    volumeNumber.value = globalState.volume;
+    volumeValue.textContent = globalState.volume.toFixed(2);
   }
 
   // Helper function to sync a pair of range and number inputs
@@ -77,7 +77,7 @@ export function setupSynthUI(state, csoundInstance) {
       spanEl.textContent = value.toFixed(2);
       numEl.value = value;
       
-      // Update state
+      // Update global state
       if (setter) {
         setter(value);
       }
@@ -85,6 +85,11 @@ export function setupSynthUI(state, csoundInstance) {
       // Call callback if provided
       if (callback) {
         callback(value);
+      }
+      
+      // Sync across systems
+      if (syncCallback) {
+        syncCallback();
       }
     });
     
@@ -93,7 +98,7 @@ export function setupSynthUI(state, csoundInstance) {
       spanEl.textContent = value.toFixed(2);
       rangeEl.value = value;
       
-      // Update state
+      // Update global state
       if (setter) {
         setter(value);
       }
@@ -102,69 +107,37 @@ export function setupSynthUI(state, csoundInstance) {
       if (callback) {
         callback(value);
       }
+      
+      // Sync across systems
+      if (syncCallback) {
+        syncCallback();
+      }
     });
   };
 
-  // Add state update methods if they don't exist
-  if (!state.setAttack) {
-    state.setAttack = function(value) {
-      this.attack = value;
-    };
-  }
-  
-  if (!state.setDecay) {
-    state.setDecay = function(value) {
-      this.decay = value;
-    };
-  }
-  
-  if (!state.setSustain) {
-    state.setSustain = function(value) {
-      this.sustain = value;
-    };
-  }
-  
-  if (!state.setRelease) {
-    state.setRelease = function(value) {
-      this.release = value;
-    };
-  }
-  
-  if (!state.setBrightness) {
-    state.setBrightness = function(value) {
-      this.brightness = value;
-    };
-  }
-  
-  if (!state.setVolume) {
-    state.setVolume = function(value) {
-      this.volume = value;
-    };
-  }
-
-  // Connect the ADSR controls to both state and audio engine
+  // Connect the ADSR controls to both global state and audio engine
   syncPair(attackRange, attackNumber, attackValue, 
-    value => state.setAttack(value),
-    value => setEnvelope(value, state.decay, state.sustain, state.release));
+    value => globalState.setAttack(value),
+    value => setEnvelope(value, globalState.decay, globalState.sustain, globalState.release));
 
   syncPair(decayRange, decayNumber, decayValue, 
-    value => state.setDecay(value),
-    value => setEnvelope(state.attack, value, state.sustain, state.release));
+    value => globalState.setDecay(value),
+    value => setEnvelope(globalState.attack, value, globalState.sustain, globalState.release));
 
   syncPair(sustainRange, sustainNumber, sustainValue, 
-    value => state.setSustain(value),
-    value => setEnvelope(state.attack, state.decay, value, state.release));
+    value => globalState.setSustain(value),
+    value => setEnvelope(globalState.attack, globalState.decay, value, globalState.release));
 
   syncPair(releaseRange, releaseNumber, releaseValue, 
-    value => state.setRelease(value),
-    value => setEnvelope(state.attack, state.decay, state.sustain, value));
+    value => globalState.setRelease(value),
+    value => setEnvelope(globalState.attack, globalState.decay, globalState.sustain, value));
 
   syncPair(brightnessRange, brightnessNumber, brightnessValue, 
-    value => state.setBrightness(value),
+    value => globalState.setBrightness(value),
     value => setBrightness(value));
 
   syncPair(volumeRange, volumeNumber, volumeValue, 
-    value => state.setVolume(value),
+    value => globalState.setVolume(value),
     value => setMasterVolume(value));
 
   // Return references to UI elements

@@ -20,8 +20,21 @@ export class Layer {
     // Create a dedicated state object for this layer
     this.state = createAppState();
     
+    // Add a direct reference to this layer in the state object
+    this.state.layerId = id;
+    this.state.layerRef = this;
+    
+    // Generate a unique color for this layer based on its ID
+    if (options.color) {
+      // Use the provided color if supplied
+      this.color = options.color;
+    } else {
+      // Generate a color with a distinct hue based on layer ID
+      const hue = (id * 60) % 360; // 60-degree shift per layer
+      this.color = new THREE.Color(`hsl(${hue}, 100%, 50%)`);
+    }
+    
     // Layer-specific rendering properties
-    this.color = options.color || new THREE.Color(`hsl(${(id * 60) % 360}, 100%, 50%)`);
     this.baseGeo = null;
     this.group = null;
     this.material = null;
@@ -46,6 +59,40 @@ export class Layer {
     this.state.parameterChanges.stepScale = true;
     
     console.log(`Layer ${id} created with: copies=${this.state.copies}, segments=${this.state.segments}, radius=${this.state.radius}`);
+    console.log(`Layer ${id} color:`, this.color);
+    
+    // Override the setRadius, setSegments, and setCopies methods to add layer-specific logging
+    const originalSetRadius = this.state.setRadius;
+    this.state.setRadius = (value) => {
+      console.log(`[LAYER ${this.id}] Setting radius to ${value}`);
+      return originalSetRadius.call(this.state, value);
+    };
+    
+    const originalSetSegments = this.state.setSegments;
+    this.state.setSegments = (value) => {
+      console.log(`[LAYER ${this.id}] Setting segments to ${value}`);
+      return originalSetSegments.call(this.state, value);
+    };
+    
+    const originalSetCopies = this.state.setCopies;
+    this.state.setCopies = (value) => {
+      console.log(`[LAYER ${this.id}] Setting copies to ${value}`);
+      return originalSetCopies.call(this.state, value);
+    };
+    
+    // Override hasParameterChanged to add layer-specific logging
+    const originalHasParameterChanged = this.state.hasParameterChanged;
+    this.state.hasParameterChanged = function() {
+      const hasChanges = originalHasParameterChanged.call(this);
+      if (hasChanges) {
+        const changedParams = Object.entries(this.parameterChanges)
+          .filter(([_, val]) => val)
+          .map(([key, _]) => key)
+          .join(", ");
+        console.log(`[LAYER ${id}] Parameter changes detected: ${changedParams}`);
+      }
+      return hasChanges;
+    };
   }
   
   /**
@@ -65,7 +112,7 @@ export class Layer {
     // This fixes the "No valid state found for trigger detection" error
     this.group.userData.state = this.state;
     
-    // Create layer-specific material - MORE VISIBLE VERSION
+    // Create layer-specific material with THIS LAYER'S COLOR
     this.material = new THREE.LineBasicMaterial({
       color: this.color,
       transparent: false,  
@@ -75,6 +122,20 @@ export class Layer {
       linewidth: 3,        // Thicker lines
       linecap: 'round',    // Rounded line caps
       linejoin: 'round'    // Rounded line joins
+    });
+    
+    // Store the layer ID in the material's userData for debugging
+    this.material.userData = {
+      layerId: this.id,
+      materialCreatedFor: `layer-${this.id}`
+    };
+    
+    // Log material creation with color info
+    console.log(`[LAYER ${this.id}] Created material with color:`, {
+      r: this.color.r,
+      g: this.color.g,
+      b: this.color.b,
+      hex: '#' + this.color.getHexString()
     });
     
     // Apply any state overrides from options
@@ -99,6 +160,14 @@ export class Layer {
     // Update material color
     if (this.material) {
       this.material.color = this.color;
+      this.material.needsUpdate = true; // Important! This forces Three.js to update the material
+      
+      console.log(`[LAYER ${this.id}] Updated material color to:`, {
+        r: this.color.r,
+        g: this.color.g,
+        b: this.color.b,
+        hex: '#' + this.color.getHexString()
+      });
     }
   }
   
@@ -118,6 +187,30 @@ export class Layer {
    */
   activate() {
     this.active = true;
+    console.log(`[LAYER] Layer ${this.id} activated with state:`, {
+      radius: this.state.radius,
+      segments: this.state.segments,
+      copies: this.state.copies
+    });
+    
+    // Hook into state change methods to add debug logging for this layer
+    const originalSetRadius = this.state.setRadius;
+    this.state.setRadius = (value) => {
+      console.log(`[LAYER ${this.id}] Setting radius to ${value}`);
+      return originalSetRadius.call(this.state, value);
+    };
+    
+    const originalSetSegments = this.state.setSegments;
+    this.state.setSegments = (value) => {
+      console.log(`[LAYER ${this.id}] Setting segments to ${value}`);
+      return originalSetSegments.call(this.state, value);
+    };
+    
+    const originalSetCopies = this.state.setCopies;
+    this.state.setCopies = (value) => {
+      console.log(`[LAYER ${this.id}] Setting copies to ${value}`);
+      return originalSetCopies.call(this.state, value);
+    };
   }
   
   /**
@@ -125,6 +218,20 @@ export class Layer {
    */
   deactivate() {
     this.active = false;
+    console.log(`[LAYER] Layer ${this.id} deactivated`);
+    
+    // Remove debug hooks from state methods when deactivating
+    if (this.state._originalSetRadius) {
+      this.state.setRadius = this.state._originalSetRadius;
+    }
+    
+    if (this.state._originalSetSegments) {
+      this.state.setSegments = this.state._originalSetSegments;
+    }
+    
+    if (this.state._originalSetCopies) {
+      this.state.setCopies = this.state._originalSetCopies;
+    }
   }
   
   /**
@@ -166,7 +273,7 @@ export class Layer {
     this.state.parameterChanges.segments = true;
     this.state.parameterChanges.copies = true;
     
-    console.log(`Recreated geometry for layer ${this.id}: segments=${this.state.segments}, radius=${this.state.radius}, copies=${this.state.copies}`);
+    console.log(`[GEOMETRY UPDATE] Recreated geometry for layer ${this.id}: segments=${this.state.segments}, radius=${this.state.radius}, copies=${this.state.copies}`);
     
     return this.baseGeo;
   }

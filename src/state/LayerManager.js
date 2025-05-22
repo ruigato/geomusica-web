@@ -41,12 +41,31 @@ export class LayerManager {
    */
   createLayer(options = {}) {
     const id = this.layers.length;
+    
+    // Ensure each layer gets a distinct color
+    if (!options.color) {
+      // Generate a distinct color based on layer ID
+      const hue = (id * 60) % 360; // Each layer gets a 60-degree shift in hue
+      options.color = new THREE.Color(`hsl(${hue}, 100%, 50%)`);
+      console.log(`[LAYER MANAGER] Created distinct color for layer ${id}: hue=${hue}`);
+    }
+    
     const layer = new Layer(id, options);
     
     // Set initial state values to ensure there's something to render
     // IMPORTANT: Default to having at least 1 copy to make the layer visible
     if (layer.state.copies === 0) {
       layer.state.copies = 3; // Default to 3 copies so something is visible
+    }
+    
+    // Set a distinct number of segments for each layer
+    if (layer.state.segments === 3 && id > 0) {
+      // First layer is triangle (3), second is square (4), etc.
+      layer.state.segments = 3 + id;
+      console.log(`[LAYER MANAGER] Set distinct segments for layer ${id}: ${layer.state.segments}`);
+      
+      // Make sure the parameter change is registered
+      layer.state.parameterChanges.segments = true;
     }
     
     // IMPORTANT: Ensure layer group is visible
@@ -58,6 +77,7 @@ export class LayerManager {
     // Log for debugging
     console.log(`Created layer ${id}, added to container. Container has ${this.layerContainer.children.length} children`);
     console.log(`Layer ${id} visibility:`, layer.visible, "Group visibility:", layer.group.visible);
+    console.log(`Layer ${id} color:`, layer.color);
     
     // Add to layer collection
     this.layers.push(layer);
@@ -79,6 +99,15 @@ export class LayerManager {
    */
   initializeLayerGeometry(layer) {
     const state = layer.state;
+    const layerId = layer.id;
+    
+    console.log(`[LAYER MANAGER] Initializing geometry for layer ${layerId}`);
+    console.log(`[LAYER MANAGER] Layer ${layerId} state:`, {
+      radius: state.radius,
+      segments: state.segments,
+      copies: state.copies,
+      stepScale: state.stepScale
+    });
     
     // Ensure we have some reasonable defaults
     state.radius = state.radius || 300;  // LARGER radius for visibility
@@ -91,14 +120,14 @@ export class LayerManager {
       layer.baseGeo.dispose();
     }
     
-    // Create new geometry
+    // Create new geometry using THIS LAYER'S state
     layer.baseGeo = createPolygonGeometry(
       state.radius,
       state.segments,
-      state
+      state  // Use this specific layer's state
     );
     
-    console.log(`Created geometry for layer ${layer.id} with ${state.segments} segments and ${state.copies} copies`);
+    console.log(`[GEOMETRY INIT] Created geometry for layer ${layerId} with ${state.segments} segments and ${state.copies} copies`);
     
     // Initialize the group with the geometry
     updateGroup(
@@ -109,12 +138,12 @@ export class LayerManager {
       layer.material,
       state.segments,
       state.angle,
-      state,
+      state,  // Use this specific layer's state
       false,
       true  // Force intersection recalculation
     );
     
-    console.log(`Initialized group for layer ${layer.id}, group now has ${layer.group.children.length} children`);
+    console.log(`[LAYER MANAGER] Initialized group for layer ${layerId}, group now has ${layer.group.children.length} children`);
   }
   
   /**
@@ -122,9 +151,26 @@ export class LayerManager {
    * @param {number} layerId ID of the layer to make active
    */
   setActiveLayer(layerId) {
+    // Skip if this is already the active layer
+    if (this.activeLayerId === layerId) {
+      return;
+    }
+    
+    console.log(`[LAYER MANAGER] Changing active layer from ${this.activeLayerId} to ${layerId}`);
+    
+    // Log the current state of the layer we're switching to before making it active
+    if (this.layers[layerId]) {
+      console.log(`[LAYER MANAGER] Layer ${layerId} state before activation:`, {
+        radius: this.layers[layerId].state.radius,
+        segments: this.layers[layerId].state.segments,
+        copies: this.layers[layerId].state.copies
+      });
+    }
+    
     // Deactivate current active layer
     if (this.activeLayerId !== null && this.layers[this.activeLayerId]) {
       this.layers[this.activeLayerId].deactivate();
+      console.log(`[LAYER MANAGER] Deactivated layer ${this.activeLayerId}`);
     }
     
     // Set new active layer
@@ -134,8 +180,22 @@ export class LayerManager {
     if (this.layers[layerId]) {
       this.layers[layerId].activate();
       
+      // Update the debug output to verify active layer
+      console.log(`[LAYER MANAGER] Activated layer ${layerId}, state:`, {
+        radius: this.layers[layerId].state.radius,
+        segments: this.layers[layerId].state.segments,
+        copies: this.layers[layerId].state.copies
+      });
+      
+      // Force an immediate UI update by directly updating the global state reference
+      if (window._appState && this.layers[layerId].state) {
+        window._appState = this.layers[layerId].state;
+        console.log(`[LAYER MANAGER] Updated global _appState reference to point to layer ${layerId}`);
+      }
+      
       // Call syncStateAcrossSystems if it exists
       if (typeof window.syncStateAcrossSystems === 'function') {
+        console.log(`[LAYER MANAGER] Calling syncStateAcrossSystems for layer ${layerId}`);
         window.syncStateAcrossSystems();
       } else {
         console.warn('syncStateAcrossSystems not available');
@@ -238,8 +298,16 @@ export class LayerManager {
       dt, 
       angle, 
       lastAngle, 
-      triggerAudioCallback 
+      triggerAudioCallback,
+      activeLayerId // This is now passed from animation.js
     } = animationParams;
+
+    // Ensure we're working with the correct active layer
+    if (activeLayerId !== undefined && this.activeLayerId !== activeLayerId) {
+      console.warn(`[LAYER MANAGER] Active layer mismatch! LayerManager: ${this.activeLayerId}, Animation: ${activeLayerId}`);
+      // Force sync to the one from animation params
+      this.activeLayerId = activeLayerId;
+    }
 
     // Add frame counter to control logging frequency
     this.frameCounter = (this.frameCounter || 0) + 1;
@@ -248,51 +316,63 @@ export class LayerManager {
     // Add camera update based on layer geometry
     this.updateCameraForLayerBounds(scene, shouldLog);
 
+    // Debug log all layers' key parameters if logging is enabled
+    if (shouldLog) {
+      console.log(`[LAYER MANAGER] Updating layers. Active layer ID: ${this.activeLayerId}`);
+      this.layers.forEach(layer => {
+        console.log(`[LAYER MANAGER] Layer ${layer.id} state: radius=${layer.state.radius}, segments=${layer.state.segments}, copies=${layer.state.copies}, active=${layer.active}`);
+      });
+    }
+
+    // Track which layer's geometry was updated this frame for debugging
+    const updatedGeometryForLayers = [];
+
     // Update each layer
     for (const layer of this.layers) {
       // Only update if the layer is visible
       if (layer.visible) {
         const state = layer.state;
+        const layerId = layer.id;
         
         // Update state time
         state.lastTime = tNow;
         
         // Debug output for active layer to verify parameter changes
-        if (layer.id === this.activeLayerId && shouldLog) {
-          console.log(`Layer ${layer.id} (active): copies=${state.copies}, segments=${state.segments}, radius=${state.radius}`);
-          
-          // Check for parameter changes that would affect rendering
-          if (state.hasParameterChanged()) {
-            console.log("Parameter changes detected:", 
-              Object.entries(state.parameterChanges)
-                .filter(([_, val]) => val)
-                .map(([key, _]) => key)
-                .join(", ")
-            );
-          }
-        }
+        const isActiveLayer = layerId === this.activeLayerId;
         
         // Update lerped values
         state.updateLerp(dt);
         
-        // Create geometry if it doesn't exist or if parameters have changed
-        if (!layer.baseGeo || state.hasParameterChanged()) {
+        // Check for parameter changes and log if any are detected
+        const hasParameterChanges = state.hasParameterChanged();
+        if (hasParameterChanges) {
+          const changedParams = Object.entries(state.parameterChanges)
+            .filter(([_, val]) => val)
+            .map(([key, _]) => key)
+            .join(", ");
+          
+          console.log(`[LAYER MANAGER] Layer ${layerId}${isActiveLayer ? ' (ACTIVE)' : ''} parameter changes detected: ${changedParams}`);
+        }
+        
+        // CRITICAL FIX: Create geometry ONLY for this layer when it's needed
+        // This ensures we're updating the correct layer's geometry
+        if (!layer.baseGeo || hasParameterChanges) {
           // Dispose old geometry
           if (layer.baseGeo && layer.baseGeo.dispose) {
             layer.baseGeo.dispose();
           }
           
-          // Create new geometry
+          // Create new geometry using THIS LAYER'S state values (not the active layer)
           layer.baseGeo = createPolygonGeometry(
             state.radius,
             state.segments,
-            state
+            state  // Use this specific layer's state
           );
           
-          // Log geometry recreation
-          if (shouldLog || state.hasParameterChanged()) {
-            console.log(`Updated geometry for layer ${layer.id}: radius=${state.radius}, segments=${state.segments}`);
-          }
+          updatedGeometryForLayers.push(layerId);
+          
+          // Always log geometry recreation to help with debugging
+          console.log(`[GEOMETRY UPDATE] Updated geometry for layer ${layerId}${isActiveLayer ? ' (ACTIVE)' : ''}: radius=${state.radius}, segments=${state.segments}, copies=${state.copies}`);
         }
         
         // Detect triggers if this layer has copies
@@ -307,7 +387,7 @@ export class LayerManager {
             tNow,
             (note) => {
               // Add layer ID to the note for routing to correct instrument
-              const layerNote = { ...note, layerId: layer.id };
+              const layerNote = { ...note, layerId: layerId };
               return triggerAudioCallback(layerNote);
             }
           );
@@ -327,7 +407,7 @@ export class LayerManager {
           layer.material,
           state.segments,
           state.angle, // Use the fixed angle between copies, not the animation angle
-          state,
+          state,  // Use this specific layer's state
           state.isLerping(),
           state.justCalculatedIntersections
         );
@@ -335,6 +415,11 @@ export class LayerManager {
         // Reset parameter change flags
         state.resetParameterChanges();
       }
+    }
+    
+    // Log which layers had geometry updates in this frame (if any)
+    if (updatedGeometryForLayers.length > 0) {
+      console.log(`[LAYER MANAGER] Updated geometry for layers: ${updatedGeometryForLayers.join(', ')}`);
     }
   }
 
@@ -426,5 +511,51 @@ export class LayerManager {
     this.initializeLayerGeometry(layer);
     
     return layer;
+  }
+
+  /**
+   * Force all layers to use their correct colors
+   * This can help fix any material color inconsistencies
+   */
+  forceSyncLayerColors() {
+    console.log(`[LAYER MANAGER] Forcing synchronization of all layer colors`);
+    
+    for (const layer of this.layers) {
+      // Make sure the color property is set correctly
+      if (!layer.color) {
+        // Generate a color based on layer ID
+        const hue = (layer.id * 60) % 360;
+        layer.color = new THREE.Color(`hsl(${hue}, 100%, 50%)`);
+      }
+      
+      // If material exists, update its color to match the layer's color
+      if (layer.material) {
+        const oldColor = layer.material.color.getHexString();
+        layer.material.color = layer.color;
+        layer.material.needsUpdate = true;
+        
+        // Log the color change
+        console.log(`[LAYER MANAGER] Updated layer ${layer.id} material color from #${oldColor} to #${layer.color.getHexString()}`);
+      }
+      
+      // Force color update on all children in the group
+      if (layer.group) {
+        layer.group.traverse(child => {
+          if (child.material) {
+            if (Array.isArray(child.material)) {
+              child.material.forEach(mat => {
+                mat.color = layer.color;
+                mat.needsUpdate = true;
+              });
+            } else {
+              child.material.color = layer.color;
+              child.material.needsUpdate = true;
+            }
+          }
+        });
+      }
+    }
+    
+    console.log(`[LAYER MANAGER] Layer color synchronization complete`);
   }
 } 

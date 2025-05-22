@@ -536,6 +536,48 @@ export function setupUI(state) {
       parseFloat(spanEl.textContent) : 
       parseInt(spanEl.textContent);
     
+    // Helper function to get the current target state for parameter changes
+    const getTargetState = (setterName) => {
+      // Check if this is a global parameter that should be routed to globalState
+      const isGlobalParameter = 
+        setterName.includes('bpm') || 
+        setterName.includes('attack') ||
+        setterName.includes('decay') ||
+        setterName.includes('sustain') ||
+        setterName.includes('release') ||
+        setterName.includes('brightness') ||
+        setterName.includes('volume') ||
+        setterName.includes('referenceFreq');
+      
+      if (isGlobalParameter && window._globalState) {
+        return { 
+          state: window._globalState, 
+          isGlobal: true,
+          id: 'global'
+        };
+      } else {
+        // Always get the current active layer directly from the layer manager
+        const layerManager = window._layers;
+        const activeLayer = layerManager?.getActiveLayer();
+        
+        if (activeLayer && activeLayer.state) {
+          return { 
+            state: activeLayer.state, 
+            isGlobal: false,
+            id: activeLayer.id
+          };
+        }
+        
+        // Fall back to window._appState if no active layer is found
+        console.warn(`Unable to find active layer state for ${setterName}, falling back to default state`);
+        return { 
+          state: window._appState, 
+          isGlobal: false,
+          id: 'default'
+        };
+      }
+    };
+    
     // Setup event listeners
     rangeEl.addEventListener('input', e => {
       let v = parser(e.target.value);
@@ -546,11 +588,37 @@ export function setupUI(state) {
       }
       
       v = Math.min(Math.max(v, min), max);
-      setter(v);
+      
+      // Get the setter name from the setter function
+      const setterName = setter.name;
+      
+      // Get the target state for this parameter change
+      const { state, isGlobal, id } = getTargetState(setterName);
+      
+      if (isGlobal) {
+        // Find the setter name by removing 'Range' from the ID
+        const paramName = rangeEl.id.replace('Range', '');
+        // Convert to camelCase setter name (e.g., 'bpm' -> 'setBpm')
+        const globalSetterName = 'set' + paramName.charAt(0).toUpperCase() + paramName.slice(1);
+        
+        // Call the setter on globalState if it exists
+        if (typeof state[globalSetterName] === 'function') {
+          state[globalSetterName](v);
+          console.log(`[GLOBAL] Updated ${paramName} to ${v}`);
+        }
+      } else {
+        // Call the setter on the layer state
+        if (typeof setter === 'function') {
+          setter.call(state, v);
+          console.log(`[UI CHANGE] Updated ${setterName.replace('set', '')} to ${v} on layer ${id}`);
+        }
+      }
+      
       spanEl.textContent = parser === parseFloat ? v.toFixed(1) : v;
       numEl.value = v;
     });
     
+    // Setup event listeners for number inputs
     numEl.addEventListener('input', e => {
       let v = parser(e.target.value);
       
@@ -560,7 +628,32 @@ export function setupUI(state) {
       }
       
       v = Math.min(Math.max(v || min, min), max);
-      setter(v);
+      
+      // Get the setter name from the setter function
+      const setterName = setter.name;
+      
+      // Get the target state for this parameter change
+      const { state, isGlobal, id } = getTargetState(setterName);
+      
+      if (isGlobal) {
+        // Find the setter name by removing 'Number' from the ID
+        const paramName = numEl.id.replace('Number', '');
+        // Convert to camelCase setter name (e.g., 'bpm' -> 'setBpm')
+        const globalSetterName = 'set' + paramName.charAt(0).toUpperCase() + paramName.slice(1);
+        
+        // Call the setter on globalState if it exists
+        if (typeof state[globalSetterName] === 'function') {
+          state[globalSetterName](v);
+          console.log(`[GLOBAL] Updated ${paramName} to ${v}`);
+        }
+      } else {
+        // Call the setter on the layer state
+        if (typeof setter === 'function') {
+          setter.call(state, v);
+          console.log(`[UI CHANGE] Updated ${setterName.replace('set', '')} to ${v} on layer ${id}`);
+        }
+      }
+      
       spanEl.textContent = parser === parseFloat ? v.toFixed(1) : v;
       rangeEl.value = v;
     });
@@ -569,7 +662,13 @@ export function setupUI(state) {
   // Setup checkbox event listener for lerp toggle with null check
   if (useLerpCheckbox) {
     useLerpCheckbox.addEventListener('change', e => {
-      state.setUseLerp(e.target.checked);
+      // Get current active layer's state if available
+      const activeLayerState = window._layers?.getActiveLayer()?.state;
+      if (activeLayerState && typeof activeLayerState.setUseLerp === 'function') {
+        activeLayerState.setUseLerp(e.target.checked);
+      } else {
+        state.setUseLerp(e.target.checked);
+      }
     });
   }
 
