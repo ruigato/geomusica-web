@@ -243,16 +243,28 @@ export class GlobalStateManager {
   updateAngle(tNow) {
     const dt = Math.min(tNow - this.lastTime, 100); // Cap delta time at 100ms
     
-    // Calculate angle based on time and BPM
-    const anglePerSecond = (this.bpm / 60) * 360; // Full rotation per beat
-    const anglePerMs = anglePerSecond / 1000;
+    // Get time in seconds
+    const seconds = dt / 1000;
     
-    // Calculate the angle delta based on elapsed time
-    const angleDelta = anglePerMs * dt;
+    // Adjust calculation to make 120 BPM = 1 rotation per second
+    // Formula: rotationsPerSecond = BPM / 120
+    // At 60 BPM: 60/120 = 0.5 rotations per second
+    // At 120 BPM: 120/120 = 1 rotation per second 
+    // At 240 BPM: 240/120 = 2 rotations per second
+    const rotationsPerSecond = this.bpm / 120;
+    
+    // Calculate degrees to rotate this frame
+    const degreesPerSecond = rotationsPerSecond * 360;
+    const angleDelta = degreesPerSecond * seconds;
     
     // Get the last angle and calculate the new angle
     const lastAngle = this.lastAngle;
     const angle = (lastAngle + angleDelta) % 360;
+    
+    // Debug logging every 300 frames
+    if (Math.random() < 0.003) { // ~0.3% chance each frame
+      console.log(`[ROTATION] BPM: ${this.bpm}, Rotations/sec: ${rotationsPerSecond.toFixed(2)}, Degrees/sec: ${degreesPerSecond.toFixed(2)}, Delta: ${angleDelta.toFixed(2)}°`);
+    }
     
     // Store for next frame
     this.lastAngle = angle;
