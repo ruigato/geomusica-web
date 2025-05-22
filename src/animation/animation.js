@@ -79,7 +79,7 @@ export function animate(params) {
   
   // Add debug frame counter
   animationFrameCounter++;
-  const shouldLogDebug = animationFrameCounter % 300 === 0;
+  const shouldLogDebug = animationFrameCounter % 900 === 0;
   
   // Log active layer debug info occasionally
   if (shouldLogDebug && activeLayer) {

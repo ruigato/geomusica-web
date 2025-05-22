@@ -71,13 +71,14 @@ let layerManager = null;
 /**
  * Ensure state is synchronized across all systems
  * Call this whenever the state changes in important ways
+ * @param {boolean} isLayerSwitch - Set to true when called from setActiveLayer to prevent geometry recreation
  */
-function syncStateAcrossSystems() {
+function syncStateAcrossSystems(isLayerSwitch = false) {
   // Get active layer's state using the getActiveState function if available
   const state = window.getActiveState ? window.getActiveState() : appState;
   const activeLayerId = layerManager?.activeLayerId;
   
-  console.log(`[STATE SYNC] Syncing state for active layer ID: ${activeLayerId}`);
+  console.log(`[STATE SYNC] Syncing state for active layer ID: ${activeLayerId}${isLayerSwitch ? ' (layer switch)' : ''}`);
   
   // Make sure all core components have access to the state
   if (sceneInstance) {
@@ -128,47 +129,72 @@ function syncStateAcrossSystems() {
     if (bpmNumber) bpmNumber.value = globalState.bpm;
   }
   
-  // Force more immediate intersection update on critical parameter changes
-  if (state.parameterChanges && 
-      (state.parameterChanges.copies || 
-       state.parameterChanges.modulus || 
-       state.parameterChanges.useModulus ||
-       state.parameterChanges.euclidValue ||
-       state.parameterChanges.useEuclid ||
-       state.parameterChanges.segments ||
-       state.parameterChanges.fractal ||
-       state.parameterChanges.useFractal ||
-       state.parameterChanges.starSkip ||
-       state.parameterChanges.useStars)) {
-    state.needsIntersectionUpdate = true;
+  // If this is a layer switch, explicitly reset parameter changes to avoid unnecessary updates
+  if (isLayerSwitch && state && typeof state.resetParameterChanges === 'function') {
+    console.log(`[STATE SYNC] Explicitly resetting parameter changes during layer switch`);
+    state.resetParameterChanges();
     
-    // Explicitly force a geometry update for Euclidean rhythm and Stars parameters
-    if (state.parameterChanges.euclidValue || 
-        state.parameterChanges.useEuclid ||
-        state.parameterChanges.starSkip ||
-        state.parameterChanges.useStars) {
-      // If we have a valid baseGeo reference, update it based on current state parameters
-      if (activeLayer?.baseGeo) {
-        const oldGeo = activeLayer.baseGeo;
-        
-        // Force recreate the geometry with current parameters
-        activeLayer.baseGeo = createPolygonGeometry(
-          state.radius,
-          Math.round(state.segments),
-          state
-        );
-        
-        // Clean up old geometry if needed
-        if (oldGeo && oldGeo !== activeLayer.baseGeo) {
-          // Don't dispose immediately as it might still be in use
-          setTimeout(() => {
-            oldGeo.dispose();
-          }, 100);
-        }
-        
-        console.log("Forced geometry update due to Euclidean rhythm or Stars parameter change");
+    // Special handling for layer 2 (third layer) to prevent the issue
+    // where changes to layer 3 cause unnecessary geometry updates when switching layers
+    if (state.layerId === 2) {
+      // Double check that parameter changes are truly reset
+      const anyRemainingChanges = Object.values(state.parameterChanges).some(flag => flag);
+      if (anyRemainingChanges) {
+        console.warn(`[STATE SYNC] Layer 2 still has parameter changes after reset - forcing reset`);
+        // Force reset by ensuring all flags are false
+        Object.keys(state.parameterChanges).forEach(key => {
+          state.parameterChanges[key] = false;
+        });
       }
     }
+  }
+  
+  // SKIP GEOMETRY RECREATION IF THIS IS JUST A LAYER SWITCH
+  if (!isLayerSwitch) {
+    // Force more immediate intersection update on critical parameter changes
+    if (state.parameterChanges && 
+        (state.parameterChanges.copies || 
+         state.parameterChanges.modulus || 
+         state.parameterChanges.useModulus ||
+         state.parameterChanges.euclidValue ||
+         state.parameterChanges.useEuclid ||
+         state.parameterChanges.segments ||
+         state.parameterChanges.fractal ||
+         state.parameterChanges.useFractal ||
+         state.parameterChanges.starSkip ||
+         state.parameterChanges.useStars)) {
+      state.needsIntersectionUpdate = true;
+      
+      // Explicitly force a geometry update for Euclidean rhythm and Stars parameters
+      if (state.parameterChanges.euclidValue || 
+          state.parameterChanges.useEuclid ||
+          state.parameterChanges.starSkip ||
+          state.parameterChanges.useStars) {
+        // If we have a valid baseGeo reference, update it based on current state parameters
+        if (activeLayer?.baseGeo) {
+          const oldGeo = activeLayer.baseGeo;
+          
+          // Force recreate the geometry with current parameters
+          activeLayer.baseGeo = createPolygonGeometry(
+            state.radius,
+            Math.round(state.segments),
+            state
+          );
+          
+          // Clean up old geometry if needed
+          if (oldGeo && oldGeo !== activeLayer.baseGeo) {
+            // Don't dispose immediately as it might still be in use
+            setTimeout(() => {
+              oldGeo.dispose();
+            }, 100);
+          }
+          
+          console.log("Forced geometry update due to Euclidean rhythm or Stars parameter change");
+        }
+      }
+    }
+  } else {
+    console.log("[STATE SYNC] Skipping geometry recreation since this is just a layer switch");
   }
 }
 
@@ -732,7 +758,8 @@ function initializeApplication() {
           
           // Update UI to reflect active layer state
           if (typeof window.syncStateAcrossSystems === 'function') {
-            window.syncStateAcrossSystems();
+            // Pass true to prevent unnecessary geometry recreation during initialization
+            window.syncStateAcrossSystems(true);
           }
           
           // Setup collapsible sections

@@ -362,13 +362,59 @@ let updateGroupCallCounter = 0;
 export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, angle = 0, state = null, isLerping = false, justCalculatedIntersections = false) {
   // Only log on first call or when parameters change
   updateGroupCallCounter++;
-  if (updateGroupCallCounter % 300 === 0) {
+  if (updateGroupCallCounter % 900 === 0) {
     console.log(`UpdateGroup called: copies=${copies}, segments=${segments}, group.children=${group.children.length}`);
   }
   
   // Ensure segments is a proper integer
   const numSegments = Math.round(segments);
-
+  
+  // Enhanced OPTIMIZATION: More robust check to skip update if nothing changed
+  // The +5 accounts for the debug objects (sphere + 3 axis lines + parent group)
+  if (!isLerping && 
+      !justCalculatedIntersections && 
+      state && !state.needsIntersectionUpdate &&
+      group.children.length === copies + 5 && // +5 for debug objects and marker group
+      updateGroupCallCounter > 10) { // Don't skip during first few calls for stability
+    
+    // Special handling for layer 2 (third layer) to prevent the issue
+    // where changes to layer 3 cause unnecessary geometry updates when switching layers
+    if (state.layerId === 2) {
+      // Double check parameter changes for this layer
+      const hasChanges = Object.values(state.parameterChanges).some(flag => flag);
+      if (hasChanges) {
+        console.warn(`[GEOMETRY WARNING] Layer 2 still has parameter changes that should have been reset - forcing reset`);
+        // Force reset the parameter changes
+        Object.keys(state.parameterChanges).forEach(key => {
+          state.parameterChanges[key] = false;
+        });
+      }
+    }
+    
+    // Add enhanced debug info when we're skipping updates
+    if (updateGroupCallCounter % 300 === 0) {
+      // Log the layerId for clarity
+      const layerId = state.layerId !== undefined ? state.layerId : 'unknown';
+      console.log(`[GEOMETRY SKIP] Layer ${layerId}: Skipping geometry update - no changes detected`);
+      
+      // Log parameter change flags for debugging
+      if (state.parameterChanges) {
+        const changedParams = Object.entries(state.parameterChanges)
+          .filter(([_, val]) => val)
+          .map(([key, _]) => key)
+          .join(", ");
+        
+        if (changedParams) {
+          console.warn(`[GEOMETRY WARNING] Layer ${layerId} has parameter changes (${changedParams}) but update was skipped`);
+        }
+      }
+    }
+    
+    // Still ensure group is visible
+    group.visible = true;
+    return; // Skip the rest of the update
+  }
+  
   // Clean up existing point frequency labels if they exist
   if (state && state.pointFreqLabels) {
     state.cleanupPointFreqLabels();
