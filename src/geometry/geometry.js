@@ -46,7 +46,7 @@ export function createPolygonGeometry(radius, segments, state = null) {
   switch (shapeType) {
     case 'star':
       // Create a star polygon
-      const starPoints = createStarPolygonPoints(radius, segments, state?.starInnerRadius || radius * 0.5);
+      const starPoints = createStarPolygonPoints(radius, segments, state?.starSkip || 1, state);
       return createGeometryFromPoints(starPoints, state);
       
     case 'fractal':
@@ -965,29 +965,44 @@ function createStarPolygonPoints(radius, numSegments, skip, state = null) {
     }
   } else {
     // Standard star polygon using skip value
-    let vertex = 0;
-    const visited = new Array(numSegments).fill(false);
+    // Calculate GCD to determine if this is a proper star
+    const gcd = (a, b) => b ? gcd(b, a % b) : a;
+    const gcdValue = gcd(numSegments, skip);
     
-    for (let i = 0; i < numSegments; i++) {
-      if (!visited[vertex]) {
+    if (gcdValue === 1) {
+      // Single continuous path - standard star polygon
+      let vertex = 0;
+      const visited = new Array(numSegments).fill(false);
+      
+      while (!visited[vertex]) {
         const angle = vertex * angleStep;
         const x = Math.cos(angle) * radius;
         const y = Math.sin(angle) * radius;
         points.push(new THREE.Vector2(x, y));
         visited[vertex] = true;
+        
+        // Jump by skip amount
+        vertex = (vertex + skip) % numSegments;
       }
+    } else {
+      // Multiple disconnected paths - create all of them
+      // This happens when gcd(n,k) > 1
+      const numPaths = gcdValue;
+      const verticesPerPath = numSegments / numPaths;
       
-      // Jump by skip amount
-      vertex = (vertex + skip) % numSegments;
-      
-      // If we get back to where we started and not all vertices are visited,
-      // move to the next unvisited vertex and continue
-      if (vertex === 0 && i < numSegments - 1) {
-        let nextVertex = 0;
-        while (nextVertex < numSegments && visited[nextVertex]) {
-          nextVertex++;
+      // Generate each separate path
+      for (let pathStart = 0; pathStart < numPaths; pathStart++) {
+        let vertex = pathStart;
+        
+        for (let i = 0; i < verticesPerPath; i++) {
+          const angle = vertex * angleStep;
+          const x = Math.cos(angle) * radius;
+          const y = Math.sin(angle) * radius;
+          points.push(new THREE.Vector2(x, y));
+          
+          // Jump by skip amount
+          vertex = (vertex + skip) % numSegments;
         }
-        vertex = nextVertex;
       }
     }
   }
