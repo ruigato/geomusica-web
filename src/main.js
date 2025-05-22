@@ -407,30 +407,82 @@ function initializeApplication() {
   // Add reference to the scene for easy access
   scene._layerManager = layerManager;
   
-  // Create the initial layer
-  const initialLayer = layerManager.createLayer({
-    // Initial layer settings
+  // Create multiple initial layers (3 layers by default)
+  console.log("Creating 3 default layers...");
+  
+  // Create the first layer (triangle)
+  const layer0 = layerManager.createLayer({
     visible: true,
-    radius: 200, // Make it bigger to be more visible
-    segments: 3,
+    radius: 200,
+    segments: 3,  // Triangle
     copies: 3
   });
   
+  // Configure first layer
+  layer0.state.copies = 3;
+  layer0.state.segments = 3;
+  layer0.state.radius = 80;
+  layer0.state.stepScale = 1.5;
+  layer0.setColor(new THREE.Color(0x00ff00)); // Green
+  
+  // Force parameter changes to update for layer 0
+  layer0.state.parameterChanges.copies = true;
+  layer0.state.parameterChanges.segments = true;
+  layer0.state.parameterChanges.radius = true;
+  layer0.state.parameterChanges.stepScale = true;
+  
+  // Create the second layer (square)
+  const layer1 = layerManager.createLayer({
+    visible: true,
+    radius: 180,
+    segments: 4,  // Square
+    copies: 4
+  });
+  
+  // Configure second layer
+  layer1.state.stepScale = 1.3;
+  layer1.setColor(new THREE.Color(0x0088ff)); // Blue
+  
+  // Force parameter changes to update for layer 1
+  layer1.state.parameterChanges.copies = true;
+  layer1.state.parameterChanges.segments = true;
+  layer1.state.parameterChanges.radius = true;
+  layer1.state.parameterChanges.stepScale = true;
+  
+  // Create the third layer (pentagon)
+  const layer2 = layerManager.createLayer({
+    visible: true,
+    radius: 160,
+    segments: 5,  // Pentagon
+    copies: 5
+  });
+  
+  // Configure third layer
+  layer2.state.stepScale = 1.2;
+  layer2.setColor(new THREE.Color(0xff5500)); // Orange
+  
+  // Force parameter changes to update for layer 2
+  layer2.state.parameterChanges.copies = true;
+  layer2.state.parameterChanges.segments = true;
+  layer2.state.parameterChanges.radius = true;
+  layer2.state.parameterChanges.stepScale = true;
+  
+  // Set the first layer as active
+  layerManager.setActiveLayer(0);
+  
   // Store a reference to the active layer
-  const activeLayer = initialLayer;
+  const activeLayer = layer0;
   
-  // Set initial layer properties with VERY VISIBLE settings
-  initialLayer.state.copies = 3;          // Fewer copies for clarity
-  initialLayer.state.segments = 3;        // Triangle for simplicity and visibility
-  initialLayer.state.radius = 80;         // Larger radius to be more visible
-  initialLayer.state.stepScale = 1.5;     // Larger step scale for obvious difference between copies
-  initialLayer.setColor(new THREE.Color(0x00ff00)); // Bright green color
+  // Ensure visibility of all layers
+  layer0.setVisible(true);
+  layer1.setVisible(true);
+  layer2.setVisible(true);
   
-  // Force parameter changes to update
-  initialLayer.state.parameterChanges.copies = true;
-  initialLayer.state.parameterChanges.segments = true;
-  initialLayer.state.parameterChanges.radius = true;
-  initialLayer.state.parameterChanges.stepScale = true;
+  // Debug layers after creation
+  console.log(`Created 3 layers. Active layer: ${layerManager.activeLayerId}`);
+  console.log("Scene structure:", scene.children.map(c => c.name || 'unnamed'));
+  
+  // Add debugging buttons
   
   // Add a debug button to force geometry recreation
   const debugButton = document.createElement('button');
@@ -588,13 +640,6 @@ function initializeApplication() {
   document.body.appendChild(compareLayersButton);
   document.body.appendChild(recreateAllButton);
   document.body.appendChild(fixLayerColorsButton);
-  
-  // Ensure visibility
-  initialLayer.setVisible(true);
-  
-  // Debug layers after creation
-  console.log(`Created initial layer: visible=${initialLayer.visible}, group.visible=${initialLayer.group.visible}`);
-  console.log("Scene structure:", scene.children.map(c => c.name || 'unnamed'));
   
   // Get the active layer's state
   const state = activeLayer.state;

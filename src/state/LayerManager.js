@@ -187,10 +187,17 @@ export class LayerManager {
         copies: this.layers[layerId].state.copies
       });
       
+      // CRITICAL: Ensure the layer's state has the correct layerId reference
+      if (this.layers[layerId].state.layerId !== layerId) {
+        console.warn(`[LAYER MANAGER] Fixing layer state ID reference: ${this.layers[layerId].state.layerId} -> ${layerId}`);
+        this.layers[layerId].state.layerId = layerId;
+      }
+      
       // Force an immediate UI update by directly updating the global state reference
-      if (window._appState && this.layers[layerId].state) {
+      if (window._appState) {
+        const previousAppStateId = window._appState.layerId !== undefined ? window._appState.layerId : 'unknown';
         window._appState = this.layers[layerId].state;
-        console.log(`[LAYER MANAGER] Updated global _appState reference to point to layer ${layerId}`);
+        console.log(`[LAYER MANAGER] Updated global _appState reference from layer ${previousAppStateId} to layer ${layerId}`);
       }
       
       // Call syncStateAcrossSystems if it exists
@@ -200,6 +207,11 @@ export class LayerManager {
       } else {
         console.warn('syncStateAcrossSystems not available');
       }
+      
+      // Verify that the state references are properly updated
+      setTimeout(() => {
+        this.debugActiveLayerState();
+      }, 100); // Slight delay to allow all updates to complete
     }
   }
   
@@ -557,5 +569,53 @@ export class LayerManager {
     }
     
     console.log(`[LAYER MANAGER] Layer color synchronization complete`);
+  }
+
+  /**
+   * Debug the active layer and state references
+   * Use this to verify that the active layer's state is correctly referenced
+   * and all global references point to the same object
+   */
+  debugActiveLayerState() {
+    console.log('------- LAYER STATE DEBUG -------');
+    const activeLayer = this.getActiveLayer();
+    
+    if (!activeLayer) {
+      console.error('No active layer found! activeLayerId =', this.activeLayerId);
+      return;
+    }
+    
+    console.log(`Active layer ID: ${this.activeLayerId}`);
+    console.log(`Active layer's state.layerId: ${activeLayer.state.layerId}`);
+    
+    // Check if the state's layer ID matches the actual layer ID
+    if (activeLayer.state.layerId !== this.activeLayerId) {
+      console.error(`MISMATCH: Active layer ID (${this.activeLayerId}) does not match state.layerId (${activeLayer.state.layerId})`);
+    } else {
+      console.log('MATCH: Active layer ID matches state.layerId reference');
+    }
+    
+    // Check if window._appState points to the active layer's state
+    if (window._appState === activeLayer.state) {
+      console.log('CORRECT: window._appState points to the active layer state');
+    } else {
+      console.error('INCORRECT: window._appState does NOT point to the active layer state');
+      console.log('window._appState.layerId =', window._appState.layerId);
+      console.log('activeLayer.state.layerId =', activeLayer.state.layerId);
+    }
+    
+    // Check if getActiveState returns the active layer's state
+    if (typeof window.getActiveState === 'function') {
+      const activeState = window.getActiveState();
+      if (activeState === activeLayer.state) {
+        console.log('CORRECT: getActiveState() returns the active layer state');
+      } else {
+        console.error('INCORRECT: getActiveState() does NOT return the active layer state');
+        console.log('getActiveState().layerId =', activeState.layerId);
+        console.log('activeLayer.state.layerId =', activeLayer.state.layerId);
+      }
+    }
+    
+    console.log('------ END LAYER STATE DEBUG ------');
   }
 } 

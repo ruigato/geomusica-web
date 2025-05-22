@@ -84,7 +84,6 @@ export function animate(params) {
   // Log active layer debug info occasionally
   if (shouldLogDebug && activeLayer) {
     console.log(`[ANIMATION] Frame ${animationFrameCounter}, active layer ID: ${layerManager?.activeLayerId}`);
-    console.log(`[ANIMATION] Active layer state: radius=${activeState.radius}, segments=${activeState.segments}, copies=${activeState.copies}`);
   }
   
   // Get angle from global state manager (BPM is global)
@@ -116,9 +115,4 @@ export function animate(params) {
   
   // End stats monitoring
   stats.end();
-  
-  // Log occasionally
-  if (animationFrameCounter % 300 === 0) {
-    console.log(`Animation frame ${animationFrameCounter}, angle: ${angle.toFixed(2)}, BPM: ${globalState.bpm}`);
-  }
 }

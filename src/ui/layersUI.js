@@ -31,7 +31,7 @@ export function setupLayersUI(layerManager) {
   layerCountInput.id = 'layerCountNumber';
   layerCountInput.min = '1';
   layerCountInput.max = '10';
-  layerCountInput.value = '1';
+  layerCountInput.value = '3';
   layerCountInput.addEventListener('change', (e) => {
     const count = parseInt(e.target.value, 10);
     if (!isNaN(count) && count >= 1) {
@@ -235,53 +235,51 @@ export function updateLayersUI(layerManager) {
 }
 
 /**
- * Add a button to recreate geometry for debugging
- * @param {HTMLElement} container - Container to add button to
- * @param {LayerManager} layerManager - Layer manager instance
+ * Add debug buttons to the layer tab
+ * @param {HTMLElement} container Container to add buttons to
+ * @param {LayerManager} layerManager Layer manager instance
  */
 function addDebugButtons(container, layerManager) {
-  // Create a button container
-  const buttonContainer = document.createElement('div');
-  buttonContainer.className = 'debug-button-container';
-  buttonContainer.style.marginTop = '20px';
-  buttonContainer.style.padding = '10px';
-  buttonContainer.style.backgroundColor = '#333';
-  buttonContainer.style.borderRadius = '5px';
+  const debugContainer = document.createElement('div');
+  debugContainer.className = 'debug-container';
+  debugContainer.style.marginTop = '20px';
+  debugContainer.style.padding = '10px';
+  debugContainer.style.border = '1px solid #444';
+  debugContainer.style.borderRadius = '4px';
   
-  // Add a title
-  const title = document.createElement('h3');
-  title.textContent = 'Debug Tools';
-  title.style.color = '#ff0000';
-  title.style.margin = '0 0 10px 0';
-  buttonContainer.appendChild(title);
+  const debugTitle = document.createElement('h3');
+  debugTitle.textContent = 'Debug Controls';
+  debugTitle.style.margin = '0 0 10px 0';
+  debugContainer.appendChild(debugTitle);
   
-  // Create recreate geometry button
-  const recreateButton = document.createElement('button');
-  recreateButton.textContent = 'Recreate Geometry';
-  recreateButton.style.backgroundColor = '#ff3333';
-  recreateButton.style.color = 'white';
-  recreateButton.style.padding = '10px 15px';
-  recreateButton.style.border = 'none';
-  recreateButton.style.borderRadius = '4px';
-  recreateButton.style.cursor = 'pointer';
-  recreateButton.style.marginRight = '10px';
-  
-  // Add click handler
-  recreateButton.addEventListener('click', () => {
-    const activeLayerId = layerManager.activeLayerId;
-    if (activeLayerId !== null) {
-      console.log(`Manually recreating geometry for layer ${activeLayerId}`);
-      const layer = layerManager.layers[activeLayerId];
-      // Call the new forceVisibility method
-      layer.forceVisibility();
-      // Also recreate via layer manager
-      layerManager.recreateLayerGeometry(activeLayerId);
+  // Create button for layer state verification
+  const verifyStateButton = document.createElement('button');
+  verifyStateButton.textContent = 'Verify Layer State';
+  verifyStateButton.className = 'debug-button';
+  verifyStateButton.style.marginRight = '10px';
+  verifyStateButton.addEventListener('click', () => {
+    if (typeof layerManager.debugActiveLayerState === 'function') {
+      layerManager.debugActiveLayerState();
+    } else {
+      console.error('debugActiveLayerState function not available on layerManager');
     }
   });
+  debugContainer.appendChild(verifyStateButton);
   
-  // Add button to container
-  buttonContainer.appendChild(recreateButton);
+  // Create button for geometry recreation
+  const recreateGeometryButton = document.createElement('button');
+  recreateGeometryButton.textContent = 'Recreate Geometry';
+  recreateGeometryButton.className = 'debug-button';
+  recreateGeometryButton.style.marginRight = '10px';
+  recreateGeometryButton.addEventListener('click', () => {
+    const activeLayer = layerManager.getActiveLayer();
+    if (activeLayer) {
+      console.log(`Recreating geometry for layer ${activeLayer.id}`);
+      activeLayer.recreateGeometry();
+    }
+  });
+  debugContainer.appendChild(recreateGeometryButton);
   
-  // Add container to parent
-  container.appendChild(buttonContainer);
+  // Add container to the parent
+  container.appendChild(debugContainer);
 } 

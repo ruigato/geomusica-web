@@ -421,7 +421,11 @@ export function setupUI(state) {
   if (useModulusCheckbox) {
     useModulusCheckbox.checked = state.useModulus;
     useModulusCheckbox.addEventListener('change', e => {
-      state.setUseModulus(e.target.checked);
+      // Get the current active layer state
+      const activeState = typeof window.getActiveState === 'function' ? 
+        window.getActiveState() : state;
+      
+      activeState.setUseModulus(e.target.checked);
     });
   }
   
@@ -429,7 +433,11 @@ export function setupUI(state) {
   if (useTimeSubdivisionCheckbox) {
     useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
     useTimeSubdivisionCheckbox.addEventListener('change', e => {
-      state.setUseTimeSubdivision(e.target.checked);
+      // Get the current active layer state
+      const activeState = typeof window.getActiveState === 'function' ? 
+        window.getActiveState() : state;
+        
+      activeState.setUseTimeSubdivision(e.target.checked);
     });
   }
   
@@ -437,7 +445,11 @@ export function setupUI(state) {
   if (useQuantizationCheckbox) {
     useQuantizationCheckbox.checked = state.useQuantization;
     useQuantizationCheckbox.addEventListener('change', e => {
-      state.setUseQuantization(e.target.checked);
+      // Get the current active layer state
+      const activeState = typeof window.getActiveState === 'function' ? 
+        window.getActiveState() : state;
+        
+      activeState.setUseQuantization(e.target.checked);
     });
   }
   
@@ -445,7 +457,11 @@ export function setupUI(state) {
   if (useAltScaleCheckbox) {
     useAltScaleCheckbox.checked = state.useAltScale;
     useAltScaleCheckbox.addEventListener('change', e => {
-      state.setUseAltScale(e.target.checked);
+      // Get the current active layer state
+      const activeState = typeof window.getActiveState === 'function' ? 
+        window.getActiveState() : state;
+        
+      activeState.setUseAltScale(e.target.checked);
     });
   }
   
@@ -453,7 +469,11 @@ export function setupUI(state) {
   if (useEqualTemperamentCheckbox) {
     useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
     useEqualTemperamentCheckbox.addEventListener('change', e => {
-      state.setUseEqualTemperament(e.target.checked);
+      // Get the current active layer state
+      const activeState = typeof window.getActiveState === 'function' ? 
+        window.getActiveState() : state;
+        
+      activeState.setUseEqualTemperament(e.target.checked);
     });
   }
   
@@ -461,7 +481,11 @@ export function setupUI(state) {
   if (useFractalCheckbox) {
     useFractalCheckbox.checked = state.useFractal;
     useFractalCheckbox.addEventListener('change', e => {
-      state.setUseFractal(e.target.checked);
+      // Get the current active layer state
+      const activeState = typeof window.getActiveState === 'function' ? 
+        window.getActiveState() : state;
+        
+      activeState.setUseFractal(e.target.checked);
     });
   }
   
@@ -469,7 +493,11 @@ export function setupUI(state) {
   if (useStarsCheckbox) {
     useStarsCheckbox.checked = state.useStars;
     useStarsCheckbox.addEventListener('change', e => {
-      state.setUseStars(e.target.checked);
+      // Get the current active layer state
+      const activeState = typeof window.getActiveState === 'function' ? 
+        window.getActiveState() : state;
+        
+      activeState.setUseStars(e.target.checked);
     });
   }
   
@@ -477,7 +505,11 @@ export function setupUI(state) {
   if (useCutsCheckbox) {
     useCutsCheckbox.checked = state.useCuts;
     useCutsCheckbox.addEventListener('change', e => {
-      state.setUseCuts(e.target.checked);
+      // Get the current active layer state
+      const activeState = typeof window.getActiveState === 'function' ? 
+        window.getActiveState() : state;
+        
+      activeState.setUseCuts(e.target.checked);
     });
   }
   
@@ -485,7 +517,11 @@ export function setupUI(state) {
   if (useIntersectionsCheckbox) {
     useIntersectionsCheckbox.checked = state.useIntersections;
     useIntersectionsCheckbox.addEventListener('change', e => {
-      state.setUseIntersections(e.target.checked);
+      // Get the current active layer state
+      const activeState = typeof window.getActiveState === 'function' ? 
+        window.getActiveState() : state;
+        
+      activeState.setUseIntersections(e.target.checked);
     });
   }
 
@@ -500,7 +536,11 @@ export function setupUI(state) {
       // Add event listener
       radio.addEventListener('change', e => {
         if (e.target.checked) {
-          state.setDurationMode(e.target.value);
+          // Get the current active layer state
+          const activeState = typeof window.getActiveState === 'function' ? 
+            window.getActiveState() : state;
+            
+          activeState.setDurationMode(e.target.value);
         }
       });
     });
@@ -517,7 +557,11 @@ export function setupUI(state) {
       // Add event listener
       radio.addEventListener('change', e => {
         if (e.target.checked) {
-          state.setVelocityMode(e.target.value);
+          // Get the current active layer state
+          const activeState = typeof window.getActiveState === 'function' ? 
+            window.getActiveState() : state;
+            
+          activeState.setVelocityMode(e.target.value);
         }
       });
     });
@@ -556,7 +600,24 @@ export function setupUI(state) {
           id: 'global'
         };
       } else {
-        // Always get the current active layer directly from the layer manager
+        // FIXED: First try using window.getActiveState() which is more reliable
+        if (typeof window.getActiveState === 'function') {
+          const activeState = window.getActiveState();
+          if (activeState) {
+            // Get the layer ID from the state if available
+            const layerId = activeState.layerId !== undefined ? activeState.layerId : 'unknown';
+            
+            console.log(`[UI CHANGE] Using active state from getActiveState() for layer ${layerId}`);
+            
+            return {
+              state: activeState,
+              isGlobal: false,
+              id: layerId
+            };
+          }
+        }
+        
+        // Fallback to window._layers if getActiveState is not available
         const layerManager = window._layers;
         const activeLayer = layerManager?.getActiveLayer();
         
@@ -662,11 +723,22 @@ export function setupUI(state) {
   // Setup checkbox event listener for lerp toggle with null check
   if (useLerpCheckbox) {
     useLerpCheckbox.addEventListener('change', e => {
-      // Get current active layer's state if available
+      // Get current active layer's state using getActiveState which is more reliable
+      if (typeof window.getActiveState === 'function') {
+        const activeState = window.getActiveState();
+        if (activeState) {
+          activeState.setUseLerp(e.target.checked);
+          console.log(`[UI CHANGE] Set useLerp to ${e.target.checked} on layer ${activeState.layerId}`);
+          return;
+        }
+      }
+      
+      // Fallback to the layer manager approach if getActiveState is not available
       const activeLayerState = window._layers?.getActiveLayer()?.state;
       if (activeLayerState && typeof activeLayerState.setUseLerp === 'function') {
         activeLayerState.setUseLerp(e.target.checked);
       } else {
+        // Last resort fallback to the original state
         state.setUseLerp(e.target.checked);
       }
     });
@@ -675,49 +747,84 @@ export function setupUI(state) {
   // Link UI controls to state with specific Number type conversions and null checks
   if (bpmRange && bpmNumber && bpmValue) {
     syncPair(bpmRange, bpmNumber, bpmValue, 
-      value => state.setBpm(Number(value)), 
+      function setBpm(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setBpm(Number(value));
+      }, 
       UI_RANGES.BPM[0], UI_RANGES.BPM[1], 
       Number);
   }
   
   if (radiusRange && radiusNumber && radiusValue) {
     syncPair(radiusRange, radiusNumber, radiusValue, 
-      value => state.setRadius(Number(value)), 
+      function setRadius(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setRadius(Number(value));
+      }, 
       UI_RANGES.RADIUS[0], UI_RANGES.RADIUS[1], 
       Number);
   }
   
   if (copiesRange && copiesNumber && copiesValue) {
     syncPair(copiesRange, copiesNumber, copiesValue, 
-      value => state.setCopies(Number(value)), 
+      function setCopies(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setCopies(Number(value));
+      }, 
       UI_RANGES.COPIES[0], UI_RANGES.COPIES[1], 
       Number);
   }
   
   if (stepScaleRange && stepScaleNumber && stepScaleValue) {
     syncPair(stepScaleRange, stepScaleNumber, stepScaleValue, 
-      value => state.setStepScale(Number(value)), 
+      function setStepScale(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setStepScale(Number(value));
+      }, 
       UI_RANGES.STEP_SCALE[0], UI_RANGES.STEP_SCALE[1], 
       Number);
   }
   
   if (angleRange && angleNumber && angleValue) {
     syncPair(angleRange, angleNumber, angleValue, 
-      value => state.setAngle(Number(value)), 
+      function setAngle(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setAngle(Number(value));
+      }, 
       UI_RANGES.ANGLE[0], UI_RANGES.ANGLE[1], 
       Number);
   }
   
   if (numberRange && numberNumber && numberValue) {
     syncPair(numberRange, numberNumber, numberValue, 
-      value => state.setSegments(Math.round(Number(value))), // FIX: Always round the number parameter 
+      function setSegments(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setSegments(Math.round(Number(value)));
+      }, 
       UI_RANGES.SEGMENTS[0], UI_RANGES.SEGMENTS[1], 
       Number);
   }
     
   if (lerpTimeRange && lerpTimeNumber && lerpTimeValue) {
     syncPair(lerpTimeRange, lerpTimeNumber, lerpTimeValue, 
-      value => state.setLerpTime(Number(value)), 
+      function setLerpTime(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setLerpTime(Number(value));
+      }, 
       0.1, 5.0, 
       Number);
   }
@@ -725,14 +832,24 @@ export function setupUI(state) {
   // Link Scale Mod UI controls to state with proper formatting
   if (altScaleRange && altScaleNumber && altScaleValue) {
     syncPair(altScaleRange, altScaleNumber, altScaleValue, 
-      value => state.setAltScale(Number(value)), 
+      function setAltScale(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setAltScale(Number(value));
+      }, 
       UI_RANGES.ALT_SCALE[0], UI_RANGES.ALT_SCALE[1], 
       Number);
   }
   
   if (altStepNRange && altStepNNumber && altStepNValue) {
     syncPair(altStepNRange, altStepNNumber, altStepNValue, 
-      value => state.setAltStepN(Number(value)), 
+      function setAltStepN(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setAltStepN(Number(value));
+      }, 
       UI_RANGES.ALT_STEP_N[0], UI_RANGES.ALT_STEP_N[1], 
       Number);
   }
@@ -740,7 +857,12 @@ export function setupUI(state) {
   // Link Equal Temperament reference frequency controls
   if (referenceFreqRange && referenceFreqNumber && referenceFreqValue) {
     syncPair(referenceFreqRange, referenceFreqNumber, referenceFreqValue,
-      value => state.setReferenceFrequency(Number(value)),
+      function setReferenceFrequency(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setReferenceFrequency(Number(value));
+      },
       UI_RANGES.REFERENCE_FREQ[0], UI_RANGES.REFERENCE_FREQ[1],
       Number);
   }
@@ -748,7 +870,12 @@ export function setupUI(state) {
   // Link fractal controls
   if (fractalRange && fractalNumber && fractalValue) {
     syncPair(fractalRange, fractalNumber, fractalValue,
-      value => state.setFractalValue(Number(value)),
+      function setFractalValue(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setFractalValue(Number(value));
+      },
       UI_RANGES.FRACTAL_VALUE[0], UI_RANGES.FRACTAL_VALUE[1],
       Number);
   }
@@ -756,14 +883,24 @@ export function setupUI(state) {
   // Link duration controls
   if (minDurationRange && minDurationNumber && minDurationValue) {
     syncPair(minDurationRange, minDurationNumber, minDurationValue,
-      value => state.setMinDuration(Number(value)),
+      function setMinDuration(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setMinDuration(Number(value));
+      },
       0.05, 1.0,
       Number);
   }
     
   if (maxDurationRange && maxDurationNumber && maxDurationValue) {
     syncPair(maxDurationRange, maxDurationNumber, maxDurationValue,
-      value => state.setMaxDuration(Number(value)),
+      function setMaxDuration(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setMaxDuration(Number(value));
+      },
       0.1, 2.0,
       Number);
   }
@@ -771,14 +908,24 @@ export function setupUI(state) {
   // Link velocity controls
   if (minVelocityRange && minVelocityNumber && minVelocityValue) {
     syncPair(minVelocityRange, minVelocityNumber, minVelocityValue,
-      value => state.setMinVelocity(Number(value)),
+      function setMinVelocity(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setMinVelocity(Number(value));
+      },
       0.1, 0.9,
       Number);
   }
     
   if (maxVelocityRange && maxVelocityNumber && maxVelocityValue) {
     syncPair(maxVelocityRange, maxVelocityNumber, maxVelocityValue,
-      value => state.setMaxVelocity(Number(value)),
+      function setMaxVelocity(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setMaxVelocity(Number(value));
+      },
       0.2, 1.0,
       Number);
   }
@@ -786,7 +933,12 @@ export function setupUI(state) {
   // Add this in the appropriate place in the function (right before or after the other duration controls)
   if (durationPhaseRange && durationPhaseNumber && durationPhaseValue) {
     syncPair(durationPhaseRange, durationPhaseNumber, durationPhaseValue,
-      value => state.setDurationPhase(Number(value)),
+      function setDurationPhase(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setDurationPhase(Number(value));
+      },
       0, 1.0,
       Number);
   }
@@ -806,7 +958,12 @@ export function setupUI(state) {
   // Add this alongside the other velocity controls
   if (velocityPhaseRange && velocityPhaseNumber && velocityPhaseValue) {
     syncPair(velocityPhaseRange, velocityPhaseNumber, velocityPhaseValue,
-      value => state.setVelocityPhase(Number(value)),
+      function setVelocityPhase(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setVelocityPhase(Number(value));
+      },
       0, 1.0,
       Number);
   }
