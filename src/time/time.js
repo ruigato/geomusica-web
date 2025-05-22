@@ -1,4 +1,4 @@
-// src/time/time.js - Updated with time quantization functions
+// src/time/time.js - Simplified timing using browser performance API
 import { TICKS_PER_BEAT, TICKS_PER_MEASURE } from '../config/constants.js';
 
 // Time constants
@@ -6,62 +6,25 @@ const SECONDS_PER_BEAT_AT_120BPM = 0.5; // 120 BPM = 2 beats per second
 const SECONDS_PER_MEASURE_AT_120BPM = 2; // 4/4 time at 120 BPM = 2 seconds per measure
 
 // Module state
-let audioContext = null;
-let startTime = 0;
-let lastCsoundTime = 0;
-let isUsingCsoundTiming = false;
-let csoundInstance = null;
+let timingDiagnosticCount = 0;
+let lastTimingSourceLog = 0;
 
-// Time channel name for Csound communication
-const TIME_CHANNEL_NAME = "currentTime";
+// Simple timing system - just use browser performance API
+let timeStartedAt = 0; // When the timer was started
+let timeSystemInitialized = false;
 
 /**
- * Initialize time module with Csound instance
- * @param {Object} instance - Csound instance
- * @param {AudioContext} context - Audio context
+ * Initialize the time module
  */
-export function initializeTime(instance, context) {
-  csoundInstance = instance;
-  audioContext = context;
-  
-  // Reset tracking variables
-  startTime = 0;
-  lastCsoundTime = 0;
-  
-  // Attempt to enable Csound timing if instance is provided
-  if (instance) {
-    enableCsoundTiming().catch(err => {
-      console.warn("Could not enable Csound timing:", err);
-      isUsingCsoundTiming = false;
-    });
+export function initializeTime() {
+  // Initialize browser-based timing
+  if (!timeSystemInitialized) {
+    timeStartedAt = performance.now();
+    timeSystemInitialized = true;
+    console.log("[TIMING] Initialized with browser performance timing");
   }
-}
-
-/**
- * Enable Csound timing
- * @returns {Promise<boolean>} Promise resolving to success status
- */
-export async function enableCsoundTiming() {
-  if (!csoundInstance) return false;
   
-  try {
-    // Initialize the time channel
-    await csoundInstance.setControlChannel(TIME_CHANNEL_NAME, 0);
-    
-    // Check if we can read from the channel
-    const initialTime = await csoundInstance.getControlChannel(TIME_CHANNEL_NAME);
-    
-    if (typeof initialTime === 'number' && !isNaN(initialTime)) {
-      isUsingCsoundTiming = true;
-      return true;
-    }
-    
-    return false;
-  } catch (error) {
-    console.error("Error enabling Csound timing:", error);
-    isUsingCsoundTiming = false;
-    return false;
-  }
+  return true;
 }
 
 /**
@@ -69,35 +32,54 @@ export async function enableCsoundTiming() {
  * @returns {number} Current time in seconds
  */
 export function getCurrentTime() {
-  if (csoundInstance && isUsingCsoundTiming) {
-    try {
-      const csoundTime = csoundInstance.getControlChannel(TIME_CHANNEL_NAME);
-      if (typeof csoundTime === 'number' && !isNaN(csoundTime)) {
-        lastCsoundTime = csoundTime;
-        return csoundTime;
-      }
-    } catch (error) {
-      // Fall back to audio context time
-    }
+  if (!timeSystemInitialized) {
+    initializeTime();
   }
   
-  return getAudioContextTime();
+  const now = performance.now();
+  const timeInSeconds = (now - timeStartedAt) / 1000.0;
+  
+  // Log time source periodically (not too often)
+  const currentTimeMs = Date.now();
+  if (currentTimeMs - lastTimingSourceLog > 10000) { // Every 10 seconds
+    console.log(`[TIMING] Current time: ${timeInSeconds.toFixed(3)}s (browser performance timing)`);
+    lastTimingSourceLog = currentTimeMs;
+  }
+  
+  return timeInSeconds;
 }
 
 /**
- * Helper for consistently getting audio context time
- * @returns {number} Current time in seconds
+ * Reset the timer to zero
  */
-function getAudioContextTime() {
-  if (audioContext) {
-    const currentTime = audioContext.currentTime;
-    if (startTime === 0) {
-      startTime = currentTime;
-    }
-    return currentTime - startTime;
-  }
-  return performance.now() / 1000;
+export function resetTime() {
+  timeStartedAt = performance.now();
+  console.log("[TIMING] Timer reset to zero");
 }
+
+/**
+ * Diagnose timing issues
+ */
+export async function diagnoseTiming() {
+  return {
+    usingBrowserTiming: true,
+    timeStartedAt: timeStartedAt,
+    timeSystemInitialized: timeSystemInitialized,
+    currentTime: getCurrentTime(),
+    diagnostic: "Using browser performance timing"
+  };
+}
+
+// Provide empty implementations of Csound functions for compatibility
+export function updateCsoundInstance() { return true; }
+export async function enableCsoundTiming() { 
+  console.log("[TIMING] Using browser performance timing only");
+  return true; 
+}
+export async function diagnoseCsoundTiming() { 
+  return await diagnoseTiming();
+}
+export async function startCsoundTimer() { return true; }
 
 /**
  * Convert seconds to ticks based on BPM
@@ -257,17 +239,19 @@ export function parseQuantizationValue(quantValue, measureTicks = TICKS_PER_MEAS
     return TICKS_PER_BEAT; // Default to quarter notes
   }
   
-  // Calculate the number of ticks
+  // Calculate ticks per unit
+  let ticksPerUnit = measureTicks / denominator;
+  
+  // Adjust for triplets
   if (isTriplet) {
-    // For triplets, divide by 3 to get 3 notes where 2 would normally fit
-    return Math.round((measureTicks / denominator) * (2/3));
-  } else {
-    return measureTicks / denominator;
+    ticksPerUnit = ticksPerUnit * 2 / 3;
   }
+  
+  return ticksPerUnit;
 }
 
 /**
- * Quantize time to nearest grid point
+ * Quantize a time value in ticks to the nearest grid position
  * @param {number} timeTicks - Time in ticks
  * @param {number} gridTicks - Grid size in ticks
  * @returns {number} Quantized time in ticks
@@ -275,27 +259,31 @@ export function parseQuantizationValue(quantValue, measureTicks = TICKS_PER_MEAS
 export function quantizeToGrid(timeTicks, gridTicks) {
   if (gridTicks <= 0) return timeTicks;
   
-  // Find the nearest grid point
-  const gridIndex = Math.round(timeTicks / gridTicks);
-  return gridIndex * gridTicks;
+  const remainder = timeTicks % gridTicks;
+  const nearestGrid = remainder < gridTicks / 2 
+    ? timeTicks - remainder 
+    : timeTicks + (gridTicks - remainder);
+  
+  return nearestGrid;
 }
 
 /**
- * Get quantized measure position
+ * Get quantized position within measure (0-1)
  * @param {number} ticks - Current tick count
  * @param {number} quantizationTicks - Quantization grid size in ticks
  * @returns {number} Quantized position within measure (0-1)
  */
 export function getQuantizedMeasurePosition(ticks, quantizationTicks) {
-  // Quantize the ticks to the nearest grid point
-  const quantizedTicks = quantizeToGrid(ticks, quantizationTicks);
+  if (quantizationTicks <= 0) return getMeasurePosition(ticks);
   
-  // Return the position within the measure
-  return (quantizedTicks % TICKS_PER_MEASURE) / TICKS_PER_MEASURE;
+  const ticksInMeasure = ticks % TICKS_PER_MEASURE;
+  const quantizedTicksInMeasure = quantizeToGrid(ticksInMeasure, quantizationTicks);
+  
+  return quantizedTicksInMeasure / TICKS_PER_MEASURE;
 }
 
 /**
- * Calculate quantized rotation based on time
+ * Calculate quantized rotation based on current time, BPM and quantization
  * @param {number} currentTime - Current time in seconds
  * @param {number} bpm - Beats per minute
  * @param {string} quantizationValue - Quantization value (e.g., "1/4", "1/8T")
@@ -303,20 +291,26 @@ export function getQuantizedMeasurePosition(ticks, quantizationTicks) {
  * @returns {number} Rotation angle in radians
  */
 export function calculateQuantizedRotation(currentTime, bpm, quantizationValue, useQuantization) {
-  // Get the current ticks
-  const ticks = secondsToTicks(currentTime, bpm);
-  
   if (!useQuantization) {
-    // If quantization is disabled, return the exact rotation
-    return timeToRotation(getMeasurePosition(ticks));
+    // If quantization is disabled, just return regular rotation
+    return calculateRotation(currentTime, bpm, 1, false);
   }
   
-  // Parse the quantization value to get grid size in ticks
+  // Get current ticks based on time and BPM
+  const currentTicks = getCurrentTicks(currentTime, bpm);
+  
+  // Parse quantization value to get grid size in ticks
   const quantizationTicks = parseQuantizationValue(quantizationValue);
   
-  // Get the quantized position in the measure
-  const quantizedPosition = getQuantizedMeasurePosition(ticks, quantizationTicks);
+  // Get quantized position within measure
+  const normalizedTime = getQuantizedMeasurePosition(currentTicks, quantizationTicks);
   
   // Convert to rotation angle
-  return timeToRotation(quantizedPosition);
+  return timeToRotation(normalizedTime);
+}
+
+// Make diagnostic function available globally
+if (typeof window !== 'undefined') {
+  window.diagnoseTiming = diagnoseTiming;
+  window.resetTime = resetTime;
 }

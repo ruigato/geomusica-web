@@ -21,9 +21,6 @@ export const InstrumentType = {
 // Default instrument type
 let activeInstrument = InstrumentType.FM_BELL;
 
-// Channel for time synchronization with Csound
-const TIME_CHANNEL_NAME = "currentTime";
-
 /**
  * Get the Csound instance
  * @returns {Object|null} Csound instance or null if not initialized
@@ -38,6 +35,17 @@ export function getCsoundInstance() {
  */
 export function isAudioReady() {
   return csoundInstance !== null && csoundStarted;
+}
+
+/**
+ * Get the audio context
+ * @returns {AudioContext|null} The audio context or null if not initialized
+ */
+export function getAudioContext() {
+  if (!audioContext) {
+    initAudioContext();
+  }
+  return audioContext;
 }
 
 // Initialize the Audio Context
@@ -87,11 +95,7 @@ export async function setupAudio() {
     
     // Create the Csound instance if not already created
     if (!csoundInstance) {
-
-
-      
       try {
-
         // Add buffer size options to the Csound initialization
         const csoundOptions = {
           audioContext: audioContext,
@@ -100,18 +104,43 @@ export async function setupAudio() {
           bufferSize: 4096  
         };
           
-        csoundInstance = await Csound({ audioContext: audioContext });
+        csoundInstance = await Csound(csoundOptions);
+        
+        // Initialize Csound immediately without waiting for user click
+        try {
+          // Load and compile the orchestra
+          const orchestraCode = await loadOrchestraFile();
+          await csoundInstance.compileOrc(orchestraCode);
+          await csoundInstance.setOption("-odac");
+          await csoundInstance.start();
+          csoundStarted = true;
+          
+          // Set default parameters
+          await csoundInstance.setControlChannel("attack", 0.01);
+          await csoundInstance.setControlChannel("decay", 0.3);
+          await csoundInstance.setControlChannel("sustain", 0.5);
+          await csoundInstance.setControlChannel("release", 1.0);
+          await csoundInstance.setControlChannel("brightness", 0.0);
+          await csoundInstance.setControlChannel("masterVolume", 0.8);
+          
+          console.log("[AUDIO] Csound initialized and started successfully");
+        } catch (error) {
+          console.error("[AUDIO] Error during immediate Csound initialization:", error);
+          // Fall back to click-based initialization
+        }
+        
       } catch (error) {
         console.error("Failed to create Csound instance:", error);
         return null;
       }
     }
     
-    // Set up first-click handler to initialize audio
+    // Set up first-click handler to ensure audio context is resumed
     document.body.addEventListener('click', async () => {
       try {
         if (audioContext.state === 'suspended') {
           await audioContext.resume();
+          console.log("[AUDIO] Audio context resumed on user interaction");
         }
         
         if (!csoundStarted) {
@@ -146,27 +175,18 @@ export async function setupAudio() {
               pan: 0.0
             });
             
-            // Initialize time channel
-            setTimeout(async () => {
-              try {
-                await csoundInstance.setControlChannel(TIME_CHANNEL_NAME, 0);
-              } catch (e) {
-                console.warn("Could not initialize Csound time channel");
-              }
-            }, 1000);
-            
           } catch (error) {
-            console.error("Error during Csound setup:", error);
+            console.error("[AUDIO] Error starting Csound on click:", error);
           }
         }
       } catch (error) {
-        console.error("Error in audio initialization:", error);
+        console.error("[AUDIO] Error in click handler:", error);
       }
-    }, { once: true });
+    }, { once: false });
     
     return csoundInstance;
   } catch (error) {
-    console.error("Setup error:", error);
+    console.error("Error in setupAudio:", error);
     return null;
   }
 }
@@ -366,8 +386,22 @@ export async function setBrightness(brightness) {
   }
 }
 
+// Start Csound time updates - now just a stub
+export function startCsoundTimeUpdates() {
+  console.log("[TIMING] Csound timing disabled, using browser performance timing");
+  return true;
+}
+
+// Stop Csound time updates - now just a stub
+export function stopCsoundTimeUpdates() {
+  console.log("[TIMING] No Csound time updates to stop");
+}
+
 // Clean up audio system
 export async function cleanupAudio() {
+  // Stop time updates first
+  stopCsoundTimeUpdates();
+  
   if (csoundInstance) {
     try {
       if (typeof csoundInstance.reset === 'function') {
@@ -428,3 +462,12 @@ export const Tone = {
     }
   }
 };
+
+/**
+ * Csound timer stub for compatibility
+ * @returns {Promise<boolean>} Always resolves to true
+ */
+export async function startCsoundTimer() {
+  console.log("[TIMING] Csound timing disabled, using browser performance timing");
+  return true;
+}

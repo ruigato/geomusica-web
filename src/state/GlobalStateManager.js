@@ -241,7 +241,18 @@ export class GlobalStateManager {
    * @returns {Object} Object with angle and lastAngle
    */
   updateAngle(tNow) {
+    // If this is the first call, initialize lastTime
+    if (!this.lastTime) {
+      this.lastTime = tNow;
+      return { angle: this.lastAngle, lastAngle: this.lastAngle };
+    }
+    
     const dt = Math.min(tNow - this.lastTime, 100); // Cap delta time at 100ms
+    
+    // Skip tiny time steps (often happen during timing system initialization)
+    if (dt < 1) {
+      return { angle: this.lastAngle, lastAngle: this.lastAngle };
+    }
     
     // Get time in seconds
     const seconds = dt / 1000;
@@ -261,7 +272,7 @@ export class GlobalStateManager {
     const lastAngle = this.lastAngle;
     const angle = (lastAngle + angleDelta) % 360;
     
-    // Debug logging every 300 frames
+    // Debug logging periodically (about once every 5 seconds at 60fps)
     if (Math.random() < 0.003) { // ~0.3% chance each frame
       console.log(`[ROTATION] BPM: ${this.bpm}, Rotations/sec: ${rotationsPerSecond.toFixed(2)}, Degrees/sec: ${degreesPerSecond.toFixed(2)}, Delta: ${angleDelta.toFixed(2)}°`);
     }

@@ -3,6 +3,17 @@
 // Animation constants
 export const MARK_LIFE = 30;
 
+// Animation states for markers
+export const ANIMATION_STATES = {
+  IDLE: 0,     // Marker is inactive
+  ACTIVE: 1,   // Marker is active but not hit
+  HIT: 2,      // Marker has been hit
+  EXPIRED: 3   // Marker has expired and should be removed
+};
+
+// Maximum velocity for animation
+export const MAX_VELOCITY = 10;
+
 // Overlapping points threshold distance (in world units)
 export const OVERLAP_THRESHOLD = 20;
 

@@ -112,6 +112,11 @@ export class Layer {
     // This fixes the "No valid state found for trigger detection" error
     this.group.userData.state = this.state;
     
+    // Set global state reference if available from window
+    if (window._globalState) {
+      this.group.userData.globalState = window._globalState;
+    }
+    
     // Create layer-specific material with THIS LAYER'S COLOR
     this.material = new THREE.LineBasicMaterial({
       color: this.color,
@@ -143,7 +148,20 @@ export class Layer {
       Object.assign(this.state, options.state);
     }
     
-    console.log(`Layer ${this.id} initialized, group visible: ${this.group.visible}`);
+    // Force visibility
+    this.visible = true;
+    
+    // Make sure layer has initial geometry
+    if (!this.baseGeo) {
+      this.state.radius = this.state.radius || 100;
+      this.state.segments = this.state.segments || 3;
+      this.state.copies = this.state.copies || 3;
+      
+      // Create initial geometry
+      this.recreateGeometry();
+    }
+    
+    console.log(`Layer ${this.id} initialized, group visible: ${this.group.visible}, radius: ${this.state.radius}, segments: ${this.state.segments}, copies: ${this.state.copies}`);
   }
   
   /**
@@ -323,5 +341,48 @@ export class Layer {
     console.log(`Forced visibility for layer ${this.id}`);
     
     return this;
+  }
+  
+  /**
+   * Update the layer's angle for animation and marker detection
+   * @param {number} currentTime Current time in seconds
+   */
+  updateAngle(currentTime) {
+    // Store previous angle for marker hit detection
+    this.previousAngle = this.currentAngle || 0;
+    
+    // Get global state manager (which should be attached to the group)
+    const globalState = this.group?.userData?.globalState;
+    
+    if (globalState) {
+      // Use the global angle for this layer's rotation
+      // Convert from degrees to radians
+      const angleInDegrees = globalState.lastAngle || 0;
+      this.currentAngle = (angleInDegrees * Math.PI) / 180;
+      
+      // Apply rotation to the group
+      if (this.group) {
+        this.group.rotation.z = this.currentAngle;
+      }
+    } else {
+      // Fallback calculation if no global state is available
+      // This shouldn't happen in normal operation
+      console.warn(`[LAYER ${this.id}] No global state available for angle update`);
+      
+      // Default to a slow rotation (45 degrees per second)
+      const lastUpdateTime = this.lastUpdateTime || (currentTime - 0.016);
+      const deltaTime = currentTime - lastUpdateTime;
+      const rotationSpeed = Math.PI / 4; // 45 degrees per second
+      
+      this.currentAngle = (this.currentAngle || 0) + rotationSpeed * deltaTime;
+      
+      // Apply rotation to the group
+      if (this.group) {
+        this.group.rotation.z = this.currentAngle;
+      }
+    }
+    
+    // Store the time for future delta calculations
+    this.lastUpdateTime = currentTime;
   }
 } 

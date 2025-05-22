@@ -13,10 +13,40 @@ const axisLabelPool = [];
 const activePointLabels = new Map();
 const activeAxisLabels = new Map();
 
+// Map to store labels by marker ID
+const labelMap = new Map();
+let nextLabelId = 1;
+
 /**
- * Initialize the label system with separate containers
+ * Initialize the DOM labels system
+ * @param {THREE.WebGLRenderer} renderer Renderer to get element dimensions
  */
-export function initLabels() {
+export function initLabels(renderer) {
+  // Initialize containers first
+  initLabelContainers();
+  
+  // Clear any existing labels
+  for (const label of labelMap.values()) {
+    if (label.parentNode) {
+      label.parentNode.removeChild(label);
+    }
+  }
+  
+  // Reset maps
+  labelMap.clear();
+  activePointLabels.clear();
+  activeAxisLabels.clear();
+  
+  // Reset ID counter
+  nextLabelId = 1;
+  
+  console.log("[LABELS] Label system initialized");
+}
+
+/**
+ * Initialize the label containers
+ */
+function initLabelContainers() {
   // Create the point label container if it doesn't exist
   pointLabelContainer = document.getElementById('point-labels-container');
   if (!pointLabelContainer) {
@@ -135,7 +165,7 @@ function releaseAxisLabel(label) {
  * @returns {Object} Label object with ID and DOM element
  */
 export function createOrUpdateLabel(id, worldPos, text, camera, renderer) {
-  if (!pointLabelContainer) initLabels();
+  if (!pointLabelContainer) initLabelContainers();
   
   const screenPos = worldToScreen(worldPos, camera, renderer);
   
@@ -174,7 +204,7 @@ export function createOrUpdateLabel(id, worldPos, text, camera, renderer) {
  * @returns {Object} Label object with ID and DOM element
  */
 export function createAxisLabel(id, worldPos, text, camera, renderer, lifespan = 30) {
-  if (!axisLabelContainer) initLabels();
+  if (!axisLabelContainer) initLabelContainers();
   
   const label = getAxisLabel();
   activeAxisLabels.set(id, label);
@@ -237,12 +267,43 @@ export function removeLabel(id) {
 }
 
 /**
- * Update non-rotating label positions
- * @param {THREE.Camera} camera Camera for positioning
- * @param {THREE.WebGLRenderer} renderer Renderer for positioning
+ * Update the positions of labels based on markers
+ * @param {Array} markers Array of markers to update labels for
+ * @param {THREE.Camera} camera Camera to use for projection
+ * @param {THREE.WebGLRenderer} renderer Renderer to get element dimensions
  */
-export function updateLabelPositions(camera, renderer) {
-  // This function is a stub - specific updates are handled elsewhere
+export function updateLabelPositions(markers, camera, renderer) {
+  if (!markers || !Array.isArray(markers) || !camera || !renderer) {
+    return;
+  }
+
+  // Get necessary dimensions
+  const rendererDomElement = renderer.domElement;
+  const width = rendererDomElement.clientWidth;
+  const height = rendererDomElement.clientHeight;
+  
+  // Project each marker position to screen space
+  markers.forEach(marker => {
+    const position = marker.position;
+    
+    if (!position) return;
+    
+    // Clone position to avoid modifying the original
+    const pos = position.clone();
+    
+    // Project the 3D position to screen space
+    pos.project(camera);
+    
+    // Convert normalized device coordinates to pixel coordinates
+    const x = (pos.x * 0.5 + 0.5) * width;
+    const y = (-pos.y * 0.5 + 0.5) * height;
+    
+    // Update or create label for this marker
+    updateOrCreateLabel(marker, x, y);
+  });
+  
+  // Hide any labels that no longer have corresponding markers
+  hideOrphanedLabels(markers);
 }
 
 /**
@@ -351,4 +412,77 @@ function worldToScreen(worldPos, camera, renderer) {
     x: (pos.x * widthHalf) + widthHalf + rect.left,
     y: -(pos.y * heightHalf) + heightHalf + rect.top
   };
+}
+
+/**
+ * Update an existing label or create a new one for a marker
+ * @param {Object} marker Marker to update/create label for
+ * @param {number} x X position in pixels
+ * @param {number} y Y position in pixels
+ */
+function updateOrCreateLabel(marker, x, y) {
+  // Generate a unique ID for this marker if it doesn't have one
+  if (!marker.labelId) {
+    marker.labelId = 'marker-' + (nextLabelId++);
+  }
+  
+  // Check if label already exists
+  let label = labelMap.get(marker.labelId);
+  
+  if (!label) {
+    // Create new label element
+    label = document.createElement('div');
+    label.className = 'marker-label';
+    label.style.position = 'absolute';
+    label.style.pointerEvents = 'none';
+    label.style.userSelect = 'none';
+    label.style.fontSize = '12px';
+    label.style.color = '#ffffff';
+    label.style.textShadow = '1px 1px 2px rgba(0,0,0,0.8)';
+    label.style.fontFamily = 'Arial, sans-serif';
+    
+    // Add to document
+    document.body.appendChild(label);
+    
+    // Store in map
+    labelMap.set(marker.labelId, label);
+  }
+  
+  // Update position
+  label.style.left = `${x}px`;
+  label.style.top = `${y - 20}px`; // Offset above the marker
+  
+  // Update content based on marker data
+  const frequency = marker.frequency ? 
+    marker.frequency.toFixed(1) + ' Hz' : 
+    '';
+  
+  label.textContent = frequency;
+  
+  // Show label
+  label.style.display = 'block';
+  
+  // Update opacity based on marker state
+  label.style.opacity = marker.animState === 2 ? '1.0' : '0.6';
+}
+
+/**
+ * Hide any labels that no longer have corresponding markers
+ * @param {Array} activeMarkers Array of currently active markers
+ */
+function hideOrphanedLabels(activeMarkers) {
+  // Get set of active marker IDs
+  const activeIds = new Set();
+  activeMarkers.forEach(marker => {
+    if (marker.labelId) {
+      activeIds.add(marker.labelId);
+    }
+  });
+  
+  // Hide any labels not in the active set
+  for (const [id, label] of labelMap.entries()) {
+    if (!activeIds.has(id)) {
+      label.style.display = 'none';
+    }
+  }
 }

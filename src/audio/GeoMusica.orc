@@ -15,9 +15,6 @@ gaRightOut init 0
 ; GLOBAL VARIABLES AND CHANNELS
 ;==================================================================
 
-; Timing channel for synchronization with JavaScript
-gkCurrentTime chnexport "currentTime", 1
-
 ; Global variables for envelope controls - exposed as channels
 gkAttack chnexport "attack", 1
 gkDecay chnexport "decay", 1
@@ -136,16 +133,9 @@ instr 99
   clear gaLeftOut, gaRightOut
 endin
 
-; Timer instrument for synchronization with JavaScript
-instr 100
-  ktime times
-  chnset ktime, "currentTime"
-endin
-
 ;==================================================================
 ; INSTRUMENT SCHEDULING
 ;==================================================================
 
-; Start the output processor and timer instruments automatically
+; Start the output processor instrument automatically
 schedule 99, 0, 100000
-schedule 100, 0, 100000

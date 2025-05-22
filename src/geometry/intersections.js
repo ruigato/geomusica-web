@@ -1,6 +1,14 @@
 // src/geometry/intersections.js - Optimized version
 import * as THREE from 'three';
-import { INTERSECTION_MERGE_THRESHOLD, INTERSECTION_POINT_COLOR, INTERSECTION_POINT_OPACITY, INTERSECTION_POINT_SIZE } from '../config/constants.js';
+import { 
+  ANIMATION_STATES,
+  INTERSECTION_MERGE_THRESHOLD, 
+  INTERSECTION_POINT_COLOR, 
+  INTERSECTION_POINT_OPACITY, 
+  INTERSECTION_POINT_SIZE,
+  MARK_LIFE,
+  MAX_VELOCITY
+} from '../config/constants.js';
 
 // Reusable Vector3 objects to reduce garbage collection
 const _vec1 = new THREE.Vector3();
@@ -573,4 +581,160 @@ export function createIntersectionMarkers(scene, intersectionPoints, group) {
     markersGroup.add(marker);
     scene.userData.intersectionMarkers.push(marker);
   }
+}
+
+/**
+ * Detect intersections for the active layer
+ * @param {Object} layer The active layer
+ * @returns {Array} Array of intersections
+ */
+export function detectIntersections(layer) {
+  if (!layer) return [];
+  
+  // Get the current markers array or create a new one
+  if (!layer.markers) {
+    layer.markers = [];
+  }
+  
+  // Process any existing markers first
+  const existingMarkers = layer.markers.filter(m => 
+    m.animState !== ANIMATION_STATES.EXPIRED
+  );
+  
+  // Find intersections between elements in the layer
+  let intersections = [];
+  if (layer.group) {
+    intersections = findAllIntersections(layer.group);
+  }
+  
+  // Create markers for new intersections
+  for (const intersection of intersections) {
+    // Check if this intersection already has a marker
+    const exists = existingMarkers.some(m => 
+      distanceBetweenPoints(m.position, intersection) < INTERSECTION_MERGE_THRESHOLD
+    );
+    
+    if (!exists) {
+      // Create a new marker for this intersection
+      const marker = {
+        position: intersection.clone(),
+        velocity: 0,
+        lifetime: MARK_LIFE,
+        animState: ANIMATION_STATES.ACTIVE,
+        justHit: false,
+        frequency: calculateFrequencyForPoint(intersection, layer.state),
+        pan: calculatePanForPoint(intersection)
+      };
+      layer.markers.push(marker);
+    }
+  }
+  
+  return intersections;
+}
+
+/**
+ * Apply velocity updates to markers
+ * @param {Object} layer The layer containing markers
+ * @param {number} deltaTime Time elapsed since last frame in seconds
+ */
+export function applyVelocityToMarkers(layer, deltaTime) {
+  if (!layer || !layer.markers) return;
+  
+  // Process each marker
+  for (let i = layer.markers.length - 1; i >= 0; i--) {
+    const marker = layer.markers[i];
+    
+    // Skip if marker is already expired
+    if (marker.animState === ANIMATION_STATES.EXPIRED) {
+      continue;
+    }
+    
+    // Update marker based on its state
+    if (marker.animState === ANIMATION_STATES.ACTIVE) {
+      // For active markers, increase velocity when hit by rotating line
+      if (isMarkerHit(marker, layer)) {
+        marker.velocity = MAX_VELOCITY;
+        marker.animState = ANIMATION_STATES.HIT;
+        marker.justHit = true;
+      }
+    } else if (marker.animState === ANIMATION_STATES.HIT) {
+      // Decrease velocity over time
+      marker.velocity = Math.max(0, marker.velocity - (deltaTime * MAX_VELOCITY * 0.5));
+      
+      // Decrease lifetime
+      marker.lifetime -= deltaTime * 1000;
+      
+      // Mark as expired if lifetime is up
+      if (marker.lifetime <= 0) {
+        marker.animState = ANIMATION_STATES.EXPIRED;
+      }
+    }
+  }
+  
+  // Remove expired markers
+  layer.markers = layer.markers.filter(m => m.animState !== ANIMATION_STATES.EXPIRED);
+}
+
+/**
+ * Check if a marker is hit by the rotating line
+ * @param {Object} marker The marker to check
+ * @param {Object} layer The layer containing the marker
+ * @returns {boolean} True if marker is hit
+ */
+function isMarkerHit(marker, layer) {
+  if (!layer || !layer.state) return false;
+  
+  // Get current angle from layer
+  const currentAngle = layer.currentAngle || 0;
+  const prevAngle = layer.previousAngle || 0;
+  
+  // Calculate angle of the marker relative to center
+  const markerAngle = Math.atan2(marker.position.y, marker.position.x);
+  
+  // Normalize angles to 0-2π range
+  const normCurrentAngle = (currentAngle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+  const normPrevAngle = (prevAngle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+  const normMarkerAngle = (markerAngle + Math.PI * 2) % (Math.PI * 2);
+  
+  // Check if the rotating line passed over the marker in this frame
+  if (normCurrentAngle < normPrevAngle) {
+    // Handle wraparound case
+    return (normMarkerAngle <= normCurrentAngle) || 
+           (normMarkerAngle > normPrevAngle);
+  } else {
+    return (normMarkerAngle <= normCurrentAngle) && 
+           (normMarkerAngle > normPrevAngle);
+  }
+}
+
+/**
+ * Calculate frequency for an intersection point
+ * @param {THREE.Vector3} point The intersection point
+ * @param {Object} state The state object
+ * @returns {number} Frequency in Hz
+ */
+function calculateFrequencyForPoint(point, state) {
+  // Default to a frequency based on distance from center
+  const distance = Math.sqrt(point.x * point.x + point.y * point.y);
+  const baseFreq = 110; // A2
+  const maxFreq = 880;  // A5
+  
+  // Map distance to frequency range (inverse relationship)
+  // Closer to center = higher frequency
+  const normalizedDist = Math.min(1.0, distance / state.radius);
+  const frequency = maxFreq - (normalizedDist * (maxFreq - baseFreq));
+  
+  return frequency;
+}
+
+/**
+ * Calculate pan position for a point
+ * @param {THREE.Vector3} point The point
+ * @returns {number} Pan position (-1 to 1)
+ */
+function calculatePanForPoint(point) {
+  // Map x position to pan range (-1 to 1)
+  // This assumes the point is in world coordinates centered at origin
+  const maxDistance = 300; // Adjust based on your scene scale
+  return Math.max(-1, Math.min(1, point.x / maxDistance));
 }
