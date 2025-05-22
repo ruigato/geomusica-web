@@ -355,10 +355,45 @@ export class Layer {
     const globalState = this.group?.userData?.globalState;
     
     if (globalState) {
-      // Use the global angle for this layer's rotation
-      // Convert from degrees to radians
-      const angleInDegrees = globalState.lastAngle || 0;
-      this.currentAngle = (angleInDegrees * Math.PI) / 180;
+      // Get base angle from global state (in degrees)
+      const baseAngleInDegrees = globalState.lastAngle || 0;
+      
+      // Initialize tracking properties if they don't exist
+      if (this.lastBaseAngle === undefined) {
+        this.lastBaseAngle = baseAngleInDegrees;
+        this.accumulatedAngle = baseAngleInDegrees;
+      }
+      
+      // Calculate how much the base angle has changed since last frame
+      let deltaAngle = baseAngleInDegrees - this.lastBaseAngle;
+      
+      // Handle wraparound from 359->0 degrees
+      if (deltaAngle < -180) {
+        deltaAngle += 360;
+      } else if (deltaAngle > 180) {
+        deltaAngle -= 360;
+      }
+      
+      // Apply time subdivision multiplier to the delta if enabled
+      if (this.state.useTimeSubdivision && this.state.timeSubdivisionValue !== 1) {
+        const multiplier = this.state.timeSubdivisionValue;
+        deltaAngle *= multiplier;
+        
+        // Log the effect occasionally
+        if (Math.random() < 0.003) {
+          console.log(`[LAYER ${this.id}] Applied time subdivision: multiplier=${multiplier}, deltaAngle=${deltaAngle.toFixed(2)}°`);
+        }
+      }
+      
+      // Accumulate the angle continuously
+      this.accumulatedAngle = (this.accumulatedAngle + deltaAngle) % 360;
+      if (this.accumulatedAngle < 0) this.accumulatedAngle += 360;
+      
+      // Store the current base angle for next frame's calculation
+      this.lastBaseAngle = baseAngleInDegrees;
+      
+      // Convert accumulated angle from degrees to radians
+      this.currentAngle = (this.accumulatedAngle * Math.PI) / 180;
       
       // Apply rotation to the group
       if (this.group) {

@@ -103,7 +103,13 @@ function setupTimeSubdivisionRadioButtons(container, state) {
     // Add event listener
     radioInput.addEventListener('change', () => {
       if (radioInput.checked) {
-        state.setTimeSubdivisionValue(parseFloat(value));
+        // Get the current active layer state
+        const activeState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        
+        // Set time subdivision value on the active layer
+        activeState.setTimeSubdivisionValue(parseFloat(value));
+        console.log(`[LAYER ${activeState.layerId || 'unknown'}] Time subdivision changed to ${value}`);
       }
     });
     
@@ -584,7 +590,7 @@ export function setupUI(state) {
     const getTargetState = (setterName) => {
       // Check if this is a global parameter that should be routed to globalState
       const isGlobalParameter = 
-        setterName.includes('bpm') || 
+        setterName.includes('Bpm') || 
         setterName.includes('attack') ||
         setterName.includes('decay') ||
         setterName.includes('sustain') ||
@@ -748,10 +754,9 @@ export function setupUI(state) {
   if (bpmRange && bpmNumber && bpmValue) {
     syncPair(bpmRange, bpmNumber, bpmValue, 
       function setBpm(value) {
-        // Use getActiveState dynamically at call time, not during setup
-        const targetState = typeof window.getActiveState === 'function' ? 
-          window.getActiveState() : state;
-        targetState.setBpm(Number(value));
+        // BPM should always be a global parameter
+        const globalState = window._globalState || state;
+        globalState.setBpm(Number(value));
       }, 
       UI_RANGES.BPM[0], UI_RANGES.BPM[1], 
       Number);
