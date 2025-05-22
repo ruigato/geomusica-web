@@ -403,6 +403,9 @@ export function cleanupIntersectionMarkers(scene) {
   }
 }
 
+// Add a counter for logging at the module level
+let updateGroupCallCounter = 0;
+
 /**
  * Update the group of polygon copies
  * @param {THREE.Group} group - Group to update
@@ -417,6 +420,12 @@ export function cleanupIntersectionMarkers(scene) {
  * @param {boolean} justCalculatedIntersections - Whether we just calculated intersections
  */
 export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, angle = 0, state = null, isLerping = false, justCalculatedIntersections = false) {
+  // Only log on first call or when parameters change
+  updateGroupCallCounter++;
+  if (updateGroupCallCounter % 300 === 0) {
+    console.log(`UpdateGroup called: copies=${copies}, segments=${segments}, group.children=${group.children.length}`);
+  }
+  
   // Ensure segments is a proper integer
   const numSegments = Math.round(segments);
 
@@ -425,11 +434,53 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     state.cleanupPointFreqLabels();
   }
   
+  // IMPORTANT: Make sure the group is visible
+  group.visible = true;
+  
   // Clean up the group
   group.clear();
   
+  // Add a simple visible debug object
+  const debugSphere = new THREE.Mesh(
+    new THREE.SphereGeometry(10, 16, 16),  // Much smaller sphere (10 instead of 50)
+    new THREE.MeshBasicMaterial({ color: 0xff0000 })
+  );
+  debugSphere.position.set(0, 0, 0);
+  group.add(debugSphere);
+  
+  // Add multiple visible lines in different directions
+  const axes = [
+    { start: new THREE.Vector3(-20, 0, 0), end: new THREE.Vector3(20, 0, 0), color: 0x00ff00 },  // X-axis (green)
+    { start: new THREE.Vector3(0, -20, 0), end: new THREE.Vector3(0, 20, 0), color: 0x0000ff },  // Y-axis (blue)
+    { start: new THREE.Vector3(0, 0, -20), end: new THREE.Vector3(0, 0, 20), color: 0xff00ff }   // Z-axis (magenta)
+  ];
+  
+  axes.forEach(axis => {
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([axis.start, axis.end]);
+    const lineMat = new THREE.LineBasicMaterial({ color: axis.color });
+    const line = new THREE.Line(lineGeo, lineMat);
+    group.add(line);
+  });
+  
+  // Only log this message once
+  if (updateGroupCallCounter === 1) {
+    console.log("Added smaller debug objects to group");
+  }
+  
   // Cache the base radius once to use for all modulus calculations
   const baseRadius = state ? state.radius : 0;
+  
+  // Early exit with warning if copies is 0 or negative
+  if (copies <= 0) {
+    console.warn("UpdateGroup called with copies <= 0, nothing will be rendered");
+    return;
+  }
+  
+  // Early exit with warning if baseGeo is invalid
+  if (!baseGeo || !baseGeo.getAttribute || !baseGeo.getAttribute('position')) {
+    console.error("UpdateGroup called with invalid baseGeo, cannot render");
+    return;
+  }
   
   // Only create markers if we have multiple copies
   const hasEnoughCopiesForIntersections = copies > 1;
@@ -483,9 +534,24 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       // Create a group for this copy to hold both the lines and vertex circles
       const copyGroup = new THREE.Group();
       
-      // Create line for the polygon outline - use the original geometry here
-      const lines = new THREE.LineLoop(baseGeo, mat.clone());
+      // Use the current geometry (may have been updated with intersections)
+      // Create a modified material based on the original but with increased visibility
+      const lineMaterial = mat.clone();
+      lineMaterial.transparent = false;
+      lineMaterial.opacity = 1.0;
+      lineMaterial.depthTest = false;
+      lineMaterial.depthWrite = false;
+      lineMaterial.color = new THREE.Color(0x00ff00); // Bright green
+      lineMaterial.linewidth = 5; // Much thicker lines
+      
+      // Create line loop with the enhanced material
+      const lines = new THREE.LineLoop(baseGeo, lineMaterial);
       lines.scale.set(finalScale, finalScale, 1);
+      
+      // Set renderOrder to ensure it renders on top of other objects
+      lines.renderOrder = 10; // Higher render order
+      
+      // Add the line geometry to the copy group
       copyGroup.add(lines);
       
       // Apply rotation to the copy group
@@ -579,8 +645,23 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     const copyGroup = new THREE.Group();
     
     // Use the current geometry (may have been updated with intersections)
-    const lines = new THREE.LineLoop(baseGeo, mat.clone());
+    // Create a modified material based on the original but with increased visibility
+    const lineMaterial = mat.clone();
+    lineMaterial.transparent = false;
+    lineMaterial.opacity = 1.0;
+    lineMaterial.depthTest = false;
+    lineMaterial.depthWrite = false;
+    lineMaterial.color = new THREE.Color(0x00ff00); // Bright green
+    lineMaterial.linewidth = 5; // Much thicker lines
+    
+    // Create line loop with the enhanced material
+    const lines = new THREE.LineLoop(baseGeo, lineMaterial);
     lines.scale.set(finalScale, finalScale, 1);
+    
+    // Set renderOrder to ensure it renders on top of other objects
+    lines.renderOrder = 10; // Higher render order
+    
+    // Add the line geometry to the copy group
     copyGroup.add(lines);
     
     // Get the positions from the geometry

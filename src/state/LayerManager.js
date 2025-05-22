@@ -1,7 +1,7 @@
 // src/state/LayerManager.js - Manages multiple layers for the application
 import { Layer } from './layer.js';
 import * as THREE from 'three';
-import { createPolygonGeometry } from '../geometry/geometry.js';
+import { createPolygonGeometry, calculateBoundingSphere } from '../geometry/geometry.js';
 import { updateGroup } from '../geometry/geometry.js';
 import { detectTriggers } from '../triggers/triggers.js';
 
@@ -31,6 +31,7 @@ export class LayerManager {
     // Ensure the container is added to the scene and visible
     console.log("Layer container created with visible =", this.layerContainer.visible);
     console.log("Layer container added to scene, scene child count =", this.scene.children.length);
+    console.log("Scene children:", this.scene.children.map(child => child.name || 'unnamed'));
   }
   
   /**
@@ -48,11 +49,15 @@ export class LayerManager {
       layer.state.copies = 3; // Default to 3 copies so something is visible
     }
     
+    // IMPORTANT: Ensure layer group is visible
+    layer.group.visible = true;
+    
     // Add the layer's group to the container
     this.layerContainer.add(layer.group);
     
     // Log for debugging
     console.log(`Created layer ${id}, added to container. Container has ${this.layerContainer.children.length} children`);
+    console.log(`Layer ${id} visibility:`, layer.visible, "Group visibility:", layer.group.visible);
     
     // Add to layer collection
     this.layers.push(layer);
@@ -76,20 +81,24 @@ export class LayerManager {
     const state = layer.state;
     
     // Ensure we have some reasonable defaults
-    state.radius = state.radius || 100;
+    state.radius = state.radius || 300;  // LARGER radius for visibility
     state.segments = state.segments || 3;
     state.copies = state.copies || 3;
     
-    // Create geometry if it doesn't exist
-    if (!layer.baseGeo) {
-      layer.baseGeo = createPolygonGeometry(
-        state.radius,
-        state.segments,
-        state
-      );
-      
-      console.log(`Created geometry for layer ${layer.id} with ${state.segments} segments and ${state.copies} copies`);
+    // Always create fresh geometry
+    // Dispose old geometry if it exists
+    if (layer.baseGeo && layer.baseGeo.dispose) {
+      layer.baseGeo.dispose();
     }
+    
+    // Create new geometry
+    layer.baseGeo = createPolygonGeometry(
+      state.radius,
+      state.segments,
+      state
+    );
+    
+    console.log(`Created geometry for layer ${layer.id} with ${state.segments} segments and ${state.copies} copies`);
     
     // Initialize the group with the geometry
     updateGroup(
@@ -102,7 +111,7 @@ export class LayerManager {
       state.angle,
       state,
       false,
-      false
+      true  // Force intersection recalculation
     );
     
     console.log(`Initialized group for layer ${layer.id}, group now has ${layer.group.children.length} children`);
@@ -225,6 +234,13 @@ export class LayerManager {
       triggerAudioCallback 
     } = animationParams;
 
+    // Add frame counter to control logging frequency
+    this.frameCounter = (this.frameCounter || 0) + 1;
+    const shouldLog = this.frameCounter % 300 === 0;
+
+    // Add camera update based on layer geometry
+    this.updateCameraForLayerBounds(scene, shouldLog);
+
     // Update each layer
     for (const layer of this.layers) {
       // Only update if the layer is visible
@@ -234,20 +250,26 @@ export class LayerManager {
         // Update state time
         state.lastTime = tNow;
         
+        // Debug output for active layer to verify parameter changes
+        if (layer.id === this.activeLayerId && shouldLog) {
+          console.log(`Layer ${layer.id} (active): copies=${state.copies}, segments=${state.segments}, radius=${state.radius}`);
+          
+          // Check for parameter changes that would affect rendering
+          if (state.hasParameterChanged()) {
+            console.log("Parameter changes detected:", 
+              Object.entries(state.parameterChanges)
+                .filter(([_, val]) => val)
+                .map(([key, _]) => key)
+                .join(", ")
+            );
+          }
+        }
+        
         // Update lerped values
         state.updateLerp(dt);
         
-        // Check if we need to update the geometry
-        const needsGeometryUpdate = 
-          !layer.baseGeo || 
-          state.parameterChanges.segments || 
-          state.parameterChanges.radius ||
-          state.parameterChanges.fractal ||
-          state.parameterChanges.useFractal ||
-          state.parameterChanges.starSkip ||
-          state.parameterChanges.useStars;
-        
-        if (needsGeometryUpdate) {
+        // Create geometry if it doesn't exist or if parameters have changed
+        if (!layer.baseGeo || state.hasParameterChanged()) {
           // Dispose old geometry
           if (layer.baseGeo && layer.baseGeo.dispose) {
             layer.baseGeo.dispose();
@@ -259,6 +281,11 @@ export class LayerManager {
             state.segments,
             state
           );
+          
+          // Log geometry recreation
+          if (shouldLog || state.hasParameterChanged()) {
+            console.log(`Updated geometry for layer ${layer.id}: radius=${state.radius}, segments=${state.segments}`);
+          }
         }
         
         // Detect triggers if this layer has copies
@@ -279,7 +306,12 @@ export class LayerManager {
           );
         }
         
-        // Update the group with current parameters
+        // IMPORTANT: Apply the rotation directly to the entire layer group
+        // Convert angle from degrees to radians
+        const angleInRadians = (angle * Math.PI) / 180;
+        layer.group.rotation.z = angleInRadians;
+        
+        // Update the group with current parameters - angle here is for cumulative angle between copies
         updateGroup(
           layer.group,
           state.copies,
@@ -287,7 +319,7 @@ export class LayerManager {
           layer.baseGeo,
           layer.material,
           state.segments,
-          angle,
+          state.angle, // Use the fixed angle between copies, not the animation angle
           state,
           state.isLerping(),
           state.justCalculatedIntersections
@@ -297,5 +329,95 @@ export class LayerManager {
         state.resetParameterChanges();
       }
     }
+  }
+
+  /**
+   * Update camera position based on layer geometry bounds
+   * @param {THREE.Scene} scene The Three.js scene
+   * @param {boolean} shouldLog Whether to log debug information
+   */
+  updateCameraForLayerBounds(scene, shouldLog = false) {
+    // Get camera and renderer references from scene userData
+    const camera = scene.userData?.camera;
+    if (!camera) {
+      if (shouldLog) console.warn("Cannot update camera: No camera reference in scene userData");
+      return;
+    }
+
+    // Calculate maximum bounding sphere radius from all visible layers
+    let maxBoundingRadius = 0;
+    let visibleLayerCount = 0;
+
+    for (const layer of this.layers) {
+      if (layer.visible && layer.group && layer.state && layer.state.copies > 0) {
+        // Calculate bounding radius for this layer
+        const boundingRadius = calculateBoundingSphere(layer.group, layer.state);
+        maxBoundingRadius = Math.max(maxBoundingRadius, boundingRadius);
+        visibleLayerCount++;
+      }
+    }
+
+    // Use default if no visible layers or invalid calculation
+    if (visibleLayerCount === 0 || maxBoundingRadius <= 0) {
+      maxBoundingRadius = 500; // Default value
+    }
+
+    // Calculate appropriate camera distance (add margin for better view)
+    const aspect = camera.aspect || 1;
+    const fov = camera.fov || 60;
+    const fovRadians = (fov * Math.PI) / 180;
+    
+    // Calculate distance needed to view the entire bounding sphere
+    // Use the smaller dimension (usually height) to ensure everything fits
+    const distanceFactor = 1 / Math.tan(fovRadians / 2);
+    const margin = 1.2; // 20% margin for better view
+    
+    // Calculate target distance
+    const targetDistance = maxBoundingRadius * distanceFactor * margin;
+    
+    // Get active layer state for camera control
+    const activeLayer = this.getActiveLayer();
+    const state = activeLayer?.state;
+
+    if (state) {
+      // If target distance is significantly different, update it
+      if (Math.abs(state.targetCameraDistance - targetDistance) > 10) {
+        // Store previous value for logging
+        const previousDistance = state.targetCameraDistance;
+        
+        // Update target distance
+        state.targetCameraDistance = targetDistance;
+        
+        // Log camera update if requested
+        if (shouldLog) {
+          console.log(`Updating camera distance: ${previousDistance.toFixed(0)} → ${targetDistance.toFixed(0)} (max radius: ${maxBoundingRadius.toFixed(0)})`);
+        }
+      }
+      
+      // Update camera with smooth lerping
+      state.updateCameraLerp(16.67); // ~60fps time step
+      
+      // Apply updated camera distance
+      camera.position.z = state.cameraDistance;
+    }
+  }
+
+  /**
+   * Force recreation of geometry for a layer
+   * @param {number} layerId ID of the layer to recreate geometry for
+   */
+  recreateLayerGeometry(layerId) {
+    if (layerId < 0 || layerId >= this.layers.length) {
+      console.error(`Invalid layer ID: ${layerId}`);
+      return;
+    }
+    
+    const layer = this.layers[layerId];
+    console.log(`Forcing geometry recreation for layer ${layerId}`);
+    
+    // Recreate the geometry
+    this.initializeLayerGeometry(layer);
+    
+    return layer;
   }
 } 

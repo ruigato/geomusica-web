@@ -140,9 +140,9 @@ export function createAppState() {
     lerpTime: DEFAULT_VALUES.LERP_TIME,
     
     // Camera related parameters 
-    cameraDistance: 2000,
-    targetCameraDistance: 2000,
-    cameraLerpSpeed: 0.1, // Adjust this to control camera smoothness
+    cameraDistance: 1000,
+    targetCameraDistance: 1000,
+    cameraLerpSpeed: 0.1,
     
     // Target values for lerping
     targetRadius: DEFAULT_VALUES.RADIUS,

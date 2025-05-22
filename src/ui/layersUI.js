@@ -132,6 +132,9 @@ export function setupLayersUI(layerManager) {
   // Initial UI update
   updateLayerButtons(layerManager);
   
+  // Add debug buttons to the layer tab
+  addDebugButtons(layerTab, layerManager);
+  
   // Return references to UI elements
   return {
     layerCountInput,
@@ -224,4 +227,56 @@ export function updateLayersUI(layerManager) {
   
   // Update layer buttons
   updateLayerButtons(layerManager);
+}
+
+/**
+ * Add a button to recreate geometry for debugging
+ * @param {HTMLElement} container - Container to add button to
+ * @param {LayerManager} layerManager - Layer manager instance
+ */
+function addDebugButtons(container, layerManager) {
+  // Create a button container
+  const buttonContainer = document.createElement('div');
+  buttonContainer.className = 'debug-button-container';
+  buttonContainer.style.marginTop = '20px';
+  buttonContainer.style.padding = '10px';
+  buttonContainer.style.backgroundColor = '#333';
+  buttonContainer.style.borderRadius = '5px';
+  
+  // Add a title
+  const title = document.createElement('h3');
+  title.textContent = 'Debug Tools';
+  title.style.color = '#ff0000';
+  title.style.margin = '0 0 10px 0';
+  buttonContainer.appendChild(title);
+  
+  // Create recreate geometry button
+  const recreateButton = document.createElement('button');
+  recreateButton.textContent = 'Recreate Geometry';
+  recreateButton.style.backgroundColor = '#ff3333';
+  recreateButton.style.color = 'white';
+  recreateButton.style.padding = '10px 15px';
+  recreateButton.style.border = 'none';
+  recreateButton.style.borderRadius = '4px';
+  recreateButton.style.cursor = 'pointer';
+  recreateButton.style.marginRight = '10px';
+  
+  // Add click handler
+  recreateButton.addEventListener('click', () => {
+    const activeLayerId = layerManager.activeLayerId;
+    if (activeLayerId !== null) {
+      console.log(`Manually recreating geometry for layer ${activeLayerId}`);
+      const layer = layerManager.layers[activeLayerId];
+      // Call the new forceVisibility method
+      layer.forceVisibility();
+      // Also recreate via layer manager
+      layerManager.recreateLayerGeometry(activeLayerId);
+    }
+  });
+  
+  // Add button to container
+  buttonContainer.appendChild(recreateButton);
+  
+  // Add container to parent
+  container.appendChild(buttonContainer);
 } 

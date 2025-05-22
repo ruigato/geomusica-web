@@ -301,22 +301,47 @@ function initializeApplication() {
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setClearColor(0x000000, 0);
   
+  // Add debugging for renderer
+  console.log("Renderer initialized:", renderer);
+  console.log("WebGL supported:", renderer.capabilities.isWebGL2 ? "WebGL2" : "WebGL1");
+  
   // Get canvas container and set renderer size
   const canvasContainer = document.getElementById('canvas');
+  console.log("Canvas container:", canvasContainer);
+  console.log("Canvas container dimensions:", canvasContainer.clientWidth, "x", canvasContainer.clientHeight);
+  
   const containerWidth = canvasContainer.clientWidth;
   const containerHeight = canvasContainer.clientHeight;
   renderer.setSize(containerWidth, containerHeight);
   
+  // Make sure the canvas has a visible style
+  renderer.domElement.style.display = 'block';
+  renderer.domElement.style.width = '100%';
+  renderer.domElement.style.height = '100%';
+  renderer.domElement.style.background = '#111'; // Dark background to help visibility
+  
   // Add renderer to DOM
   canvasContainer.appendChild(renderer.domElement);
+  console.log("Canvas element added to DOM, dimensions:", renderer.domElement.width, "x", renderer.domElement.height);
   
   // Create scene
   const scene = new THREE.Scene();
   sceneInstance = scene;
   
-  // Create camera
-  const camera = new THREE.PerspectiveCamera(45, containerWidth / containerHeight, 0.1, 10000);
-  camera.position.z = 2000;
+  // Create camera with wider field of view and better positioning
+  const camera = new THREE.PerspectiveCamera(60, containerWidth / containerHeight, 0.1, 10000);
+  camera.position.z = 300; // Even closer camera position for better visibility
+  
+  // Store camera and renderer references in scene userData for layer manager to access
+  scene.userData.camera = camera;
+  scene.userData.renderer = renderer;
+  
+  console.log("Camera position:", camera.position);
+  console.log("Camera field of view:", camera.fov);
+  
+  // Add a simple ambient light to improve visibility
+  const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+  scene.add(ambientLight);
   
   // Setup camera resize handling
   function handleResize() {
@@ -331,32 +356,69 @@ function initializeApplication() {
   // Create axis marker
   createAxis(scene);
   
-  // Initialize the layer manager with the scene
-  layerManager = new LayerManager(scene);
+  // Create the layer manager
+  const layerManager = new LayerManager(scene);
   
-  // Ensure the scene has all needed components
-  // Create a direct axis line if it's missing - CRITICAL FIX
-  const axisLine = scene.children.find(child => 
-    child instanceof THREE.Line && 
-    child.geometry && 
-    child.geometry.getAttribute('position').count === 2);
+  // Add reference to the scene for easy access
+  scene._layerManager = layerManager;
   
-  if (!axisLine) {
-    console.log("Axis line not found, creating it directly");
-    const axisGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 2048, 0),
-    ]);
-    const axisMat = new THREE.LineBasicMaterial({ color: 0xffffff });
-    const axis = new THREE.Line(axisGeo, axisMat);
-    scene.add(axis);
-  }
+  // Create the initial layer
+  const initialLayer = layerManager.createLayer({
+    // Initial layer settings
+    visible: true,
+    radius: 200, // Make it bigger to be more visible
+    segments: 3,
+    copies: 3
+  });
   
-  // Create an initial layer
-  layerManager.createLayer();
+  // Store a reference to the active layer
+  const activeLayer = initialLayer;
+  
+  // Set initial layer properties with VERY VISIBLE settings
+  initialLayer.state.copies = 3;          // Fewer copies for clarity
+  initialLayer.state.segments = 3;        // Triangle for simplicity and visibility
+  initialLayer.state.radius = 80;         // Larger radius to be more visible
+  initialLayer.state.stepScale = 1.5;     // Larger step scale for obvious difference between copies
+  initialLayer.setColor(new THREE.Color(0x00ff00)); // Bright green color
+  
+  // Force parameter changes to update
+  initialLayer.state.parameterChanges.copies = true;
+  initialLayer.state.parameterChanges.segments = true;
+  initialLayer.state.parameterChanges.radius = true;
+  initialLayer.state.parameterChanges.stepScale = true;
+  
+  // Add a debug button to force geometry recreation
+  const debugButton = document.createElement('button');
+  debugButton.textContent = 'Recreate Geometry';
+  debugButton.style.position = 'absolute';
+  debugButton.style.bottom = '50px';
+  debugButton.style.left = '10px';
+  debugButton.style.zIndex = '1000';
+  debugButton.style.padding = '10px';
+  debugButton.style.backgroundColor = '#f00';
+  debugButton.style.color = '#fff';
+  debugButton.style.border = 'none';
+  debugButton.style.borderRadius = '5px';
+  debugButton.style.cursor = 'pointer';
+  
+  debugButton.addEventListener('click', () => {
+    const activeLayer = layerManager.getActiveLayer();
+    if (activeLayer) {
+      activeLayer.recreateGeometry();
+      console.log("Manually recreated geometry");
+    }
+  });
+  
+  document.body.appendChild(debugButton);
+  
+  // Ensure visibility
+  initialLayer.setVisible(true);
+  
+  // Debug layers after creation
+  console.log(`Created initial layer: visible=${initialLayer.visible}, group.visible=${initialLayer.group.visible}`);
+  console.log("Scene structure:", scene.children.map(c => c.name || 'unnamed'));
   
   // Get the active layer's state
-  const activeLayer = layerManager.getActiveLayer();
   const state = activeLayer.state;
   
   // Update appState reference to point to the active layer's state
