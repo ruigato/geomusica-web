@@ -346,110 +346,102 @@ export function resetGlobalSequentialIndex() {
 }
 
 /**
- * Detect and handle trigger events when vertices cross the axis
- * @param {THREE.BufferGeometry} baseGeo - Base geometry of the shape
- * @param {number} lastAngle - Last rotation angle
- * @param {number} angle - Current rotation angle
- * @param {number} copies - Number of copies/rings
- * @param {THREE.Object3D} group - Group containing all copies
- * @param {Set} lastTrig - Set of previously triggered points
- * @param {number} tNow - Current time
- * @param {Function} audioCallback - Callback to trigger audio
- * @returns {Set} Set of triggered points in this call
+ * Detect axis crossings and trigger audio
+ * @param {THREE.BufferGeometry} baseGeo Base geometry
+ * @param {number} lastAngle Previous rotation angle
+ * @param {number} angle Current rotation angle
+ * @param {number} copies Number of polygon copies
+ * @param {THREE.Group} group Group containing polygon copies
+ * @param {Set} lastTrig Set of triggers from last frame
+ * @param {number} tNow Current time
+ * @param {Function} audioCallback Function to call when trigger occurs
+ * @returns {Set} Set of current triggers
  */
 export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTrig, tNow, audioCallback) {
-  // Initialize variables
   const triggeredNow = new Set();
-  const triggeredPoints = [];
+  const triggeredPoints = []; // Store positions of triggered points
   
-  // Ensure we have valid base geometry with position attribute
-  if (!baseGeo || !baseGeo.getAttribute || !baseGeo.getAttribute('position')) {
-    return triggeredNow;
-  }
-  
-  // Make sure group exists and has a parent
-  if (!group || !group.parent) {
-    return triggeredNow;
-  }
-  
-  // Get state from group or its parent
-  const state = group.userData?.state || group.parent.userData?.state;
-  
-  // Make sure we have a valid state object
-  if (!state) {
-    console.warn("No valid state found for trigger detection");
-    return triggeredNow;
-  }
+  // Get application state from group's parent (scene)
+  const state = group.parent?.userData?.state;
   
   // Get vertices from buffer geometry
   const positions = baseGeo.getAttribute('position').array;
   const count = baseGeo.getAttribute('position').count;
   
   // Get camera and renderer for axis labels
-  const camera = group.parent.userData?.camera || null;
-  const renderer = group.parent.userData?.renderer || null;
+  const camera = group.parent?.userData?.camera;
+  const renderer = group.parent?.userData?.renderer;
   
-  // Ensure lastTrig is a Set
-  if (!lastTrig || !(lastTrig instanceof Set)) {
-    lastTrig = new Set();
+  // Check if geometry has changed significantly (reset sequential index)
+  if (state && state.parameterChanges && 
+      (state.parameterChanges.segments || 
+       state.parameterChanges.copies || 
+       state.parameterChanges.modulus || 
+       state.parameterChanges.useModulus)) {
+    resetGlobalSequentialIndex();
   }
   
-  // Process each copy/ring
+  // First detect crossings for regular vertices
   for (let ci = 0; ci < copies; ci++) {
-    // Get the copy object
-    const copyObject = group.children.find(child => 
-      child.userData && 
-      child.userData.isCopyObject && 
-      child.userData.copyIndex === ci
-    );
+    // Check that we have enough children in the group
+    if (ci >= group.children.length) continue;
     
-    // Skip if copy object doesn't exist
-    if (!copyObject) continue;
+    // Each copy is a Group containing the LineLoop and vertex circles
+    const copyGroup = group.children[ci];
     
-    // Get the world rotation of this copy
-    const worldRot = angle + (copyObject.rotation.z || 0);
+    // Skip the intersection marker group if we encounter it
+    if (copyGroup.userData && copyGroup.userData.isIntersectionGroup) {
+      continue;
+    }
     
-    // Process each vertex in the base geometry
+    // Make sure the copy group has children
+    if (!copyGroup.children || copyGroup.children.length === 0) continue;
+    
+    // The first child is the LineLoop
+    const mesh = copyGroup.children[0];
+    
+    // Use the copy group's local rotation plus the current group rotation for world rotation
+    const localRotation = copyGroup.rotation.z || 0;
+    const lastWorldRot = lastAngle + localRotation;
+    const worldRot = angle + localRotation;
+    
+    const worldScale = mesh.scale.x;
+    
+    // Process each vertex in this copy
     for (let vi = 0; vi < count; vi++) {
-      // Get vertex coordinates
-      const x1 = positions[vi * 3];
-      const y1 = positions[vi * 3 + 1];
+      const x0 = positions[vi * 3];
+      const y0 = positions[vi * 3 + 1];
       
-      // Skip vertices at origin
-      if (Math.abs(x1) < 0.001 && Math.abs(y1) < 0.001) continue;
+      const x1 = x0 * worldScale;
+      const y1 = y0 * worldScale;
       
-      // Get the copy object's scale
-      const scaleX = copyObject.scale.x || 1;
-      const scaleY = copyObject.scale.y || 1;
+      // Calculate vertex positions at previous and current angles
+      const prevX = x1 * Math.cos(lastWorldRot) - y1 * Math.sin(lastWorldRot);
+      const prevY = x1 * Math.sin(lastWorldRot) + y1 * Math.cos(lastWorldRot);
       
-      // Calculate the vertex position in the copy's local space (with scale)
-      const scaledX = x1 * scaleX;
-      const scaledY = y1 * scaleY;
+      const currX = x1 * Math.cos(worldRot) - y1 * Math.sin(worldRot);
+      const currY = x1 * Math.sin(worldRot) + y1 * Math.cos(worldRot);
       
-      // Calculate previous and current positions after rotation
-      // Previous frame position
-      const prevX = scaledX * Math.cos(lastAngle) - scaledY * Math.sin(lastAngle);
-      const prevY = scaledX * Math.sin(lastAngle) + scaledY * Math.cos(lastAngle);
+      // Calculate the world position of the vertex at current angle
+      const worldX = currX;
+      const worldY = currY;
       
-      // Current frame position
-      const currX = scaledX * Math.cos(angle) - scaledY * Math.sin(angle);
-      const currY = scaledX * Math.sin(angle) + scaledY * Math.cos(angle);
+      const key = `${ci}-${vi}`;
       
-      // Calculate the world position of the vertex (for overlap detection)
-      const worldX = scaledX * Math.cos(worldRot) - scaledY * Math.sin(worldRot);
-      const worldY = scaledX * Math.sin(worldRot) + scaledY * Math.cos(worldRot);
+      // To detect a crossing:
+      // 1. The point must have crossed from right to left (positive X to negative X)
+      // 2. The point must be above the X-axis (positive Y)
+      // 3. The point must not have been triggered last frame
       
-      // Create a unique key for this vertex in this copy
-      const key = `v${vi}-c${ci}`;
-      
-      // Check if this vertex has crossed the Y axis
+      // Improved crossing detection handling jumps in angle
       let hasCrossed = false;
       
-      // Basic case: vertex crosses from right to left
+      // Basic case: point crosses from right to left
       if (prevX > 0 && currX <= 0 && currY > 0 && !lastTrig.has(key)) {
         hasCrossed = true;
-      }
+      } 
       // Handle the case where angle change is so large that traditional crossing detection fails
+      // Check if the point's path would have crossed the Y-axis
       else if (!lastTrig.has(key) && currY > 0) {
         // Calculate angular displacement relative to Y-axis
         const prevAngleFromYAxis = Math.atan2(prevX, prevY);
