@@ -246,12 +246,12 @@ export class GlobalStateManager {
     // Get time in seconds
     const seconds = dt / 1000;
     
-    // Adjust calculation to make 120 BPM = 1 rotation per second
-    // Formula: rotationsPerSecond = BPM / 120
-    // At 60 BPM: 60/120 = 0.5 rotations per second
-    // At 120 BPM: 120/120 = 1 rotation per second 
-    // At 240 BPM: 240/120 = 2 rotations per second
-    const rotationsPerSecond = this.bpm / 120;
+    // Adjust calculation to make 120 BPM = 0.5 rotation per second (1 rotation per 2 seconds)
+    // Formula: rotationsPerSecond = BPM / 240
+    // At 60 BPM: 60/240 = 0.25 rotations per second (1 rotation takes 4 seconds)
+    // At 120 BPM: 120/240 = 0.5 rotations per second (1 rotation takes 2 seconds) 
+    // At 240 BPM: 240/240 = 1 rotation per second (1 rotation takes 1 second)
+    const rotationsPerSecond = this.bpm / 240;
     
     // Calculate degrees to rotate this frame
     const degreesPerSecond = rotationsPerSecond * 360;
