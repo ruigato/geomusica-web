@@ -133,6 +133,13 @@ export class LayerManager {
     // Activate the new layer
     if (this.layers[layerId]) {
       this.layers[layerId].activate();
+      
+      // Call syncStateAcrossSystems if it exists
+      if (typeof window.syncStateAcrossSystems === 'function') {
+        window.syncStateAcrossSystems();
+      } else {
+        console.warn('syncStateAcrossSystems not available');
+      }
     }
   }
   

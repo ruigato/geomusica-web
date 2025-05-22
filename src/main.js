@@ -87,6 +87,11 @@ function syncStateAcrossSystems() {
     };
   }
   
+  // Update UI to reflect the active layer's state
+  if (uiReferences && activeLayer) {
+    updateUIFromState(state, uiReferences);
+  }
+  
   // Force more immediate intersection update on critical parameter changes
   if (state.parameterChanges && 
       (state.parameterChanges.copies || 
@@ -130,6 +135,9 @@ function syncStateAcrossSystems() {
     }
   }
 }
+
+// Make syncStateAcrossSystems available globally
+window.syncStateAcrossSystems = syncStateAcrossSystems;
 
 // Add this function to the file
 function addStateControlsToUI(state) {
@@ -538,6 +546,3 @@ if (isDOMLoaded()) {
 } else {
   document.addEventListener('DOMContentLoaded', loadFontAndInitApp);
 }
-
-// Export for debugging
-window.syncStateAcrossSystems = syncStateAcrossSystems;

@@ -192,6 +192,11 @@ function updateLayerButtons(layerManager) {
       if (visibleCheckbox) {
         visibleCheckbox.checked = layer.visible;
       }
+      
+      // Ensure UI reflects the newly selected layer's state
+      if (typeof window.syncStateAcrossSystems === 'function') {
+        window.syncStateAcrossSystems();
+      }
     });
     
     container.appendChild(button);
