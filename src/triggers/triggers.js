@@ -456,14 +456,15 @@ export function resetTriggerSystem() {
 
 /**
  * Detect triggers for a specific layer
- * @param {Object} layer Layer object
- * @param {number} tNow Current time in seconds
- * @param {Function} audioCallback Callback to trigger audio
- * @returns {boolean} Whether any triggers were detected
+ * @param {Object} layer Layer to process triggers for
+ * @param {number} tNow Current time for trigger timing
+ * @param {Function} audioCallback Callback function for triggered audio
+ * @returns {boolean} True if any triggers were detected
  */
 export function detectLayerTriggers(layer, tNow, audioCallback) {
-  if (!layer || !layer.state || !layer.group || !layer.baseGeo) {
-    if (DEBUG_LOGGING) console.warn("Invalid layer for trigger detection");
+  // Validation checks
+  if (!layer) {
+    if (DEBUG_LOGGING) console.warn("No layer provided for trigger detection");
     return false;
   }
   
@@ -489,6 +490,20 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
   // Get camera and renderer from scene's userData
   const camera = scene?.userData?.camera;
   const renderer = scene?.userData?.renderer;
+  
+  // FIXED: Check if geometry was recently recreated to prevent false triggers
+  // Allow a brief grace period after geometry recreation to let vertex positions stabilize
+  if (layer.baseGeo && layer.baseGeo.userData && layer.baseGeo.userData.createdAt) {
+    const timeSinceCreation = Date.now() - layer.baseGeo.userData.createdAt;
+    const GEOMETRY_GRACE_PERIOD = 100; // 100ms grace period
+    
+    if (timeSinceCreation < GEOMETRY_GRACE_PERIOD) {
+      if (DEBUG_LOGGING) {
+        console.log(`Layer ${layer.id}: Skipping trigger detection during geometry grace period (${timeSinceCreation}ms)`);
+      }
+      return false;
+    }
+  }
   
   // Setup variables for tracking triggers
   const triggeredNow = new Set();
@@ -522,225 +537,265 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
     return false;
   }
   
-  // Store the current rotation state of the group
-  const originalRotation = group.rotation.z;
-  
-  // IMPORTANT: Temporarily reset rotation to zero to work with pre-rotated geometry
-  // This ensures we're working with the geometry after all modifications but before rotation
-  group.rotation.z = 0;
-  group.updateMatrixWorld(true); // Force matrix update with rotation reset
-  
-  // Create a temporary matrix to store world transforms
-  const worldMatrix = new THREE.Matrix4();
-  
-  // Store the previous frame vertices' world positions if not available
-  if (!layer.prevWorldVertices) {
-    layer.prevWorldVertices = new Map();
+  // FIXED: Debouncing to prevent race conditions during rapid operations
+  // Check if we're in a processing state and skip if needed
+  if (layer._triggerProcessing) {
+    if (DEBUG_LOGGING) console.log(`Layer ${layer.id}: Skipping trigger detection - already processing`);
+    return false;
   }
   
-  // Track if we've triggered anything in this update
-  let anyTriggers = false;
+  // Set processing flag
+  layer._triggerProcessing = true;
   
-  // Process each copy
-  for (let ci = 0; ci < copies; ci++) {
-    // Find the correct child for this copy
-    let copyIndex = ci;
-    let copyGroup = null;
+  try {
+    // FIXED: Instead of modifying the actual group rotation, use matrix calculations
+    // Store the current rotation state of the group (but don't modify it)
+    const originalRotation = group.rotation.z;
     
-    // Find the copy group, skipping non-copy groups
-    for (let i = 0; i < group.children.length; i++) {
-      const child = group.children[i];
-      // Skip debug objects and intersection groups
-      if (child.userData && child.userData.isIntersectionGroup) continue;
-      if (child.type === 'Mesh' && child.geometry && child.geometry.type === 'SphereGeometry') continue;
-      if (child.type === 'Line') continue;
-      
-      // If we've found enough real copy groups to match our target, use this one
-      if (copyIndex === 0) {
-        copyGroup = child;
-        break;
-      }
-      
-      // Otherwise, decrement our counter and continue
-      copyIndex--;
-    }
-    
-    // Skip if we couldn't find a valid copy group
-    if (!copyGroup || !copyGroup.children || copyGroup.children.length === 0) {
-      if (DEBUG_LOGGING) console.warn(`Could not find copy group ${ci} for layer ${layer.id}`);
-      continue;
-    }
-    
-    // The first child should be the LineLoop
-    const mesh = copyGroup.children.find(child => child.type === 'LineLoop');
-    if (!mesh) {
-      if (DEBUG_LOGGING) console.warn(`Could not find LineLoop in copy group ${ci} for layer ${layer.id}`);
-      continue;
-    }
-    
-    // Get the world matrix for this mesh (includes all transformations EXCEPT rotation)
-    mesh.updateMatrixWorld();
-    worldMatrix.copy(mesh.matrixWorld);
-    
-    // Validate geometry and attributes
-    if (!mesh.geometry || !mesh.geometry.getAttribute('position')) {
-      if (DEBUG_LOGGING) console.warn(`Invalid geometry for copy ${ci} of layer ${layer.id}`);
-      continue;
-    }
-    
-    const positions = mesh.geometry.getAttribute('position');
-    if (!positions || !positions.count) {
-      if (DEBUG_LOGGING) console.warn(`Invalid position attribute for copy ${ci} of layer ${layer.id}`);
-      continue;
-    }
-    
-    const count = positions.count;
-    
-    // Validate base geometry
-    if (!layer.baseGeo || !layer.baseGeo.getAttribute('position') || !layer.baseGeo.getAttribute('position').array) {
-      if (DEBUG_LOGGING) console.warn(`Invalid base geometry for layer ${layer.id}`);
-      continue;
-    }
-    
-    const basePositions = layer.baseGeo.getAttribute('position').array;
-    
-    // Temp vectors for calculations
-    const worldPos = new THREE.Vector3();
-    const prevWorldPos = new THREE.Vector3();
-    
-    // Create rotation matrix for trigger detection
+    // Create transformation matrices for calculations without modifying the actual group
+    const inverseRotationMatrix = new THREE.Matrix4().makeRotationZ(-originalRotation);
     const rotationMatrix = new THREE.Matrix4().makeRotationZ(angle);
     
-    // Track triggers per copy to detect anomalies
-    let triggersInCopy = 0;
+    // Store the previous frame vertices' world positions if not available
+    if (!layer.prevWorldVertices) {
+      layer.prevWorldVertices = new Map();
+    }
     
-    // Process each vertex in this copy
-    for (let vi = 0; vi < count; vi++) {
-      // Create a unique key for this vertex
-      const key = `${layer.id}-${ci}-${vi}`;
+    // Track if we've triggered anything in this update
+    let anyTriggers = false;
+    
+    // Process each copy
+    for (let ci = 0; ci < copies; ci++) {
+      // Find the correct child for this copy
+      let copyIndex = ci;
+      let copyGroup = null;
       
-      // Skip if already triggered in this frame
-      if (triggeredNow.has(key)) continue;
-      
-      try {
-        // Get current vertex world position without rotation
-        worldPos.fromBufferAttribute(positions, vi);
+      // Find the copy group, skipping non-copy groups
+      for (let i = 0; i < group.children.length; i++) {
+        const child = group.children[i];
+        // Skip debug objects and intersection groups
+        if (child.userData && child.userData.isIntersectionGroup) continue;
+        if (child.type === 'Mesh' && child.geometry && child.geometry.type === 'SphereGeometry') continue;
+        if (child.type === 'Line') continue;
         
-        // Skip invalid vertices
-        if (isNaN(worldPos.x) || isNaN(worldPos.y) || isNaN(worldPos.z)) {
-          continue;
+        // If we've found enough real copy groups to match our target, use this one
+        if (copyIndex === 0) {
+          copyGroup = child;
+          break;
         }
         
-        // Apply world matrix to get position in world space (but without rotation)
-        worldPos.applyMatrix4(worldMatrix);
+        // Otherwise, decrement our counter and continue
+        copyIndex--;
+      }
+      
+      // Skip if we couldn't find a valid copy group
+      if (!copyGroup || !copyGroup.children || copyGroup.children.length === 0) {
+        if (DEBUG_LOGGING) console.warn(`Could not find copy group ${ci} for layer ${layer.id}`);
+        continue;
+      }
+      
+      // The first child should be the LineLoop
+      const mesh = copyGroup.children.find(child => child.type === 'LineLoop');
+      if (!mesh) {
+        if (DEBUG_LOGGING) console.warn(`Could not find LineLoop in copy group ${ci} for layer ${layer.id}`);
+        continue;
+      }
+      
+      // FIXED: Get world matrix without modifying the actual group rotation
+      // Calculate the world matrix as if the group had no rotation applied
+      const tempWorldMatrix = new THREE.Matrix4();
+      mesh.updateMatrixWorld();
+      tempWorldMatrix.copy(mesh.matrixWorld);
+      
+      // Apply the inverse rotation to get the unrotated world positions
+      tempWorldMatrix.premultiply(inverseRotationMatrix);
+      
+      // Validate geometry and attributes
+      if (!mesh.geometry || !mesh.geometry.getAttribute('position')) {
+        if (DEBUG_LOGGING) console.warn(`Invalid geometry for copy ${ci} of layer ${layer.id}`);
+        continue;
+      }
+      
+      const positions = mesh.geometry.getAttribute('position');
+      if (!positions || !positions.count) {
+        if (DEBUG_LOGGING) console.warn(`Invalid position attribute for copy ${ci} of layer ${layer.id}`);
+        continue;
+      }
+      
+      const count = positions.count;
+      
+      // Validate base geometry
+      if (!layer.baseGeo || !layer.baseGeo.getAttribute('position') || !layer.baseGeo.getAttribute('position').array) {
+        if (DEBUG_LOGGING) console.warn(`Invalid base geometry for layer ${layer.id}`);
+        continue;
+      }
+      
+      const basePositions = layer.baseGeo.getAttribute('position').array;
+      
+      // Temp vectors for calculations
+      const worldPos = new THREE.Vector3();
+      const prevWorldPos = new THREE.Vector3();
+      
+      // Track triggers per copy to detect anomalies
+      let triggersInCopy = 0;
+      
+      // Process each vertex in this copy
+      for (let vi = 0; vi < count; vi++) {
+        // Create a unique key for this vertex
+        const key = `${layer.id}-${ci}-${vi}`;
         
-        // Store original non-rotated position for frequency calculation
-        const nonRotatedPos = worldPos.clone();
+        // Skip if already triggered in this frame
+        if (triggeredNow.has(key)) continue;
         
-        // Apply rotation manually for trigger detection
-        worldPos.applyMatrix4(rotationMatrix);
-        
-        // Get previous vertex world position
-        let hasPrevPos = false;
-        if (layer.prevWorldVertices.has(key)) {
-          prevWorldPos.copy(layer.prevWorldVertices.get(key));
-          hasPrevPos = true;
-        } else {
-          // For first frame, use current position
-          prevWorldPos.copy(worldPos);
-        }
-        
-        // Store current position for next frame (with rotation)
-        layer.prevWorldVertices.set(key, worldPos.clone());
-        
-        // Skip first frame trigger detection if we don't have previous positions
-        if (!hasPrevPos) continue;
-        
-        // Unwrap position values
-        const currX = worldPos.x;
-        const currY = worldPos.y;
-        const prevX = prevWorldPos.x;
-        const prevY = prevWorldPos.y;
-        
-        // STRICT CROSSING DETECTION: 
-        // 1. Point must be above X-axis (Y > 0)
-        // 2. Must cross from right side to left side (X > 0 to X <= 0)
-        // 3. Not triggered last frame
-        const hasCrossed = prevX > 0 && currX <= 0 && currY > 0 && !layer.lastTrig.has(key);
-        
-        if (hasCrossed) {
-          // Check for overlap with previously triggered points
-          if (!isPointOverlapping(currX, currY, triggeredPoints)) {
-            // Add to triggered points
-            triggeredPoints.push({ x: currX, y: currY });
-            
-            // Check base geometry bounds
-            if (vi * 3 + 1 >= basePositions.length) {
-              console.warn(`Vertex index out of range: ${vi} for layer ${layer.id}`);
-              continue;
+        try {
+          // Get current vertex world position (unrotated)
+          worldPos.fromBufferAttribute(positions, vi);
+          
+          // Skip invalid vertices
+          if (isNaN(worldPos.x) || isNaN(worldPos.y) || isNaN(worldPos.z)) {
+            continue;
+          }
+          
+          // Apply unrotated world matrix to get position in world space
+          worldPos.applyMatrix4(tempWorldMatrix);
+          
+          // Store original non-rotated position for frequency calculation
+          const nonRotatedPos = worldPos.clone();
+          
+          // Apply rotation manually for trigger detection
+          worldPos.applyMatrix4(rotationMatrix);
+          
+          // Get previous vertex world position
+          let hasPrevPos = false;
+          if (layer.prevWorldVertices.has(key)) {
+            prevWorldPos.copy(layer.prevWorldVertices.get(key));
+            hasPrevPos = true;
+          } else {
+            // For first frame, use current position
+            prevWorldPos.copy(worldPos);
+          }
+          
+          // Store current position for next frame (with rotation)
+          layer.prevWorldVertices.set(key, worldPos.clone());
+          
+          // FIXED: Skip trigger detection if we don't have previous positions OR if positions are too similar
+          // This prevents false triggers when geometry has just been recreated
+          if (!hasPrevPos) {
+            continue;
+          }
+          
+          // FIXED: Additional check - if the distance between previous and current position is too large,
+          // it's likely due to a geometry change, so skip this frame
+          const positionDistance = prevWorldPos.distanceTo(worldPos);
+          const MAX_REASONABLE_MOVEMENT = 50; // Maximum reasonable movement between frames
+          
+          if (positionDistance > MAX_REASONABLE_MOVEMENT) {
+            if (DEBUG_LOGGING) {
+              console.log(`Layer ${layer.id}: Skipping vertex ${vi} due to large position change (${positionDistance.toFixed(2)})`);
             }
-            
-            // Get original local coordinates from the baseGeo for frequency calculation
-            const x0 = basePositions[vi * 3];
-            const y0 = basePositions[vi * 3 + 1];
-            
-            // Validate coordinates
-            if (x0 === undefined || y0 === undefined || isNaN(x0) || isNaN(y0)) {
-              console.warn(`Invalid base coordinates at ${vi} for layer ${layer.id}: x=${x0}, y=${y0}`);
-              continue;
-            }
-            
-            // Use the non-rotated position from the transformed geometry
-            // This already has all scaling factors applied (including modulus)
-            const nonRotatedX = nonRotatedPos.x;
-            const nonRotatedY = nonRotatedPos.y;
-            
-            // Calculate frequency directly from the transformed coordinates
-            // This ensures it matches exactly with the visual representation
-            const frequency = Math.hypot(nonRotatedX, nonRotatedY);
-            
-            // Create note with the frequency from transformed geometry
-            const note = {
-              frequency: frequency,
-              noteName: state.useEqualTemperament ? getNoteName(frequency, state.referenceFrequency || 440) : null,
-              duration: state.maxDuration || 0.5,
-              velocity: state.maxVelocity || 0.8,
-              pan: Math.sin(angle),  // Use current angle for pan
-              x: nonRotatedX,  // Store transformed coordinates
-              y: nonRotatedY,
-              worldX: currX,  // Store world coordinates
-              worldY: currY,
-              copyIndex: ci,
-              vertexIndex: vi,
-              layerId: layer.id,
-              time: tNow
-            };
-            
-            // Handle quantization
-            if (state.useQuantization) {
-              // Create trigger info
-              const triggerInfo = {
-                note: {...note},
-                worldRot: angle,
-                camera,
-                renderer,
-                isQuantized: true,
-                layer
+            continue;
+          }
+          
+          // Unwrap position values
+          const currX = worldPos.x;
+          const currY = worldPos.y;
+          const prevX = prevWorldPos.x;
+          const prevY = prevWorldPos.y;
+          
+          // STRICT CROSSING DETECTION: 
+          // 1. Point must be above X-axis (Y > 0)
+          // 2. Must cross from right side to left side (X > 0 to X <= 0)
+          // 3. Not triggered last frame
+          const hasCrossed = prevX > 0 && currX <= 0 && currY > 0 && !layer.lastTrig.has(key);
+          
+          if (hasCrossed) {
+            // Check for overlap with previously triggered points
+            if (!isPointOverlapping(currX, currY, triggeredPoints)) {
+              // Add to triggered points
+              triggeredPoints.push({ x: currX, y: currY });
+              
+              // Check base geometry bounds
+              if (vi * 3 + 1 >= basePositions.length) {
+                console.warn(`Vertex index out of range: ${vi} for layer ${layer.id}`);
+                continue;
+              }
+              
+              // Get original local coordinates from the baseGeo for frequency calculation
+              const x0 = basePositions[vi * 3];
+              const y0 = basePositions[vi * 3 + 1];
+              
+              // Validate coordinates
+              if (x0 === undefined || y0 === undefined || isNaN(x0) || isNaN(y0)) {
+                console.warn(`Invalid base coordinates at ${vi} for layer ${layer.id}: x=${x0}, y=${y0}`);
+                continue;
+              }
+              
+              // Use the non-rotated position from the transformed geometry
+              // This already has all scaling factors applied (including modulus)
+              const nonRotatedX = nonRotatedPos.x;
+              const nonRotatedY = nonRotatedPos.y;
+              
+              // Calculate frequency directly from the transformed coordinates
+              // This ensures it matches exactly with the visual representation
+              const frequency = Math.hypot(nonRotatedX, nonRotatedY);
+              
+              // Create note with the frequency from transformed geometry
+              const note = {
+                frequency: frequency,
+                noteName: state.useEqualTemperament ? getNoteName(frequency, state.referenceFrequency || 440) : null,
+                duration: state.maxDuration || 0.5,
+                velocity: state.maxVelocity || 0.8,
+                pan: Math.sin(angle),  // Use current angle for pan
+                x: nonRotatedX,  // Store transformed coordinates
+                y: nonRotatedY,
+                worldX: currX,  // Store world coordinates
+                worldY: currY,
+                copyIndex: ci,
+                vertexIndex: vi,
+                layerId: layer.id,
+                time: tNow
               };
               
               // Handle quantization
-              const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(tNow, state, triggerInfo);
-              
-              if (shouldTrigger) {
-                // Trigger with precise time
-                const noteCopy = {...note};
-                noteCopy.time = triggerTime;
+              if (state.useQuantization) {
+                // Create trigger info
+                const triggerInfo = {
+                  note: {...note},
+                  worldRot: angle,
+                  camera,
+                  renderer,
+                  isQuantized: true,
+                  layer
+                };
                 
-                // Trigger audio
-                audioCallback(noteCopy);
+                // Handle quantization
+                const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(tNow, state, triggerInfo);
+                
+                if (shouldTrigger) {
+                  // Trigger with precise time
+                  const noteCopy = {...note};
+                  noteCopy.time = triggerTime;
+                  
+                  // Trigger audio
+                  audioCallback(noteCopy);
+                  
+                  // IMPORTANT: angle is already in radians here, pass directly to createMarker
+                  createMarker(angle, currX, currY, scene, noteCopy, camera, renderer, isQuantized, layer);
+                  
+                  if (DEBUG_LOGGING) {
+                    console.log(`Layer ${layer.id}: Triggered vertex ${vi} in copy ${ci}`);
+                  }
+                  
+                  // Increment counter
+                  triggersInCopy++;
+                  anyTriggers = true;
+                }
+              } else {
+                // Regular non-quantized trigger
+                audioCallback(note);
                 
                 // IMPORTANT: angle is already in radians here, pass directly to createMarker
-                createMarker(angle, currX, currY, scene, noteCopy, camera, renderer, isQuantized, layer);
+                createMarker(angle, currX, currY, scene, note, camera, renderer, false, layer);
                 
                 if (DEBUG_LOGGING) {
                   console.log(`Layer ${layer.id}: Triggered vertex ${vi} in copy ${ci}`);
@@ -750,46 +805,33 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
                 triggersInCopy++;
                 anyTriggers = true;
               }
-            } else {
-              // Regular non-quantized trigger
-              audioCallback(note);
               
-              // IMPORTANT: angle is already in radians here, pass directly to createMarker
-              createMarker(angle, currX, currY, scene, note, camera, renderer, false, layer);
-              
-              if (DEBUG_LOGGING) {
-                console.log(`Layer ${layer.id}: Triggered vertex ${vi} in copy ${ci}`);
-              }
-              
-              // Increment counter
-              triggersInCopy++;
-              anyTriggers = true;
+              // Add to triggered set
+              triggeredNow.add(key);
             }
-            
-            // Add to triggered set
-            triggeredNow.add(key);
           }
+        } catch (error) {
+          console.error(`Error in trigger detection for layer ${layer.id}, copy ${ci}, vertex ${vi}:`, error);
         }
-      } catch (error) {
-        console.error(`Error in trigger detection for layer ${layer.id}, copy ${ci}, vertex ${vi}:`, error);
+      }
+      
+      // Detect anomalies - too many triggers at once may indicate a problem
+      if (triggersInCopy > 3) {
+        console.warn(`Potential anomaly: ${triggersInCopy} triggers in one frame for layer ${layer.id}, copy ${ci}`);
       }
     }
     
-    // Detect anomalies - too many triggers at once may indicate a problem
-    if (triggersInCopy > 3) {
-      console.warn(`Potential anomaly: ${triggersInCopy} triggers in one frame for layer ${layer.id}, copy ${ci}`);
-    }
+    // FIXED: No need to restore rotation since we never modified it
+    
+    // Update the layer's last triggered set
+    layer.lastTrig = triggeredNow;
+    
+    // Return true if we triggered anything
+    return anyTriggers;
+  } finally {
+    // Clear processing flag
+    layer._triggerProcessing = false;
   }
-  
-  // IMPORTANT: Restore the original rotation of the group
-  group.rotation.z = originalRotation;
-  group.updateMatrixWorld(true); // Force matrix update with rotation restored
-  
-  // Update the layer's last triggered set
-  layer.lastTrig = triggeredNow;
-  
-  // Return true if we triggered anything
-  return anyTriggers;
 }
 
 /**

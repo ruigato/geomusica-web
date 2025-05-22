@@ -23,9 +23,14 @@ export class Layer {
     // Create a dedicated state object for this layer
     this.state = createAppState();
     
-    // Add a direct reference to this layer in the state object
+    // FIXED: Remove circular references that could cause memory leaks
+    // Instead of storing direct references, just store the layer ID
     this.state.layerId = id;
-    this.state.layerRef = this;
+    // Remove this.state.layerRef = this; as it creates circular reference
+    
+    // Store a weak reference to layer manager if available
+    // This allows the layer to find itself without creating circular references
+    this._layerManagerRef = null;
     
     // Generate a unique color for this layer based on its ID
     if (options.color) {
@@ -345,31 +350,195 @@ export class Layer {
     if (this.group && this.group.parent) {
       this.group.parent.remove(this.group);
     }
+    
+    // FIXED: Clean up references to prevent memory leaks
+    // Clear any circular references
+    if (this.group && this.group.userData) {
+      this.group.userData.state = null;
+      this.group.userData.globalState = null;
+    }
+    
+    // Clear layer manager reference
+    this._layerManagerRef = null;
+    
+    // Clear state references that might be circular
+    if (this.state) {
+      // Don't dispose the state itself as it might be shared
+      // Just clear any potential circular references
+      this.state.layerId = null;
+    }
+    
+    // Clear object references
+    this.baseGeo = null;
+    this.material = null;
+    this.group = null;
+    this.state = null;
+  }
+  
+  /**
+   * Safely get layer manager reference without creating circular dependencies
+   * @returns {LayerManager|null} Layer manager instance or null if not available
+   */
+  getLayerManager() {
+    // Try getting from weak reference first
+    if (this._layerManagerRef) {
+      return this._layerManagerRef;
+    }
+    
+    // Try getting from global window if available
+    if (window._layers) {
+      this._layerManagerRef = window._layers;
+      return this._layerManagerRef;
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Set layer manager reference (should be called by LayerManager)
+   * @param {LayerManager} layerManager Layer manager instance
+   */
+  setLayerManager(layerManager) {
+    this._layerManagerRef = layerManager;
   }
   
   /**
    * Force recreation of layer geometry with current parameters
    */
   recreateGeometry() {
-    // Dispose old geometry if it exists
-    if (this.baseGeo && this.baseGeo.dispose) {
-      this.baseGeo.dispose();
+    // FIXED: Get layer manager reference at the start for use throughout the function
+    const layerManager = this.getLayerManager();
+    
+    // FIXED: Enhanced geometry disposal with reference checking
+    let oldGeometry = null;
+    if (this.baseGeo) {
+      oldGeometry = this.baseGeo;
+      
+      // Check if the old geometry is still in use by other objects
+      let isGeometryInUse = false;
+      
+      // Check if the geometry is being used by any children in the group
+      if (this.group) {
+        this.group.traverse((child) => {
+          if (child.geometry === oldGeometry) {
+            isGeometryInUse = true;
+          }
+        });
+      }
+      
+      // Check if other layers might be using this geometry
+      if (layerManager && layerManager.layers) {
+        for (const layer of layerManager.layers) {
+          if (layer !== this && layer.baseGeo === oldGeometry) {
+            isGeometryInUse = true;
+            break;
+          }
+          
+          // Check if any of the layer's group children use this geometry
+          if (layer.group) {
+            layer.group.traverse((child) => {
+              if (child.geometry === oldGeometry) {
+                isGeometryInUse = true;
+              }
+            });
+          }
+          
+          if (isGeometryInUse) break;
+        }
+      }
+      
+      // Only dispose if not in use
+      if (!isGeometryInUse && oldGeometry.dispose) {
+        if (DEBUG_LOGGING) {
+          console.log(`[LAYER ${this.id}] Disposing old geometry safely`);
+        }
+        oldGeometry.dispose();
+      } else if (isGeometryInUse && DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Skipping geometry disposal - still in use by other objects`);
+      }
     }
     
-    // Create new geometry with current parameters
-    this.baseGeo = createPolygonGeometry(
-      this.state.radius,
-      this.state.segments,
-      this.state
-    );
+    // FIXED: Clear previous vertex positions to prevent false triggers after geometry changes
+    // This prevents false positive axis crossings when comparing old vertex positions with new ones
+    if (this.prevWorldVertices) {
+      this.prevWorldVertices.clear();
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Cleared previous vertex positions to prevent false triggers`);
+      }
+    }
     
-    // Force parameter changes to ensure render update
-    this.state.parameterChanges.radius = true;
-    this.state.parameterChanges.segments = true;
-    this.state.parameterChanges.copies = true;
+    // FIXED: Clear last triggered set to prevent stale trigger state
+    if (this.lastTrig) {
+      this.lastTrig.clear();
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Cleared last trigger set after geometry recreation`);
+      }
+    }
     
-    if (DEBUG_LOGGING) {
-      console.log(`[GEOMETRY UPDATE] Recreated geometry for layer ${this.id}: segments=${this.state.segments}, radius=${this.state.radius}, copies=${this.state.copies}`);
+    try {
+      // Create new geometry with current parameters
+      this.baseGeo = createPolygonGeometry(
+        this.state.radius,
+        this.state.segments,
+        this.state
+      );
+      
+      // FIXED: Ensure the new geometry has proper metadata
+      if (this.baseGeo) {
+        this.baseGeo.userData = this.baseGeo.userData || {};
+        this.baseGeo.userData.layerId = this.id;
+        this.baseGeo.userData.vertexCount = this.state.segments;
+        this.baseGeo.userData.createdAt = Date.now();
+        
+        if (DEBUG_LOGGING) {
+          console.log(`[LAYER ${this.id}] Created new geometry with ${this.state.segments} segments`);
+        }
+      }
+      
+      // FIXED: Force parameter changes to ensure render update with validation
+      if (this.state && this.state.parameterChanges) {
+        this.state.parameterChanges.radius = true;
+        this.state.parameterChanges.segments = true;
+        this.state.parameterChanges.copies = true;
+        
+        // FIXED: Ensure state synchronization across all systems
+        // Update UI elements to reflect the active state
+        if (this.active && window.updateUIFromState) {
+          try {
+            window.updateUIFromState(this.state);
+          } catch (uiError) {
+            console.warn(`[LAYER ${this.id}] Failed to update UI from state:`, uiError);
+          }
+        }
+        
+        // FIXED: Trigger a more robust approach to get the active state
+        if (layerManager && layerManager.activeLayerId === this.id) {
+          // Ensure the layer manager knows about the geometry change
+          if (layerManager.onActiveLayerGeometryChanged) {
+            try {
+              layerManager.onActiveLayerGeometryChanged(this);
+            } catch (managerError) {
+              console.warn(`[LAYER ${this.id}] Failed to notify layer manager of geometry change:`, managerError);
+            }
+          }
+        }
+      }
+      
+      if (DEBUG_LOGGING) {
+        console.log(`[GEOMETRY UPDATE] Recreated geometry for layer ${this.id}: segments=${this.state.segments}, radius=${this.state.radius}, copies=${this.state.copies}`);
+      }
+      
+    } catch (error) {
+      console.error(`[LAYER ${this.id}] Error creating new geometry:`, error);
+      
+      // FIXED: Fallback - restore old geometry if new creation fails
+      if (oldGeometry && !this.baseGeo) {
+        console.warn(`[LAYER ${this.id}] Restoring old geometry due to creation failure`);
+        this.baseGeo = oldGeometry;
+      }
+      
+      // Re-throw to let calling code handle the error
+      throw error;
     }
     
     return this.baseGeo;

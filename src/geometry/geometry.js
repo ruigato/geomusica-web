@@ -409,374 +409,474 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     return;
   }
 
-  // Store debug objects to restore them later
+  // FIXED: Track objects for guaranteed cleanup
   const debugObjects = [];
+  const newChildren = [];
+  const materialsToDispose = [];
+  const geometriesToDispose = [];
   
-  // Find and temporarily store debug sphere and other debug objects
-  for (let i = group.children.length - 1; i >= 0; i--) {
-    const child = group.children[i];
-    if (child.type === 'Mesh' && child.geometry && child.geometry.type === 'SphereGeometry') {
-      debugObjects.push(child);
-      group.remove(child);
-      continue;
-    }
-    
-    // Store intersection marker groups separately
-    if (child.userData && child.userData.isIntersectionGroup) {
-      debugObjects.push(child);
-      group.remove(child);
-      continue;
-    }
-  }
-  
-  // Clear all remaining children (the actual shape copies)
-  while (group.children.length > 0) {
-    const child = group.children[group.children.length - 1];
-    
-    // Dispose geometries and materials
-    if (child.geometry && child.geometry !== baseGeo) {
-      child.geometry.dispose();
-    }
-    
-    if (child.material) {
-      if (Array.isArray(child.material)) {
-        child.material.forEach(m => m.dispose());
-      } else {
-        child.material.dispose();
+  let pointFreqLabelsCreated = [];
+
+  try {
+    // Find and temporarily store debug sphere and other debug objects
+    for (let i = group.children.length - 1; i >= 0; i--) {
+      const child = group.children[i];
+      if (child.type === 'Mesh' && child.geometry && child.geometry.type === 'SphereGeometry') {
+        debugObjects.push(child);
+        group.remove(child);
+        continue;
+      }
+      
+      // Store intersection marker groups separately
+      if (child.userData && child.userData.isIntersectionGroup) {
+        debugObjects.push(child);
+        group.remove(child);
+        continue;
       }
     }
     
-    group.remove(child);
-  }
-  
-  // Handle case where copies is 0 or less
-  if (copies <= 0) {
-    // Make the group invisible when no copies
-    group.visible = false;
+    // FIXED: Clear all remaining children with proper disposal tracking
+    while (group.children.length > 0) {
+      const child = group.children[group.children.length - 1];
+      
+      // Track geometries and materials for disposal
+      if (child.geometry && child.geometry !== baseGeo) {
+        geometriesToDispose.push(child.geometry);
+      }
+      
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          materialsToDispose.push(...child.material);
+        } else {
+          materialsToDispose.push(child.material);
+        }
+      }
+      
+      group.remove(child);
+    }
     
-    // Restore debug objects
+    // Handle case where copies is 0 or less
+    if (copies <= 0) {
+      // Make the group invisible when no copies
+      group.visible = false;
+      
+      // Restore debug objects
+      for (const debugObj of debugObjects) {
+        group.add(debugObj);
+      }
+      
+      return;
+    }
+    
+    // Make sure the group is visible
+    group.visible = true;
+    
+    // Increment the call counter
+    updateGroupCallCounter++;
+    
+    // Ensure segments is a proper integer
+    const numSegments = Math.round(segments);
+    
+    // Clean up existing point frequency labels if they exist
+    if (state && state.pointFreqLabels) {
+      state.cleanupPointFreqLabels();
+    }
+    
+    // Get camera and renderer from scene's userData (assuming they're stored there)
+    const camera = group.parent?.userData?.camera;
+    const renderer = group.parent?.userData?.renderer;
+
+    // Calculate camera distance for size adjustment
+    const cameraDistance = camera ? camera.position.z : 2000;
+    
+    // Calculate global sequential index for vertex indexing
+    let globalVertexIndex = 0;
+    
+    // Create point frequency labels if enabled
+    const shouldCreatePointLabels = state && 
+                                   state.showPointsFreqLabels && 
+                                   !isLerping;
+    
+    // If we should create point labels, initialize the array
+    if (shouldCreatePointLabels) {
+      state.pointFreqLabels = [];
+      pointFreqLabelsCreated = [];
+    }
+    
+    // Now create the actual polygon copies for display
+    for (let i = 0; i < copies; i++) {
+      // Base scale factor from step scale
+      let stepScaleFactor = Math.pow(stepScale, i);
+      
+      // Apply modulus scaling if enabled
+      let finalScale = stepScaleFactor;
+      if (state && state.useModulus) {
+        const modulusScale = state.getScaleFactorForCopy(i);
+        finalScale = modulusScale * stepScaleFactor;
+      }
+      
+      // Each copy gets a cumulative angle (i * angle) in degrees
+      const cumulativeAngleDegrees = i * angle;
+      
+      // Convert to radians only when setting the actual Three.js rotation
+      const cumulativeAngleRadians = (cumulativeAngleDegrees * Math.PI) / 180;
+      
+      // Create a group for this copy to hold both the lines and vertex circles
+      const copyGroup = new THREE.Group();
+      
+      // Use the current geometry (may have been updated with intersections)
+      // Create a modified material based on the original but with increased visibility
+      const lineMaterial = mat.clone();
+      lineMaterial.transparent = false;
+      lineMaterial.opacity = 1.0;
+      lineMaterial.depthTest = false;
+      lineMaterial.depthWrite = false;
+      
+      // IMPORTANT: Use the original material's color instead of hardcoding green
+      // This ensures each layer maintains its own color
+      
+      lineMaterial.linewidth = 5; // Much thicker lines
+      
+      // FIXED: Track cloned materials for proper disposal
+      materialsToDispose.push(lineMaterial);
+      
+      // Create line loop with the enhanced material
+      const lines = new THREE.LineLoop(baseGeo, lineMaterial);
+      lines.scale.set(finalScale, finalScale, 1);
+      
+      // Set renderOrder to ensure it renders on top of other objects
+      lines.renderOrder = 10; // Higher render order
+      
+      // Add the line geometry to the copy group
+      copyGroup.add(lines);
+      
+      // Get the positions from the geometry
+      const positions = baseGeo.getAttribute('position').array;
+      const count = baseGeo.getAttribute('position').count;
+      
+      // Add circles at each vertex
+      for (let v = 0; v < count; v++) {
+        const x = positions[v * 3] * finalScale;
+        const y = positions[v * 3 + 1] * finalScale;
+        
+        // Create trigger data for this vertex
+        const triggerData = {
+          x: x,
+          y: y,
+          copyIndex: i,
+          vertexIndex: v,
+          isIntersection: false,
+          globalIndex: globalVertexIndex
+        };
+        
+        // Increment the global vertex index
+        globalVertexIndex++;
+        
+        // Create a note object to get duration and velocity parameters
+        const note = createNote(triggerData, state);
+        
+        // Calculate size factor that scales with camera distance
+        const baseCircleSize = VERTEX_CIRCLE_SIZE;
+        const durationScaleFactor = 0.5 + note.duration;
+        
+        // Size that remains visually consistent at different camera distances
+        // Adjust the multiplier (0.3) to make points larger or smaller overall
+        const sizeScaleFactor = (cameraDistance / 1000) * baseCircleSize * durationScaleFactor * 10.3;
+        
+        // Create material with opacity based on velocity
+        const vertexCircleMaterial = new THREE.MeshBasicMaterial({ 
+          color: VERTEX_CIRCLE_COLOR,
+          transparent: true,
+          opacity: note.velocity, 
+          depthTest: false,
+          side: THREE.DoubleSide // Render both sides for better visibility
+        });
+        
+        // FIXED: Track created materials for proper disposal
+        materialsToDispose.push(vertexCircleMaterial);
+        
+        // Create a mesh using the shared geometry
+        const vertexCircle = new THREE.Mesh(vertexCircleGeometry, vertexCircleMaterial);
+        vertexCircle.scale.set(sizeScaleFactor, sizeScaleFactor, 1);
+        
+        // Set renderOrder higher to ensure it renders on top
+        vertexCircle.renderOrder = 1;
+        
+        // Position the circle at the vertex
+        vertexCircle.position.set(x, y, 0);
+        
+        // Add to the copy group
+        copyGroup.add(vertexCircle);
+        
+        // Add persistent frequency label if enabled
+        if (shouldCreatePointLabels && camera && renderer) {
+          try {
+            // Calculate frequency for this vertex
+            const freq = Math.hypot(x, y);
+            
+            // Format display text
+            let labelText;
+            if (state.useEqualTemperament && note.noteName) {
+              labelText = `${freq.toFixed(1)}Hz (${note.noteName}) ${note.duration.toFixed(2)}s`;
+            } else {
+              labelText = `${freq.toFixed(2)}Hz ${note.duration.toFixed(2)}s`;
+            }
+            
+            // Create a world position for this vertex in the copy
+            const worldPos = new THREE.Vector3(x, y, 0);
+            
+            // Apply the copy's rotation
+            const rotatedPos = worldPos.clone();
+            rotatedPos.applyAxisAngle(new THREE.Vector3(0, 0, 1), cumulativeAngleRadians);
+            
+            // Create a text label for this vertex
+            const textLabel = createTextLabel(
+              labelText, 
+              rotatedPos, 
+              copyGroup, // Parent is not really used for DOM labels
+              false, // Not an axis label
+              camera,
+              renderer
+            );
+            
+            // Update the label immediately
+            textLabel.update(camera, renderer);
+            
+            // Store reference for cleanup
+            const labelInfo = {
+              label: textLabel,
+              copyIndex: i,
+              vertexIndex: v,
+              position: rotatedPos.clone()
+            };
+            
+            state.pointFreqLabels.push(labelInfo);
+            pointFreqLabelsCreated.push(labelInfo);
+          } catch (labelError) {
+            console.warn(`Failed to create point frequency label for vertex ${v} in copy ${i}:`, labelError);
+            // Continue processing other vertices even if one label fails
+          }
+        }
+      }
+      
+      // Apply rotation to the copy group
+      copyGroup.rotation.z = cumulativeAngleRadians;
+      
+      // Track the copy group for cleanup if needed
+      newChildren.push(copyGroup);
+      
+      // Add the whole copy group to the main group
+      group.add(copyGroup);
+    }
+    
+    // After all copies are created, restore debug objects
     for (const debugObj of debugObjects) {
       group.add(debugObj);
     }
     
-    return;
-  }
-  
-  // Make sure the group is visible
-  group.visible = true;
-  
-  // Increment the call counter
-  updateGroupCallCounter++;
-  
-  // Ensure segments is a proper integer
-  const numSegments = Math.round(segments);
-  
-  // Clean up existing point frequency labels if they exist
-  if (state && state.pointFreqLabels) {
-    state.cleanupPointFreqLabels();
-  }
-  
-  // Get camera and renderer from scene's userData (assuming they're stored there)
-  const camera = group.parent?.userData?.camera;
-  const renderer = group.parent?.userData?.renderer;
-
-  // Calculate camera distance for size adjustment
-  const cameraDistance = camera ? camera.position.z : 2000;
-  
-  // Calculate global sequential index for vertex indexing
-  let globalVertexIndex = 0;
-  
-  // Create point frequency labels if enabled
-  const shouldCreatePointLabels = state && 
-                                 state.showPointsFreqLabels && 
-                                 !isLerping;
-  
-  // If we should create point labels, initialize the array
-  if (shouldCreatePointLabels) {
-    state.pointFreqLabels = [];
-  }
-  
-  // Now create the actual polygon copies for display
-  for (let i = 0; i < copies; i++) {
-    // Base scale factor from step scale
-    let stepScaleFactor = Math.pow(stepScale, i);
-    
-    // Apply modulus scaling if enabled
-    let finalScale = stepScaleFactor;
-    if (state && state.useModulus) {
-      const modulusScale = state.getScaleFactorForCopy(i);
-      finalScale = modulusScale * stepScaleFactor;
-    }
-    
-    // Each copy gets a cumulative angle (i * angle) in degrees
-    const cumulativeAngleDegrees = i * angle;
-    
-    // Convert to radians only when setting the actual Three.js rotation
-    const cumulativeAngleRadians = (cumulativeAngleDegrees * Math.PI) / 180;
-    
-    // Create a group for this copy to hold both the lines and vertex circles
-    const copyGroup = new THREE.Group();
-    
-    // Use the current geometry (may have been updated with intersections)
-    // Create a modified material based on the original but with increased visibility
-    const lineMaterial = mat.clone();
-    lineMaterial.transparent = false;
-    lineMaterial.opacity = 1.0;
-    lineMaterial.depthTest = false;
-    lineMaterial.depthWrite = false;
-    
-    // IMPORTANT: Use the original material's color instead of hardcoding green
-    // This ensures each layer maintains its own color
-    
-    lineMaterial.linewidth = 5; // Much thicker lines
-    
-    // Create line loop with the enhanced material
-    const lines = new THREE.LineLoop(baseGeo, lineMaterial);
-    lines.scale.set(finalScale, finalScale, 1);
-    
-    // Set renderOrder to ensure it renders on top of other objects
-    lines.renderOrder = 10; // Higher render order
-    
-    // Add the line geometry to the copy group
-    copyGroup.add(lines);
-    
-    // Get the positions from the geometry
-    const positions = baseGeo.getAttribute('position').array;
-    const count = baseGeo.getAttribute('position').count;
-    
-    // Add circles at each vertex
-    for (let v = 0; v < count; v++) {
-      const x = positions[v * 3] * finalScale;
-      const y = positions[v * 3 + 1] * finalScale;
-      
-      // Create trigger data for this vertex
-      const triggerData = {
-        x: x,
-        y: y,
-        copyIndex: i,
-        vertexIndex: v,
-        isIntersection: false,
-        globalIndex: globalVertexIndex
-      };
-      
-      // Increment the global vertex index
-      globalVertexIndex++;
-      
-      // Create a note object to get duration and velocity parameters
-      const note = createNote(triggerData, state);
-      
-      // Calculate size factor that scales with camera distance
-      const baseCircleSize = VERTEX_CIRCLE_SIZE;
-      const durationScaleFactor = 0.5 + note.duration;
-      
-      // Size that remains visually consistent at different camera distances
-      // Adjust the multiplier (0.3) to make points larger or smaller overall
-      const sizeScaleFactor = (cameraDistance / 1000) * baseCircleSize * durationScaleFactor * 10.3;
-      
-      // Create material with opacity based on velocity
-      const vertexCircleMaterial = new THREE.MeshBasicMaterial({ 
-        color: VERTEX_CIRCLE_COLOR,
-        transparent: true,
-        opacity: note.velocity, 
-        depthTest: false,
-        side: THREE.DoubleSide // Render both sides for better visibility
-      });
-      
-      // Create a mesh using the shared geometry
-      const vertexCircle = new THREE.Mesh(vertexCircleGeometry, vertexCircleMaterial);
-      vertexCircle.scale.set(sizeScaleFactor, sizeScaleFactor, 1);
-      
-      // Set renderOrder higher to ensure it renders on top
-      vertexCircle.renderOrder = 1;
-      
-      // Position the circle at the vertex
-      vertexCircle.position.set(x, y, 0);
-      
-      // Add to the copy group
-      copyGroup.add(vertexCircle);
-      
-      // Add persistent frequency label if enabled
-      if (shouldCreatePointLabels && camera && renderer) {
-        // Calculate frequency for this vertex
-        const freq = Math.hypot(x, y);
-        
-        // Format display text
-        let labelText;
-        if (state.useEqualTemperament && note.noteName) {
-          labelText = `${freq.toFixed(1)}Hz (${note.noteName}) ${note.duration.toFixed(2)}s`;
-        } else {
-          labelText = `${freq.toFixed(2)}Hz ${note.duration.toFixed(2)}s`;
+    // Finally, add the intersection point markers to the group (so they rotate with everything)
+    // Only create/update markers if:
+    // 1. We're using intersections OR (using stars AND using cuts) AND
+    // 2. We have intersection points AND
+    // 3. We're not currently lerping AND
+    // 4. We have at least 1 copy AND
+    // 5. Either we just calculated new intersections OR we don't have markers yet
+    const needToCreateMarkers = state && 
+                               (state.useIntersections || (state.useStars && state.useCuts)) && 
+                               (copies > 1 || (state.useStars && state.useCuts)) && // Only if we have enough copies or using star cuts
+                               state.intersectionPoints && 
+                               state.intersectionPoints.length > 0 && 
+                               copies > 0 && // Don't create markers if copies = 0
+                               !isLerping &&
+                               (justCalculatedIntersections || !group.userData.intersectionMarkerGroup);
+                               
+    if (needToCreateMarkers) {
+      try {
+        // Clean up any existing marker group on this group
+        if (group.userData && group.userData.intersectionMarkerGroup) {
+          group.remove(group.userData.intersectionMarkerGroup);
+          group.userData.intersectionMarkerGroup.traverse(child => {
+            if (child.geometry) geometriesToDispose.push(child.geometry);
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                materialsToDispose.push(...child.material);
+              } else {
+                materialsToDispose.push(child.material);
+              }
+            }
+          });
+          group.userData.intersectionMarkerGroup = null;
         }
         
-        // Create a world position for this vertex in the copy
-        const worldPos = new THREE.Vector3(x, y, 0);
+        // Create a group to hold the intersection markers
+        const intersectionMarkerGroup = new THREE.Group();
         
-        // Apply the copy's rotation
-        const rotatedPos = worldPos.clone();
-        rotatedPos.applyAxisAngle(new THREE.Vector3(0, 0, 1), cumulativeAngleRadians);
+        // Tag this group for identification during audio triggers
+        intersectionMarkerGroup.userData.isIntersectionGroup = true;
         
-        // Create a text label for this vertex
-        const textLabel = createTextLabel(
-          labelText, 
-          rotatedPos, 
-          copyGroup, // Parent is not really used for DOM labels
-          false, // Not an axis label
-          camera,
-          renderer
-        );
-        
-        // Update the label immediately
-        textLabel.update(camera, renderer);
-        
-        // Store reference for cleanup
-        state.pointFreqLabels.push({
-          label: textLabel,
-          copyIndex: i,
-          vertexIndex: v,
-          position: rotatedPos.clone()
-        });
-      }
-    }
-    
-    // Apply rotation to the copy group
-    copyGroup.rotation.z = cumulativeAngleRadians;
-    
-    // Add the whole copy group to the main group
-    group.add(copyGroup);
-  }
-  
-  // After all copies are created, restore debug objects
-  for (const debugObj of debugObjects) {
-    group.add(debugObj);
-  }
-  
-  // Finally, add the intersection point markers to the group (so they rotate with everything)
-  // Only create/update markers if:
-  // 1. We're using intersections OR (using stars AND using cuts) AND
-  // 2. We have intersection points AND
-  // 3. We're not currently lerping AND
-  // 4. We have at least 1 copy AND
-  // 5. Either we just calculated new intersections OR we don't have markers yet
-  const needToCreateMarkers = state && 
-                             (state.useIntersections || (state.useStars && state.useCuts)) && 
-                             (copies > 1 || (state.useStars && state.useCuts)) && // Only if we have enough copies or using star cuts
-                             state.intersectionPoints && 
-                             state.intersectionPoints.length > 0 && 
-                             copies > 0 && // Don't create markers if copies = 0
-                             !isLerping &&
-                             (justCalculatedIntersections || !group.userData.intersectionMarkerGroup);
-                             
-  if (needToCreateMarkers) {
-    // Clean up any existing marker group on this group
-    if (group.userData && group.userData.intersectionMarkerGroup) {
-      group.remove(group.userData.intersectionMarkerGroup);
-      group.userData.intersectionMarkerGroup.traverse(child => {
-        if (child.geometry) child.geometry.dispose();
-        if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach(m => m.dispose());
-          } else {
-            child.material.dispose();
+        // Add visual representation for each intersection point
+        for (let i = 0; i < state.intersectionPoints.length; i++) {
+          const point = state.intersectionPoints[i];
+          
+          // Create trigger data for this intersection point
+          const triggerData = {
+            x: point.x,
+            y: point.y,
+            isIntersection: true,
+            intersectionIndex: i,
+            globalIndex: globalVertexIndex
+          };
+          
+          // Increment the global vertex index
+          globalVertexIndex++;
+          
+          // Create a note object to get duration and velocity parameters
+          const note = createNote(triggerData, state);
+          
+          // Calculate size factors for this intersection marker
+          const basePointSize = INTERSECTION_POINT_SIZE;
+          const durationScaleFactor = 0.5 + note.duration;
+          
+          // Size that remains visually consistent at different camera distances
+          // Adjust the multiplier (0.3) to make points larger or smaller overall
+          const sizeScaleFactor = (cameraDistance / 1000) * basePointSize * durationScaleFactor * 0.3;
+          
+          // Create material for intersection point
+          const intersectionMaterial = new THREE.MeshBasicMaterial({
+            color: INTERSECTION_POINT_COLOR,
+            transparent: true,
+            opacity: note.velocity,
+            depthTest: false,
+            side: THREE.DoubleSide
+          });
+          
+          // FIXED: Track created materials for proper disposal
+          materialsToDispose.push(intersectionMaterial);
+          
+          // Create a mesh for the intersection point using shared geometry
+          const pointMesh = new THREE.Mesh(vertexCircleGeometry, intersectionMaterial);
+          
+          pointMesh.scale.set(sizeScaleFactor, sizeScaleFactor, 1);
+          pointMesh.position.copy(point);
+          
+          // Set renderOrder higher to ensure it renders on top
+          pointMesh.renderOrder = 1;
+          
+          // Add to the intersection marker group
+          intersectionMarkerGroup.add(pointMesh);
+          
+          // Add persistent frequency label for intersection point if enabled
+          if (shouldCreatePointLabels && camera && renderer) {
+            try {
+              // Calculate frequency for this intersection point
+              const freq = Math.hypot(point.x, point.y);
+              
+              // Format display text
+              let labelText;
+              if (state.useEqualTemperament && note.noteName) {
+                labelText = `${freq.toFixed(1)}Hz (${note.noteName}) ${note.duration.toFixed(2)}s`;
+              } else {
+                labelText = `${freq.toFixed(2)}Hz ${note.duration.toFixed(2)}s`;
+              }
+              
+              // Create a text label for this intersection point
+              const textLabel = createTextLabel(
+                labelText, 
+                point, 
+                intersectionMarkerGroup, // Parent is not really used for DOM labels
+                false, // Not an axis label
+                camera,
+                renderer
+              );
+              
+              // Update the label immediately
+              textLabel.update(camera, renderer);
+              
+              // Store reference for cleanup
+              const labelInfo = {
+                label: textLabel,
+                isIntersection: true,
+                position: point.clone()
+              };
+              
+              state.pointFreqLabels.push(labelInfo);
+              pointFreqLabelsCreated.push(labelInfo);
+            } catch (labelError) {
+              console.warn(`Failed to create intersection point label for point ${i}:`, labelError);
+              // Continue processing other intersection points
+            }
           }
         }
-      });
-      group.userData.intersectionMarkerGroup = null;
-    }
-    
-    // Create a group to hold the intersection markers
-    const intersectionMarkerGroup = new THREE.Group();
-    
-    // Tag this group for identification during audio triggers
-    intersectionMarkerGroup.userData.isIntersectionGroup = true;
-    
-    // Add visual representation for each intersection point
-    for (let i = 0; i < state.intersectionPoints.length; i++) {
-      const point = state.intersectionPoints[i];
-      
-      // Create trigger data for this intersection point
-      const triggerData = {
-        x: point.x,
-        y: point.y,
-        isIntersection: true,
-        intersectionIndex: i,
-        globalIndex: globalVertexIndex
-      };
-      
-      // Increment the global vertex index
-      globalVertexIndex++;
-      
-      // Create a note object to get duration and velocity parameters
-      const note = createNote(triggerData, state);
-      
-      // Calculate size factors for this intersection marker
-      const basePointSize = INTERSECTION_POINT_SIZE;
-      const durationScaleFactor = 0.5 + note.duration;
-      
-      // Size that remains visually consistent at different camera distances
-      // Adjust the multiplier (0.3) to make points larger or smaller overall
-      const sizeScaleFactor = (cameraDistance / 1000) * basePointSize * durationScaleFactor * 0.3;
-      
-      // Create a mesh for the intersection point using shared geometry
-      const pointMesh = new THREE.Mesh(
-        vertexCircleGeometry, // Reuse the same geometry
-        new THREE.MeshBasicMaterial({
-          color: INTERSECTION_POINT_COLOR,
-          transparent: true,
-          opacity: note.velocity,
-          depthTest: false,
-          side: THREE.DoubleSide
-        })
-      );
-      
-      pointMesh.scale.set(sizeScaleFactor, sizeScaleFactor, 1);
-      pointMesh.position.copy(point);
-      
-      // Set renderOrder higher to ensure it renders on top
-      pointMesh.renderOrder = 1;
-      
-      // Add to the intersection marker group
-      intersectionMarkerGroup.add(pointMesh);
-      
-      // Add persistent frequency label for intersection point if enabled
-      if (shouldCreatePointLabels && camera && renderer) {
-        // Calculate frequency for this intersection point
-        const freq = Math.hypot(point.x, point.y);
         
-        // Format display text
-        let labelText;
-        if (state.useEqualTemperament && note.noteName) {
-          labelText = `${freq.toFixed(1)}Hz (${note.noteName}) ${note.duration.toFixed(2)}s`;
-        } else {
-          labelText = `${freq.toFixed(2)}Hz ${note.duration.toFixed(2)}s`;
-        }
+        // Add the whole marker group to the main group
+        group.add(intersectionMarkerGroup);
         
-        // Create a text label for this intersection point
-        const textLabel = createTextLabel(
-          labelText, 
-          point, 
-          intersectionMarkerGroup, // Parent is not really used for DOM labels
-          false, // Not an axis label
-          camera,
-          renderer
-        );
-        
-        // Update the label immediately
-        textLabel.update(camera, renderer);
-        
-        // Store reference for cleanup
-        state.pointFreqLabels.push({
-          label: textLabel,
-          isIntersection: true,
-          position: point.clone()
-        });
+        // Store reference to the intersection marker group
+        group.userData.intersectionMarkerGroup = intersectionMarkerGroup;
+      } catch (intersectionError) {
+        console.error("Error creating intersection markers:", intersectionError);
+        // Continue execution even if intersection markers fail
       }
     }
     
-    // Add the whole marker group to the main group
-    group.add(intersectionMarkerGroup);
+  } catch (error) {
+    console.error("Error in updateGroup:", error);
     
-    // Store reference to the intersection marker group
-    group.userData.intersectionMarkerGroup = intersectionMarkerGroup;
+    // FIXED: Clean up any partially created labels on error
+    if (state && pointFreqLabelsCreated.length > 0) {
+      for (const labelInfo of pointFreqLabelsCreated) {
+        try {
+          if (labelInfo.label && labelInfo.label.dispose) {
+            labelInfo.label.dispose();
+          }
+        } catch (disposeError) {
+          console.warn("Error disposing label during cleanup:", disposeError);
+        }
+      }
+      
+      // Remove the labels from state.pointFreqLabels
+      if (state.pointFreqLabels) {
+        state.pointFreqLabels = state.pointFreqLabels.filter(label => 
+          !pointFreqLabelsCreated.includes(label)
+        );
+      }
+    }
+    
+    // FIXED: Clean up any partially created children on error
+    for (const child of newChildren) {
+      try {
+        if (child.parent) {
+          child.parent.remove(child);
+        }
+      } catch (removeError) {
+        console.warn("Error removing child during cleanup:", removeError);
+      }
+    }
+    
+    // Re-throw the error after cleanup
+    throw error;
+  } finally {
+    // FIXED: Guaranteed cleanup of materials and geometries
+    // Dispose of old materials and geometries that were tracked for disposal
+    for (const material of materialsToDispose) {
+      try {
+        if (material && material.dispose && material !== mat) {
+          material.dispose();
+        }
+      } catch (disposeError) {
+        console.warn("Error disposing material:", disposeError);
+      }
+    }
+    
+    for (const geometry of geometriesToDispose) {
+      try {
+        if (geometry && geometry.dispose && geometry !== baseGeo) {
+          geometry.dispose();
+        }
+      } catch (disposeError) {
+        console.warn("Error disposing geometry:", disposeError);
+      }
+    }
   }
 }
 

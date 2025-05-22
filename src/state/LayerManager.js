@@ -71,6 +71,9 @@ export class LayerManager {
     
     const layer = new Layer(id, options);
     
+    // FIXED: Set layer manager reference to prevent circular dependencies
+    layer.setLayerManager(this);
+    
     // Set initial state values to ensure there's something to render
     // IMPORTANT: Default to having at least 1 copy to make the layer visible
     if (layer.state.copies === 0) {

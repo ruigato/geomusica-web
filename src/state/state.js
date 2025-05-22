@@ -253,14 +253,20 @@ export function createAppState() {
      * @param {number} value New radius value
      */
     setRadius(value) {
-      const newRadius = Number(value);
-      if (!isNaN(newRadius)) {
-        this.targetRadius = Math.max(20, Math.min(2048, newRadius));
+      const newValue = Number(value);
+      if (this.targetRadius !== newValue) {
+        this.targetRadius = newValue;
         this.parameterChanges.radius = true;
+        
+        // If lerping is off, update the actual value immediately
         if (!this.useLerp) {
-          this.radius = this.targetRadius;
+          this.radius = newValue;
         }
+        
         this.needsIntersectionUpdate = true;
+        
+        // FIXED: Reset trigger state when radius changes to prevent false triggers
+        this.resetTriggerState();
       }
     },
     
@@ -270,10 +276,16 @@ export function createAppState() {
      */
     setCopies(value) {
       const newValue = Number(value);
-      if (this.copies !== newValue) {
-        this.copies = newValue;
+      if (this.targetCopies !== newValue) {
+        this.targetCopies = newValue;
         this.parameterChanges.copies = true;
+        if (!this.useLerp) {
+          this.copies = this.targetCopies;
+        }
         this.needsIntersectionUpdate = true;
+        
+        // FIXED: Reset trigger state when copies change to prevent false triggers
+        this.resetTriggerState();
       }
     },
     
@@ -282,21 +294,15 @@ export function createAppState() {
      * @param {number} value New segments value
      */
     setSegments(value) {
-      // Fix for the rounding bug - ensure we use Math.round to get whole numbers
       const newValue = Math.round(Number(value));
-      
-      // ALWAYS mark as changed and force geometry update regardless of previous value
-      this.segments = newValue;
-      this.parameterChanges.segments = true;
-      this.needsIntersectionUpdate = true;
-      
-      // Force update of geometry by invalidating cached values
-      this.currentGeometryRadius = null;
-      
-      // Add a specific flag for segments change
-      this.segmentsChanged = true;
-      
-      console.log(`Segments updated to ${newValue}`);
+      if (this.segments !== newValue) {
+        this.segments = newValue;
+        this.parameterChanges.segments = true;
+        this.needsIntersectionUpdate = true;
+        
+        // FIXED: Reset trigger state when segments change to prevent false triggers
+        this.resetTriggerState();
+      }
     },
     
     /**
@@ -312,6 +318,9 @@ export function createAppState() {
           this.stepScale = this.targetStepScale;
         }
         this.needsIntersectionUpdate = true;
+        
+        // FIXED: Reset trigger state when step scale changes to prevent false triggers
+        this.resetTriggerState();
       }
     },
     
@@ -1127,6 +1136,43 @@ export function createAppState() {
           this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
           this.needsIntersectionUpdate = true;
         }
+      }
+    },
+    
+    /**
+     * Reset trigger state to prevent false triggers after parameter changes
+     */
+    resetTriggerState() {
+      // Clear any stored trigger state
+      if (this.lastTrig) {
+        this.lastTrig.clear();
+      }
+      
+      // Reset any timing-related state
+      this.lastTriggerTime = 0;
+      
+      // If this state belongs to a layer, reset the layer's trigger state too
+      if (this.layerId !== undefined && window._layers) {
+        const layer = window._layers.layers.find(l => l.id === this.layerId);
+        if (layer) {
+          // Clear the layer's previous vertex positions
+          if (layer.prevWorldVertices) {
+            layer.prevWorldVertices.clear();
+          }
+          
+          // Clear the layer's last triggered set
+          if (layer.lastTrig) {
+            layer.lastTrig.clear();
+          }
+          
+          // Mark that trigger state was reset
+          layer._triggerStateReset = Date.now();
+        }
+      }
+      
+      // Also try to access via global state if available
+      if (window._globalState && window._globalState.resetTriggerSystem) {
+        window._globalState.resetTriggerSystem();
       }
     }
   };

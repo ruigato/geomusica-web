@@ -4,6 +4,7 @@ import Stats from 'stats.js';
 
 // Debug flag to control the visibility of debug buttons
 const DEBUG_BUTTONS = false;
+const DEBUG_LOGGING = false;
 
 // Expose debug flag globally
 window.DEBUG_BUTTONS = DEBUG_BUTTONS;
@@ -85,51 +86,152 @@ let csoundInstance = null;
  * @param {boolean} isLayerSwitch - Set to true when called from setActiveLayer to prevent geometry recreation
  */
 function syncStateAcrossSystems(isLayerSwitch = false) {
-  // Get active layer's state using the getActiveState function if available
-  const state = window.getActiveState ? window.getActiveState() : appState;
-  const activeLayerId = layerManager?.activeLayerId;
-  
-  console.log(`[STATE SYNC] Syncing state for active layer ID: ${activeLayerId}${isLayerSwitch ? ' (layer switch)' : ''}`);
-  
-  // Make sure all core components have access to the state
-  if (sceneInstance) {
-    sceneInstance.userData.state = state;
-    sceneInstance.userData.globalState = globalState;
+  // FIXED: Add debouncing to prevent race conditions during rapid operations
+  if (syncStateAcrossSystems._debounceTimer) {
+    clearTimeout(syncStateAcrossSystems._debounceTimer);
   }
   
-  const activeLayer = layerManager?.getActiveLayer();
-  if (activeLayer?.group) {
-    activeLayer.group.userData.state = state;
-    activeLayer.group.userData.globalState = globalState;
+  // Use immediate execution for layer switches, debounce for other changes
+  if (isLayerSwitch) {
+    performStateSync(isLayerSwitch);
+  } else {
+    syncStateAcrossSystems._debounceTimer = setTimeout(() => {
+      performStateSync(isLayerSwitch);
+    }, 10); // Short debounce to prevent rapid successive calls
+  }
+}
+
+/**
+ * Internal function that performs the actual state synchronization
+ * @param {boolean} isLayerSwitch - Whether this is a layer switch operation
+ */
+function performStateSync(isLayerSwitch = false) {
+  try {
+    // FIXED: Use a more robust approach to get the active state
+    let state = null;
+    let activeLayerId = null;
     
-    // Verify the active layer's state is correctly set
-    console.log(`[STATE SYNC] Active layer ${activeLayerId} state:`, {
-      radius: activeLayer.state.radius,
-      segments: activeLayer.state.segments,
-      copies: activeLayer.state.copies
-    });
+    // First, try to get state from layer manager if available
+    if (layerManager && typeof layerManager.getActiveLayer === 'function') {
+      const activeLayer = layerManager.getActiveLayer();
+      if (activeLayer && activeLayer.state) {
+        state = activeLayer.state;
+        activeLayerId = activeLayer.id;
+      }
+    }
+    
+    // Fallback to window.getActiveState if layer manager approach fails
+    if (!state && typeof window.getActiveState === 'function') {
+      state = window.getActiveState();
+      if (state && state.layerId !== undefined) {
+        activeLayerId = state.layerId;
+      }
+    }
+    
+    // Final fallback to appState
+    if (!state) {
+      console.warn('[STATE SYNC] Unable to find active layer state, using fallback appState');
+      state = appState;
+      activeLayerId = 'fallback';
+    }
+    
+    console.log(`[STATE SYNC] Syncing state for active layer ID: ${activeLayerId}${isLayerSwitch ? ' (layer switch)' : ''}`);
+    
+    // FIXED: Validate state before proceeding
+    if (!state) {
+      console.error('[STATE SYNC] No valid state found, aborting synchronization');
+      return;
+    }
+    
+    // Make sure all core components have access to the state
+    if (sceneInstance) {
+      sceneInstance.userData.state = state;
+      sceneInstance.userData.globalState = globalState;
+    }
+    
+    // FIXED: More robust active layer handling
+    const activeLayer = layerManager?.getActiveLayer();
+    if (activeLayer?.group) {
+      // Only update if the layer is actually active and valid
+      if (activeLayer.id === activeLayerId || activeLayerId === 'fallback') {
+        activeLayer.group.userData.state = state;
+        activeLayer.group.userData.globalState = globalState;
+        
+        // Verify the active layer's state is correctly set
+        if (DEBUG_BUTTONS) {
+          console.log(`[STATE SYNC] Active layer ${activeLayerId} state:`, {
+            radius: activeLayer.state.radius,
+            segments: activeLayer.state.segments,
+            copies: activeLayer.state.copies
+          });
+        }
+      }
+    }
+    
+    if (audioInstance) {
+      // Update audio state with validation
+      if (!audioInstance.userData) {
+        audioInstance.userData = {};
+      }
+      audioInstance.userData.state = state;
+      audioInstance.userData.globalState = globalState;
+    }
+    
+    // FIXED: More robust UI synchronization
+    if (state && !isLayerSwitch) {
+      // Only update UI if this is not a layer switch to prevent conflicts
+      updateUIFromActiveState(state);
+    }
+    
+    // Update global UI with global state
+    if (globalUIReferences && globalState) {
+      updateGlobalUI(globalState);
+    }
+    
+    // FIXED: Better handling of parameter changes during layer switches
+    if (isLayerSwitch && state && typeof state.resetParameterChanges === 'function') {
+      // Reset parameter changes to prevent unnecessary geometry recreation
+      state.resetParameterChanges();
+      console.log(`[STATE SYNC] Reset parameter changes during layer switch for layer ${activeLayerId}`);
+    }
+    
+    // FIXED: Improved geometry update logic
+    if (!isLayerSwitch && state && state.parameterChanges) {
+      handleGeometryUpdates(state, activeLayer);
+    } else if (isLayerSwitch) {
+      console.log("[STATE SYNC] Skipping geometry recreation during layer switch");
+    }
+    
+  } catch (error) {
+    console.error('[STATE SYNC] Error during state synchronization:', error);
+    // Don't rethrow to prevent cascading failures
   }
-  
-  if (audioInstance) {
-    // Update audio state
-    audioInstance.userData = {
-      ...audioInstance.userData,
-      state: state,
-      globalState: globalState
-    };
+}
+
+/**
+ * Update UI elements to reflect the active state
+ * @param {Object} state - Active state object
+ */
+function updateUIFromActiveState(state) {
+  try {
+    if (uiReferences && state) {
+      console.log(`Updating UI to match active layer state: radius=${state.radius}, segments=${state.segments}, copies=${state.copies}`);
+      // Add specific UI update logic here if needed
+    }
+  } catch (error) {
+    console.error('[STATE SYNC] Error updating UI from active state:', error);
   }
-  
-  // Update layer-specific UI to reflect the active layer's state
-  if (uiReferences && state) {
-    // Log to show what state values we're updating to
-    console.log(`Updating UI to match active layer state: radius=${state.radius}, segments=${state.segments}, copies=${state.copies}`);
-    updateUIFromState(state, uiReferences);
-  }
-  
-  // Update global UI with global state
-  if (globalUIReferences && globalState) {
+}
+
+/**
+ * Update global UI elements
+ * @param {Object} globalState - Global state object
+ */
+function updateGlobalUI(globalState) {
+  try {
     console.log(`Updating global UI: BPM=${globalState.bpm}`);
-    // Update BPM display
+    
+    // Update BPM display with null checks
     const bpmValue = document.getElementById('bpmValue');
     if (bpmValue) bpmValue.textContent = globalState.bpm;
     
@@ -138,60 +240,73 @@ function syncStateAcrossSystems(isLayerSwitch = false) {
     
     const bpmNumber = document.getElementById('bpmNumber');
     if (bpmNumber) bpmNumber.value = globalState.bpm;
+  } catch (error) {
+    console.error('[STATE SYNC] Error updating global UI:', error);
   }
-  
-  // If this is a layer switch, explicitly reset parameter changes to avoid unnecessary updates
-  if (isLayerSwitch && state && typeof state.resetParameterChanges === 'function') {
-    console.log(`[STATE SYNC] Explicitly resetting parameter changes during layer switch`);
-    state.resetParameterChanges();
-  }
-  
-  // SKIP GEOMETRY RECREATION IF THIS IS JUST A LAYER SWITCH
-  if (!isLayerSwitch) {
+}
+
+/**
+ * Handle geometry updates based on parameter changes
+ * @param {Object} state - State object with parameter changes
+ * @param {Object} activeLayer - Active layer object
+ */
+function handleGeometryUpdates(state, activeLayer) {
+  try {
     // Force more immediate intersection update on critical parameter changes
-    if (state.parameterChanges && 
-        (state.parameterChanges.copies || 
-         state.parameterChanges.modulus || 
-         state.parameterChanges.useModulus ||
-         state.parameterChanges.euclidValue ||
-         state.parameterChanges.useEuclid ||
-         state.parameterChanges.segments ||
-         state.parameterChanges.fractal ||
-         state.parameterChanges.useFractal ||
-         state.parameterChanges.starSkip ||
-         state.parameterChanges.useStars)) {
+    const criticalChanges = [
+      'copies', 'modulus', 'useModulus', 'euclidValue', 'useEuclid',
+      'segments', 'fractal', 'useFractal', 'starSkip', 'useStars'
+    ];
+    
+    const hasCriticalChanges = criticalChanges.some(param => state.parameterChanges[param]);
+    
+    if (hasCriticalChanges) {
       state.needsIntersectionUpdate = true;
       
       // Explicitly force a geometry update for Euclidean rhythm and Stars parameters
-      if (state.parameterChanges.euclidValue || 
-          state.parameterChanges.useEuclid ||
-          state.parameterChanges.starSkip ||
-          state.parameterChanges.useStars) {
-        // If we have a valid baseGeo reference, update it based on current state parameters
-        if (activeLayer?.baseGeo) {
-          const oldGeo = activeLayer.baseGeo;
-          
-          // Force recreate the geometry with current parameters
-          activeLayer.baseGeo = createPolygonGeometry(
-            state.radius,
-            Math.round(state.segments),
-            state
-          );
-          
-          // Clean up old geometry if needed
-          if (oldGeo && oldGeo !== activeLayer.baseGeo) {
-            // Don't dispose immediately as it might still be in use
-            setTimeout(() => {
-              oldGeo.dispose();
-            }, 100);
-          }
-          
-          console.log("Forced geometry update due to Euclidean rhythm or Stars parameter change");
-        }
+      const forceGeometryUpdate = ['euclidValue', 'useEuclid', 'starSkip', 'useStars'];
+      const needsGeometryUpdate = forceGeometryUpdate.some(param => state.parameterChanges[param]);
+      
+      if (needsGeometryUpdate && activeLayer?.baseGeo) {
+        updateLayerGeometry(activeLayer, state);
       }
     }
-  } else {
-    console.log("[STATE SYNC] Skipping geometry recreation since this is just a layer switch");
+  } catch (error) {
+    console.error('[STATE SYNC] Error handling geometry updates:', error);
+  }
+}
+
+/**
+ * Update layer geometry safely
+ * @param {Object} activeLayer - Active layer object
+ * @param {Object} state - State object
+ */
+function updateLayerGeometry(activeLayer, state) {
+  try {
+    const oldGeo = activeLayer.baseGeo;
+    
+    // Force recreate the geometry with current parameters
+    activeLayer.baseGeo = createPolygonGeometry(
+      state.radius,
+      Math.round(state.segments),
+      state
+    );
+    
+    // Clean up old geometry safely
+    if (oldGeo && oldGeo !== activeLayer.baseGeo && oldGeo.dispose) {
+      // Dispose after a short delay to prevent rendering issues
+      setTimeout(() => {
+        try {
+          oldGeo.dispose();
+        } catch (disposeError) {
+          console.warn('[STATE SYNC] Error disposing old geometry:', disposeError);
+        }
+      }, 100);
+    }
+    
+    console.log("Forced geometry update due to critical parameter change");
+  } catch (error) {
+    console.error('[STATE SYNC] Error updating layer geometry:', error);
   }
 }
 

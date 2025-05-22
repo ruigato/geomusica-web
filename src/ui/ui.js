@@ -586,61 +586,125 @@ export function setupUI(state) {
       parseFloat(spanEl.textContent) : 
       parseInt(spanEl.textContent);
     
-    // Helper function to get the current target state for parameter changes
+    // FIXED: More robust helper function to get the current target state for parameter changes
     const getTargetState = (setterName) => {
-      // Check if this is a global parameter that should be routed to globalState
-      const isGlobalParameter = 
-        setterName.includes('Bpm') || 
-        setterName.includes('attack') ||
-        setterName.includes('decay') ||
-        setterName.includes('sustain') ||
-        setterName.includes('release') ||
-        setterName.includes('brightness') ||
-        setterName.includes('volume') ||
-        setterName.includes('referenceFreq');
-      
-      if (isGlobalParameter && window._globalState) {
-        return { 
-          state: window._globalState, 
-          isGlobal: true,
-          id: 'global'
-        };
-      } else {
-        // FIXED: First try using window.getActiveState() which is more reliable
-        if (typeof window.getActiveState === 'function') {
-          const activeState = window.getActiveState();
-          if (activeState) {
-            // Get the layer ID from the state if available
-            const layerId = activeState.layerId !== undefined ? activeState.layerId : 'unknown';
-            
-            console.log(`[UI CHANGE] Using active state from getActiveState() for layer ${layerId}`);
-            
-            return {
-              state: activeState,
-              isGlobal: false,
-              id: layerId
-            };
-          }
-        }
+      try {
+        // Check if this is a global parameter that should be routed to globalState
+        const globalParameters = new Set([
+          'setBpm', 'setAttack', 'setDecay', 'setSustain', 'setRelease', 
+          'setBrightness', 'setVolume', 'setReferenceFrequency'
+        ]);
         
-        // Fallback to window._layers if getActiveState is not available
-        const layerManager = window._layers;
-        const activeLayer = layerManager?.getActiveLayer();
+        const isGlobalParameter = globalParameters.has(setterName) || 
+          setterName.includes('Bpm') || 
+          setterName.includes('attack') ||
+          setterName.includes('decay') ||
+          setterName.includes('sustain') ||
+          setterName.includes('release') ||
+          setterName.includes('brightness') ||
+          setterName.includes('volume') ||
+          setterName.includes('referenceFreq');
         
-        if (activeLayer && activeLayer.state) {
+        if (isGlobalParameter && window._globalState) {
           return { 
-            state: activeLayer.state, 
-            isGlobal: false,
-            id: activeLayer.id
+            state: window._globalState, 
+            isGlobal: true,
+            id: 'global',
+            valid: true
           };
         }
         
-        // Fall back to window._appState if no active layer is found
-        console.warn(`Unable to find active layer state for ${setterName}, falling back to default state`);
+        // For layer-specific parameters, use a priority-based approach
+        let targetState = null;
+        let layerId = 'unknown';
+        
+        // Priority 1: Try window.getActiveState() (most reliable)
+        if (typeof window.getActiveState === 'function') {
+          try {
+            targetState = window.getActiveState();
+            if (targetState && targetState.layerId !== undefined) {
+              layerId = targetState.layerId;
+              return {
+                state: targetState,
+                isGlobal: false,
+                id: layerId,
+                valid: true
+              };
+            }
+          } catch (error) {
+            console.warn('[UI] Error getting active state via getActiveState:', error);
+          }
+        }
+        
+        // Priority 2: Try layer manager approach
+        if (!targetState && window._layers && typeof window._layers.getActiveLayer === 'function') {
+          try {
+            const activeLayer = window._layers.getActiveLayer();
+            if (activeLayer && activeLayer.state) {
+              targetState = activeLayer.state;
+              layerId = activeLayer.id;
+              return { 
+                state: targetState, 
+                isGlobal: false,
+                id: layerId,
+                valid: true
+              };
+            }
+          } catch (error) {
+            console.warn('[UI] Error getting active layer via layer manager:', error);
+          }
+        }
+        
+        // Priority 3: Try direct access to layer manager layers
+        if (!targetState && window._layers && window._layers.layers) {
+          try {
+            const activeLayerIndex = window._layers.activeLayerId;
+            if (activeLayerIndex !== undefined && window._layers.layers[activeLayerIndex]) {
+              const activeLayer = window._layers.layers[activeLayerIndex];
+              if (activeLayer && activeLayer.state) {
+                targetState = activeLayer.state;
+                layerId = activeLayer.id;
+                return { 
+                  state: targetState, 
+                  isGlobal: false,
+                  id: layerId,
+                  valid: true
+                };
+              }
+            }
+          } catch (error) {
+            console.warn('[UI] Error getting active layer via direct access:', error);
+          }
+        }
+        
+        // Final fallback to window._appState
+        if (!targetState && window._appState) {
+          console.warn(`[UI] Unable to find active layer state for ${setterName}, using fallback appState`);
+          return { 
+            state: window._appState, 
+            isGlobal: false,
+            id: 'fallback',
+            valid: false // Mark as invalid to indicate this is a fallback
+          };
+        }
+        
+        // If all else fails, use the original state parameter
+        console.error(`[UI] No valid state found for ${setterName}, using original state parameter`);
         return { 
-          state: window._appState, 
+          state: state, 
           isGlobal: false,
-          id: 'default'
+          id: 'original',
+          valid: false
+        };
+        
+      } catch (error) {
+        console.error(`[UI] Critical error in getTargetState for ${setterName}:`, error);
+        // Return the original state as ultimate fallback
+        return { 
+          state: state, 
+          isGlobal: false,
+          id: 'error-fallback',
+          valid: false
         };
       }
     };
@@ -659,26 +723,45 @@ export function setupUI(state) {
       // Get the setter name from the setter function
       const setterName = setter.name;
       
-      // Get the target state for this parameter change
-      const { state, isGlobal, id } = getTargetState(setterName);
+      // FIXED: Get the target state with improved error handling
+      const { state: targetState, isGlobal, id, valid } = getTargetState(setterName);
       
-      if (isGlobal) {
-        // Find the setter name by removing 'Range' from the ID
-        const paramName = rangeEl.id.replace('Range', '');
-        // Convert to camelCase setter name (e.g., 'bpm' -> 'setBpm')
-        const globalSetterName = 'set' + paramName.charAt(0).toUpperCase() + paramName.slice(1);
-        
-        // Call the setter on globalState if it exists
-        if (typeof state[globalSetterName] === 'function') {
-          state[globalSetterName](v);
-          console.log(`[GLOBAL] Updated ${paramName} to ${v}`);
+      // FIXED: Enhanced validation and error handling
+      if (!targetState) {
+        console.error(`[UI] No target state found for ${setterName}, skipping update`);
+        return;
+      }
+      
+      // Log state routing for debugging (only if not valid to avoid spam)
+      if (!valid) {
+        console.warn(`[UI] Using fallback state routing for ${setterName} -> ${id}`);
+      }
+      
+      try {
+        if (isGlobal) {
+          // Find the setter name by removing 'Range' from the ID
+          const paramName = rangeEl.id.replace('Range', '');
+          // Convert to camelCase setter name (e.g., 'bpm' -> 'setBpm')
+          const globalSetterName = 'set' + paramName.charAt(0).toUpperCase() + paramName.slice(1);
+          
+          // Call the setter on globalState if it exists
+          if (typeof targetState[globalSetterName] === 'function') {
+            targetState[globalSetterName](v);
+            console.log(`[GLOBAL] Updated ${paramName} to ${v}`);
+          } else {
+            console.warn(`[UI] Global setter ${globalSetterName} not found on globalState`);
+          }
+        } else {
+          // Call the setter on the layer state
+          if (typeof setter === 'function') {
+            setter.call(targetState, v);
+            console.log(`[UI CHANGE] Updated ${setterName.replace('set', '')} to ${v} on layer ${id}`);
+          } else {
+            console.warn(`[UI] Setter function not valid for ${setterName}`);
+          }
         }
-      } else {
-        // Call the setter on the layer state
-        if (typeof setter === 'function') {
-          setter.call(state, v);
-          console.log(`[UI CHANGE] Updated ${setterName.replace('set', '')} to ${v} on layer ${id}`);
-        }
+      } catch (error) {
+        console.error(`[UI] Error calling setter ${setterName}:`, error);
       }
       
       spanEl.textContent = parser === parseFloat ? v.toFixed(1) : v;
@@ -699,26 +782,45 @@ export function setupUI(state) {
       // Get the setter name from the setter function
       const setterName = setter.name;
       
-      // Get the target state for this parameter change
-      const { state, isGlobal, id } = getTargetState(setterName);
+      // FIXED: Get the target state with improved error handling
+      const { state: targetState, isGlobal, id, valid } = getTargetState(setterName);
       
-      if (isGlobal) {
-        // Find the setter name by removing 'Number' from the ID
-        const paramName = numEl.id.replace('Number', '');
-        // Convert to camelCase setter name (e.g., 'bpm' -> 'setBpm')
-        const globalSetterName = 'set' + paramName.charAt(0).toUpperCase() + paramName.slice(1);
-        
-        // Call the setter on globalState if it exists
-        if (typeof state[globalSetterName] === 'function') {
-          state[globalSetterName](v);
-          console.log(`[GLOBAL] Updated ${paramName} to ${v}`);
+      // FIXED: Enhanced validation and error handling
+      if (!targetState) {
+        console.error(`[UI] No target state found for ${setterName}, skipping update`);
+        return;
+      }
+      
+      // Log state routing for debugging (only if not valid to avoid spam)
+      if (!valid) {
+        console.warn(`[UI] Using fallback state routing for ${setterName} -> ${id}`);
+      }
+      
+      try {
+        if (isGlobal) {
+          // Find the setter name by removing 'Number' from the ID
+          const paramName = numEl.id.replace('Number', '');
+          // Convert to camelCase setter name (e.g., 'bpm' -> 'setBpm')
+          const globalSetterName = 'set' + paramName.charAt(0).toUpperCase() + paramName.slice(1);
+          
+          // Call the setter on globalState if it exists
+          if (typeof targetState[globalSetterName] === 'function') {
+            targetState[globalSetterName](v);
+            console.log(`[GLOBAL] Updated ${paramName} to ${v}`);
+          } else {
+            console.warn(`[UI] Global setter ${globalSetterName} not found on globalState`);
+          }
+        } else {
+          // Call the setter on the layer state
+          if (typeof setter === 'function') {
+            setter.call(targetState, v);
+            console.log(`[UI CHANGE] Updated ${setterName.replace('set', '')} to ${v} on layer ${id}`);
+          } else {
+            console.warn(`[UI] Setter function not valid for ${setterName}`);
+          }
         }
-      } else {
-        // Call the setter on the layer state
-        if (typeof setter === 'function') {
-          setter.call(state, v);
-          console.log(`[UI CHANGE] Updated ${setterName.replace('set', '')} to ${v} on layer ${id}`);
-        }
+      } catch (error) {
+        console.error(`[UI] Error calling setter ${setterName}:`, error);
       }
       
       spanEl.textContent = parser === parseFloat ? v.toFixed(1) : v;
@@ -729,23 +831,48 @@ export function setupUI(state) {
   // Setup checkbox event listener for lerp toggle with null check
   if (useLerpCheckbox) {
     useLerpCheckbox.addEventListener('change', e => {
-      // Get current active layer's state using getActiveState which is more reliable
-      if (typeof window.getActiveState === 'function') {
-        const activeState = window.getActiveState();
-        if (activeState) {
-          activeState.setUseLerp(e.target.checked);
-          console.log(`[UI CHANGE] Set useLerp to ${e.target.checked} on layer ${activeState.layerId}`);
+      // FIXED: Use the same robust state routing approach as other UI elements
+      try {
+        // Get target state using the same approach as other UI controls
+        const { state: targetState, id, valid } = getTargetState('setUseLerp');
+        
+        if (!targetState) {
+          console.error('[UI] No target state found for setUseLerp, skipping update');
           return;
         }
-      }
-      
-      // Fallback to the layer manager approach if getActiveState is not available
-      const activeLayerState = window._layers?.getActiveLayer()?.state;
-      if (activeLayerState && typeof activeLayerState.setUseLerp === 'function') {
-        activeLayerState.setUseLerp(e.target.checked);
-      } else {
-        // Last resort fallback to the original state
-        state.setUseLerp(e.target.checked);
+        
+        // Log state routing for debugging (only if not valid to avoid spam)
+        if (!valid) {
+          console.warn(`[UI] Using fallback state routing for setUseLerp -> ${id}`);
+        }
+        
+        if (typeof targetState.setUseLerp === 'function') {
+          targetState.setUseLerp(e.target.checked);
+          console.log(`[UI CHANGE] Set useLerp to ${e.target.checked} on layer ${id}`);
+        } else {
+          console.warn('[UI] setUseLerp method not available on target state');
+          
+          // Fallback to the original approach if the method doesn't exist
+          if (typeof window.getActiveState === 'function') {
+            const activeState = window.getActiveState();
+            if (activeState && typeof activeState.setUseLerp === 'function') {
+              activeState.setUseLerp(e.target.checked);
+              console.log(`[UI CHANGE] Set useLerp to ${e.target.checked} via fallback`);
+            }
+          } else {
+            // Last resort fallback to the original state
+            if (typeof state.setUseLerp === 'function') {
+              state.setUseLerp(e.target.checked);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[UI] Error setting useLerp:', error);
+        
+        // Ultimate fallback to prevent UI from breaking
+        if (typeof state.setUseLerp === 'function') {
+          state.setUseLerp(e.target.checked);
+        }
       }
     });
   }
