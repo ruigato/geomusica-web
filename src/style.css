@@ -400,3 +400,48 @@ section:nth-child(5) h2 {
   border: 1px solid #555;
   border-radius: 4px;
 }
+
+/* State control buttons */
+.state-control-button {
+  padding: 8px 12px;
+  background-color: #333;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.state-control-button:hover {
+  background-color: #444;
+  transform: translateY(-2px);
+}
+
+.state-control-button:active {
+  transform: translateY(1px);
+}
+
+.state-control-button.make-default {
+  background-color: #0a7;
+}
+
+.state-control-button.make-default:hover {
+  background-color: #0c8;
+}
+
+.state-control-button.export {
+  background-color: #07a;
+}
+
+.state-control-button.export:hover {
+  background-color: #08c;
+}
+
+.state-control-button.import {
+  background-color: #a70;
+}
+
+.state-control-button.import:hover {
+  background-color: #c80;
+}

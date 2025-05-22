@@ -12,89 +12,69 @@ const STORAGE_KEY = 'geomusica_state';
  */
 export function saveState(state) {
   try {
-    // Extract only the serializable properties we want to save
+    // Get references to all layers and global state
+    const layerManager = window._layers;
+    const globalState = window._globalState;
+    
+    if (!layerManager || !globalState) {
+      console.warn('Layer manager or global state not found, saving only active state');
+    }
+    
+    // Extract serializable properties for the active state
+    const activeStateData = extractSerializableState(state);
+    
+    // Create the save data object
     const saveData = {
-      // Time parameters
-      bpm: state.bpm,
+      // Store active state
+      activeState: activeStateData,
       
-      // Shape parameters
-      radius: state.radius,
-      copies: state.copies,
-      segments: state.segments,
-      stepScale: state.stepScale,
-      angle: state.angle,
-      shapeType: state.shapeType,
+      // Store global state if available
+      globalState: globalState ? {
+        bpm: globalState.bpm,
+        attack: globalState.attack,
+        decay: globalState.decay,
+        sustain: globalState.sustain,
+        release: globalState.release,
+        brightness: globalState.brightness,
+        volume: globalState.volume,
+        lastAngle: globalState.lastAngle,
+        useTimeSubdivision: globalState.useTimeSubdivision,
+        timeSubdivisionValue: globalState.timeSubdivisionValue,
+        useQuantization: globalState.useQuantization,
+        quantizationValue: globalState.quantizationValue,
+        useEqualTemperament: globalState.useEqualTemperament,
+        referenceFrequency: globalState.referenceFrequency
+      } : null,
       
-      // Modulus parameters
-      modulusValue: state.modulusValue,
-      useModulus: state.useModulus,
-      
-      // Time Subdivision parameters
-      timeSubdivisionValue: state.timeSubdivisionValue,
-      useTimeSubdivision: state.useTimeSubdivision,
-      
-      // Time Quantization parameters
-      quantizationValue: state.quantizationValue,
-      useQuantization: state.useQuantization,
-      
-      // Scale Mod parameters
-      altScale: state.altScale,
-      altStepN: state.altStepN,
-      useAltScale: state.useAltScale,
-      
-      // Fractal parameters
-      fractalValue: state.fractalValue,
-      useFractal: state.useFractal,
-      
-      // Euclidean rhythm parameters
-      euclidValue: state.euclidValue,
-      useEuclid: state.useEuclid,
-      
-      // Intersection parameters
-      useIntersections: state.useIntersections,
-      
-      // Animation parameters
-      useLerp: state.useLerp,
-      lerpTime: state.lerpTime,
-      
-      // Synth parameters
-      attack: state.attack,
-      decay: state.decay,
-      sustain: state.sustain,
-      release: state.release,
-      brightness: state.brightness,
-      volume: state.volume,
-      
-      useEqualTemperament: state.useEqualTemperament,
-      referenceFrequency: state.referenceFrequency,
-
-      // Display parameters
-      showAxisFreqLabels: state.showAxisFreqLabels,
-      showPointsFreqLabels: state.showPointsFreqLabels,
-      
-      // Note parameter settings
-      durationMode: state.durationMode,
-      durationModulo: state.durationModulo,
-      minDuration: state.minDuration, 
-      maxDuration: state.maxDuration,
-      durationPhase: state.durationPhase,
-      
-      velocityMode: state.velocityMode,
-      velocityModulo: state.velocityModulo,
-      minVelocity: state.minVelocity,
-      maxVelocity: state.maxVelocity,
-      velocityPhase: state.velocityPhase,
-      
-      // Star polygon parameters
-      starSkip: state.starSkip,
-      useStars: state.useStars,
-      useCuts: state.useCuts
+      // Store all layers if available
+      layers: []
     };
+    
+    // Add active layer ID if available
+    if (layerManager) {
+      saveData.activeLayerId = layerManager.activeLayerId;
+      
+      // Add layer data for all layers
+      layerManager.layers.forEach(layer => {
+        if (layer && layer.state) {
+          saveData.layers.push({
+            id: layer.id,
+            visible: layer.visible,
+            color: layer.material?.color ? {
+              r: layer.material.color.r,
+              g: layer.material.color.g,
+              b: layer.material.color.b
+            } : null,
+            state: extractSerializableState(layer.state)
+          });
+        }
+      });
+    }
     
     // Convert to string and save
     const saveString = JSON.stringify(saveData);
     localStorage.setItem(STORAGE_KEY, saveString);
-    console.log('State saved successfully');
+    console.log('State saved successfully:', saveData);
     
     return true;
   } catch (error) {
@@ -104,37 +84,11 @@ export function saveState(state) {
 }
 
 /**
- * Load state from localStorage
- * @returns {Promise<Object|null>} Promise that resolves to the loaded state or null if not found
+ * Extract a serializable state object from a state object
+ * @param {Object} state - The state to extract from
+ * @returns {Object} - Serializable state object
  */
-export function loadState() {
-  return new Promise((resolve) => {
-    try {
-      const saveString = localStorage.getItem(STORAGE_KEY);
-      
-      if (!saveString) {
-        console.log('No saved state found');
-        resolve(null);
-        return;
-      }
-      
-      const loadedState = JSON.parse(saveString);
-      console.log('State loaded successfully');
-      
-      resolve(loadedState);
-    } catch (error) {
-      console.error('Error loading state:', error);
-      resolve(null);
-    }
-  });
-}
-
-/**
- * Get a serializable object representing the state
- * @param {Object} state Application state
- * @returns {Object} Serializable state object
- */
-export function getSerializableState(state) {
+function extractSerializableState(state) {
   return {
     // Shape parameters
     radius: state.radius,
@@ -215,6 +169,41 @@ export function getSerializableState(state) {
 }
 
 /**
+ * Load state from localStorage
+ * @returns {Promise<Object|null>} Promise that resolves to the loaded state or null if not found
+ */
+export function loadState() {
+  return new Promise((resolve) => {
+    try {
+      const saveString = localStorage.getItem(STORAGE_KEY);
+      
+      if (!saveString) {
+        console.log('No saved state found');
+        resolve(null);
+        return;
+      }
+      
+      const loadedState = JSON.parse(saveString);
+      console.log('State loaded successfully:', loadedState);
+      
+      resolve(loadedState);
+    } catch (error) {
+      console.error('Error loading state:', error);
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * Get a serializable object representing the state
+ * @param {Object} state Application state
+ * @returns {Object} Serializable state object
+ */
+export function getSerializableState(state) {
+  return extractSerializableState(state);
+}
+
+/**
  * Apply loaded state to current state object
  * @param {Object} state - The application state to update
  * @param {Object} loadedState - The loaded state data
@@ -223,388 +212,236 @@ export function applyLoadedState(state, loadedState) {
   if (!state || !loadedState) return false;
   
   try {
-    // Apply each property if it exists in the loaded state
-    // Support both function-based and direct property assignment
-    if (loadedState.bpm !== undefined) {
-      if (typeof state.setBpm === 'function') {
-        state.setBpm(loadedState.bpm);
-      } else {
-        state.bpm = loadedState.bpm;
-      }
-    }
+    // Check if this is the new format with layers and globalState
+    const isNewFormat = loadedState.hasOwnProperty('activeState') && 
+                       loadedState.hasOwnProperty('layers');
     
-    if (loadedState.radius !== undefined) {
-      if (typeof state.setRadius === 'function') {
-        state.setRadius(loadedState.radius);
-      } else {
-        state.radius = loadedState.radius;
+    if (isNewFormat) {
+      console.log('Applying new format state with layers and global state');
+      
+      // Apply global state if available
+      if (loadedState.globalState && window._globalState) {
+        applyPropertiesToState(window._globalState, loadedState.globalState);
+        console.log('Applied global state');
       }
-    }
-    
-    if (loadedState.copies !== undefined) {
-      if (typeof state.setCopies === 'function') {
-        state.setCopies(loadedState.copies);
-      } else {
-        state.copies = loadedState.copies;
+      
+      // Apply active state to the current state
+      if (loadedState.activeState) {
+        applyPropertiesToState(state, loadedState.activeState);
+        console.log('Applied active state to current state');
       }
-    }
-    
-    if (loadedState.segments !== undefined) {
-      if (typeof state.setSegments === 'function') {
-        state.setSegments(loadedState.segments);
-      } else {
-        state.segments = loadedState.segments;
+      
+      // If we have layers and a layer manager, recreate the layer structure
+      if (loadedState.layers && loadedState.layers.length > 0 && window._layers) {
+        recreateLayerStructure(loadedState.layers, loadedState.activeLayerId);
+        console.log('Recreated layer structure');
       }
-    }
-    
-    if (loadedState.stepScale !== undefined) {
-      if (typeof state.setStepScale === 'function') {
-        state.setStepScale(loadedState.stepScale);
-      } else {
-        state.stepScale = loadedState.stepScale;
-      }
-    }
-    
-    if (loadedState.angle !== undefined) {
-      if (typeof state.setAngle === 'function') {
-        state.setAngle(loadedState.angle);
-      } else {
-        state.angle = loadedState.angle;
-      }
-    }
-    
-    if (loadedState.modulusValue !== undefined) {
-      if (typeof state.setModulusValue === 'function') {
-        state.setModulusValue(loadedState.modulusValue);
-      } else {
-        state.modulusValue = loadedState.modulusValue;
-      }
-    }
-    
-    if (loadedState.useModulus !== undefined) {
-      if (typeof state.setUseModulus === 'function') {
-        state.setUseModulus(loadedState.useModulus);
-      } else {
-        state.useModulus = loadedState.useModulus;
-      }
-    }
-    
-    // Apply time subdivision parameters
-    if (loadedState.timeSubdivisionValue !== undefined) {
-      if (typeof state.setTimeSubdivisionValue === 'function') {
-        state.setTimeSubdivisionValue(loadedState.timeSubdivisionValue);
-      } else {
-        state.timeSubdivisionValue = loadedState.timeSubdivisionValue;
-      }
-    }
-    
-    if (loadedState.useTimeSubdivision !== undefined) {
-      if (typeof state.setUseTimeSubdivision === 'function') {
-        state.setUseTimeSubdivision(loadedState.useTimeSubdivision);
-      } else {
-        state.useTimeSubdivision = loadedState.useTimeSubdivision;
-      }
-    }
-    
-    // Apply time quantization parameters
-    if (loadedState.quantizationValue !== undefined) {
-      if (typeof state.setQuantizationValue === 'function') {
-        state.setQuantizationValue(loadedState.quantizationValue);
-      } else {
-        state.quantizationValue = loadedState.quantizationValue;
-      }
-    }
-    
-    if (loadedState.useQuantization !== undefined) {
-      if (typeof state.setUseQuantization === 'function') {
-        state.setUseQuantization(loadedState.useQuantization);
-      } else {
-        state.useQuantization = loadedState.useQuantization;
-      }
-    }
-    
-    // Apply scale mod parameters
-    if (loadedState.altScale !== undefined) {
-      if (typeof state.setAltScale === 'function') {
-        state.setAltScale(loadedState.altScale);
-      } else {
-        state.altScale = loadedState.altScale;
-      }
-    }
-    
-    if (loadedState.altStepN !== undefined) {
-      if (typeof state.setAltStepN === 'function') {
-        state.setAltStepN(loadedState.altStepN);
-      } else {
-        state.altStepN = loadedState.altStepN;
-      }
-    }
-    
-    if (loadedState.useAltScale !== undefined) {
-      if (typeof state.setUseAltScale === 'function') {
-        state.setUseAltScale(loadedState.useAltScale);
-      } else {
-        state.useAltScale = loadedState.useAltScale;
-      }
-    }
-    
-    // Apply fractal parameters
-    if (loadedState.fractalValue !== undefined) {
-      if (typeof state.setFractalValue === 'function') {
-        state.setFractalValue(loadedState.fractalValue);
-      } else {
-        state.fractalValue = loadedState.fractalValue;
-      }
-    }
-    
-    if (loadedState.useFractal !== undefined) {
-      if (typeof state.setUseFractal === 'function') {
-        state.setUseFractal(loadedState.useFractal);
-      } else {
-        state.useFractal = loadedState.useFractal;
-      }
-    }
-    
-    // Apply Euclidean rhythm parameters
-    if (loadedState.euclidValue !== undefined) {
-      if (typeof state.setEuclidValue === 'function') {
-        state.setEuclidValue(loadedState.euclidValue);
-      } else {
-        state.euclidValue = loadedState.euclidValue;
-      }
-    }
-    
-    if (loadedState.useEuclid !== undefined) {
-      if (typeof state.setUseEuclid === 'function') {
-        state.setUseEuclid(loadedState.useEuclid);
-      } else {
-        state.useEuclid = loadedState.useEuclid;
-      }
-    }
-    
-    // Apply shape type if specified
-    if (loadedState.shapeType !== undefined) {
-      if (typeof state.setShapeType === 'function') {
-        state.setShapeType(loadedState.shapeType);
-      } else {
-        state.shapeType = loadedState.shapeType;
-      }
-    }
-    
-    if (loadedState.useIntersections !== undefined) {
-      if (typeof state.setUseIntersections === 'function') {
-        state.setUseIntersections(loadedState.useIntersections);
-      } else {
-        state.useIntersections = loadedState.useIntersections;
-      }
-    }
-    
-    if (loadedState.useLerp !== undefined) {
-      if (typeof state.setUseLerp === 'function') {
-        state.setUseLerp(loadedState.useLerp);
-      } else {
-        state.useLerp = loadedState.useLerp;
-      }
-    }
-    
-    if (loadedState.lerpTime !== undefined) {
-      if (typeof state.setLerpTime === 'function') {
-        state.setLerpTime(loadedState.lerpTime);
-      } else {
-        state.lerpTime = loadedState.lerpTime;
-      }
-    }
-    
-    if (loadedState.attack !== undefined) {
-      if (typeof state.setAttack === 'function') {
-        state.setAttack(loadedState.attack);
-      } else {
-        state.attack = loadedState.attack;
-      }
-    }
-    
-    if (loadedState.decay !== undefined) {
-      if (typeof state.setDecay === 'function') {
-        state.setDecay(loadedState.decay);
-      } else {
-        state.decay = loadedState.decay;
-      }
-    }
-    
-    if (loadedState.sustain !== undefined) {
-      if (typeof state.setSustain === 'function') {
-        state.setSustain(loadedState.sustain);
-      } else {
-        state.sustain = loadedState.sustain;
-      }
-    }
-    
-    if (loadedState.release !== undefined) {
-      if (typeof state.setRelease === 'function') {
-        state.setRelease(loadedState.release);
-      } else {
-        state.release = loadedState.release;
-      }
-    }
-    
-    if (loadedState.brightness !== undefined) {
-      if (typeof state.setBrightness === 'function') {
-        state.setBrightness(loadedState.brightness);
-      } else {
-        state.brightness = loadedState.brightness;
-      }
-    }
-    
-    if (loadedState.volume !== undefined) {
-      if (typeof state.setVolume === 'function') {
-        state.setVolume(loadedState.volume);
-      } else {
-        state.volume = loadedState.volume;
-      }
-    }
-    
-    if (loadedState.useEqualTemperament !== undefined) {
-      if (typeof state.setUseEqualTemperament === 'function') {
-        state.setUseEqualTemperament(loadedState.useEqualTemperament);
-      } else {
-        state.useEqualTemperament = loadedState.useEqualTemperament;
-      }
-    }
-    
-    if (loadedState.referenceFrequency !== undefined) {
-      if (typeof state.setReferenceFrequency === 'function') {
-        state.setReferenceFrequency(loadedState.referenceFrequency);
-      } else {
-        state.referenceFrequency = loadedState.referenceFrequency;
-      }
-    }
-  
-    if (loadedState.showAxisFreqLabels !== undefined) {
-      if (typeof state.setShowAxisFreqLabels === 'function') {
-        state.setShowAxisFreqLabels(loadedState.showAxisFreqLabels);
-      } else {
-        state.showAxisFreqLabels = loadedState.showAxisFreqLabels;
-      }
-    }
-    
-    if (loadedState.showPointsFreqLabels !== undefined) {
-      if (typeof state.setShowPointsFreqLabels === 'function') {
-        state.setShowPointsFreqLabels(loadedState.showPointsFreqLabels);
-      } else {
-        state.showPointsFreqLabels = loadedState.showPointsFreqLabels;
-      }
-    }
-    
-    // Apply note parameter settings
-    if (loadedState.durationMode !== undefined) {
-      if (typeof state.setDurationMode === 'function') {
-        state.setDurationMode(loadedState.durationMode);
-      } else {
-        state.durationMode = loadedState.durationMode;
-      }
-    }
-    
-    if (loadedState.durationModulo !== undefined) {
-      if (typeof state.setDurationModulo === 'function') {
-        state.setDurationModulo(loadedState.durationModulo);
-      } else {
-        state.durationModulo = loadedState.durationModulo;
-      }
-    }
-    
-    if (loadedState.minDuration !== undefined) {
-      if (typeof state.setMinDuration === 'function') {
-        state.setMinDuration(loadedState.minDuration);
-      } else {
-        state.minDuration = loadedState.minDuration;
-      }
-    }
-    
-    if (loadedState.maxDuration !== undefined) {
-      if (typeof state.setMaxDuration === 'function') {
-        state.setMaxDuration(loadedState.maxDuration);
-      } else {
-        state.maxDuration = loadedState.maxDuration;
-      }
-    }
-    
-    if (loadedState.durationPhase !== undefined) {
-      if (typeof state.setDurationPhase === 'function') {
-        state.setDurationPhase(loadedState.durationPhase);
-      } else {
-        state.durationPhase = loadedState.durationPhase;
-      }
-    }
-    
-    if (loadedState.velocityMode !== undefined) {
-      if (typeof state.setVelocityMode === 'function') {
-        state.setVelocityMode(loadedState.velocityMode);
-      } else {
-        state.velocityMode = loadedState.velocityMode;
-      }
-    }
-    
-    if (loadedState.velocityModulo !== undefined) {
-      if (typeof state.setVelocityModulo === 'function') {
-        state.setVelocityModulo(loadedState.velocityModulo);
-      } else {
-        state.velocityModulo = loadedState.velocityModulo;
-      }
-    }
-    
-    if (loadedState.minVelocity !== undefined) {
-      if (typeof state.setMinVelocity === 'function') {
-        state.setMinVelocity(loadedState.minVelocity);
-      } else {
-        state.minVelocity = loadedState.minVelocity;
-      }
-    }
-    
-    if (loadedState.maxVelocity !== undefined) {
-      if (typeof state.setMaxVelocity === 'function') {
-        state.setMaxVelocity(loadedState.maxVelocity);
-      } else {
-        state.maxVelocity = loadedState.maxVelocity;
-      }
-    }
-    
-    if (loadedState.velocityPhase !== undefined) {
-      if (typeof state.setVelocityPhase === 'function') {
-        state.setVelocityPhase(loadedState.velocityPhase);
-      } else {
-        state.velocityPhase = loadedState.velocityPhase;
-      }
-    }
-    
-    // Star polygon parameters
-    if (loadedState.starSkip !== undefined) {
-      if (typeof state.setStarSkip === 'function') {
-        state.setStarSkip(loadedState.starSkip);
-      } else {
-        state.starSkip = loadedState.starSkip;
-      }
-    }
-    
-    if (loadedState.useStars !== undefined) {
-      if (typeof state.setUseStars === 'function') {
-        state.setUseStars(loadedState.useStars);
-      } else {
-        state.useStars = loadedState.useStars;
-      }
-    }
-    
-    if (loadedState.useCuts !== undefined) {
-      if (typeof state.setUseCuts === 'function') {
-        state.setUseCuts(loadedState.useCuts);
-      } else {
-        state.useCuts = loadedState.useCuts;
-      }
+    } else {
+      // Legacy format - directly apply each property
+      console.log('Applying legacy format state (single state object)');
+      applyPropertiesToState(state, loadedState);
     }
     
     console.log('State applied successfully');
     return true;
   } catch (error) {
     console.error('Error applying state:', error);
+    return false;
+  }
+}
+
+/**
+ * Apply properties from one state object to another
+ * This is a helper function for the new multi-layer state saving system
+ * @param {Object} targetState - The state object to update
+ * @param {Object} sourceState - The state object to copy from
+ * @returns {boolean} - True if successful
+ */
+export function applyPropertiesToState(targetState, sourceState) {
+  if (!targetState || !sourceState) return false;
+  
+  // Apply each property if it exists in the source state
+  // Support both function-based and direct property assignment
+  const properties = [
+    // Shape parameters
+    { name: 'radius', setter: 'setRadius' },
+    { name: 'copies', setter: 'setCopies' },
+    { name: 'segments', setter: 'setSegments' },
+    { name: 'stepScale', setter: 'setStepScale' },
+    { name: 'angle', setter: 'setAngle' },
+    { name: 'shapeType', setter: 'setShapeType' },
+    
+    // Modulus parameters
+    { name: 'modulusValue', setter: 'setModulusValue' },
+    { name: 'useModulus', setter: 'setUseModulus' },
+    
+    // Time subdivision parameters
+    { name: 'timeSubdivisionValue', setter: 'setTimeSubdivisionValue' },
+    { name: 'useTimeSubdivision', setter: 'setUseTimeSubdivision' },
+    
+    // Quantization parameters
+    { name: 'quantizationValue', setter: 'setQuantizationValue' },
+    { name: 'useQuantization', setter: 'setUseQuantization' },
+    
+    // Scale mod parameters
+    { name: 'altScale', setter: 'setAltScale' },
+    { name: 'altStepN', setter: 'setAltStepN' },
+    { name: 'useAltScale', setter: 'setUseAltScale' },
+    
+    // Fractal parameters
+    { name: 'fractalValue', setter: 'setFractalValue' },
+    { name: 'useFractal', setter: 'setUseFractal' },
+    
+    // Euclidean rhythm parameters
+    { name: 'euclidValue', setter: 'setEuclidValue' },
+    { name: 'useEuclid', setter: 'setUseEuclid' },
+    
+    // Star parameters
+    { name: 'starSkip', setter: 'setStarSkip' },
+    { name: 'useStars', setter: 'setUseStars' },
+    { name: 'useCuts', setter: 'setUseCuts' },
+    
+    // Time parameters
+    { name: 'bpm', setter: 'setBpm' },
+    
+    // Intersection parameters
+    { name: 'useIntersections', setter: 'setUseIntersections' },
+    
+    // Animation parameters
+    { name: 'useLerp', setter: 'setUseLerp' },
+    { name: 'lerpTime', setter: 'setLerpTime' },
+    
+    // Synth parameters
+    { name: 'attack', setter: 'setAttack' },
+    { name: 'decay', setter: 'setDecay' },
+    { name: 'sustain', setter: 'setSustain' },
+    { name: 'release', setter: 'setRelease' },
+    { name: 'brightness', setter: 'setBrightness' },
+    { name: 'volume', setter: 'setVolume' },
+    
+    // Equal temperament parameters
+    { name: 'useEqualTemperament', setter: 'setUseEqualTemperament' },
+    { name: 'referenceFrequency', setter: 'setReferenceFrequency' },
+    
+    // Display parameters
+    { name: 'showAxisFreqLabels', setter: 'setShowAxisFreqLabels' },
+    { name: 'showPointsFreqLabels', setter: 'setShowPointsFreqLabels' },
+    
+    // Note parameter settings
+    { name: 'durationMode', setter: 'setDurationMode' },
+    { name: 'durationModulo', setter: 'setDurationModulo' },
+    { name: 'minDuration', setter: 'setMinDuration' },
+    { name: 'maxDuration', setter: 'setMaxDuration' },
+    { name: 'durationPhase', setter: 'setDurationPhase' },
+    
+    { name: 'velocityMode', setter: 'setVelocityMode' },
+    { name: 'velocityModulo', setter: 'setVelocityModulo' },
+    { name: 'minVelocity', setter: 'setMinVelocity' },
+    { name: 'maxVelocity', setter: 'setMaxVelocity' },
+    { name: 'velocityPhase', setter: 'setVelocityPhase' },
+    
+    // Additional global state properties
+    { name: 'lastAngle', setter: 'setLastAngle' }
+  ];
+  
+  // Apply each property
+  for (const prop of properties) {
+    if (sourceState[prop.name] !== undefined) {
+      if (typeof targetState[prop.setter] === 'function') {
+        targetState[prop.setter](sourceState[prop.name]);
+      } else {
+        targetState[prop.name] = sourceState[prop.name];
+      }
+    }
+  }
+  
+  return true;
+}
+
+/**
+ * Recreate the layer structure from saved data
+ * This is a helper function for the new multi-layer state saving system
+ * @param {Array} layersData - Array of layer data objects
+ * @param {number} activeLayerId - ID of the active layer
+ * @returns {boolean} - True if successful
+ */
+export function recreateLayerStructure(layersData, activeLayerId) {
+  // Get layer manager
+  const layerManager = window._layers;
+  if (!layerManager) {
+    console.error('Layer manager not found, cannot recreate layers');
+    return false;
+  }
+  
+  try {
+    // First remove any existing layers except the first one
+    while (layerManager.layers.length > 1) {
+      const lastIndex = layerManager.layers.length - 1;
+      layerManager.removeLayer(lastIndex);
+    }
+    
+    // Now recreate layers from saved data
+    layersData.forEach((layerData, index) => {
+      if (index === 0 && layerManager.layers.length > 0) {
+        // Update first layer instead of creating it
+        const firstLayer = layerManager.layers[0];
+        
+        // Apply saved state to the first layer
+        if (firstLayer && firstLayer.state && layerData.state) {
+          applyPropertiesToState(firstLayer.state, layerData.state);
+        }
+        
+        // Apply color if available
+        if (firstLayer && layerData.color && firstLayer.setColor && window.THREE) {
+          const { r, g, b } = layerData.color;
+          firstLayer.setColor(new window.THREE.Color(r, g, b));
+        }
+        
+        // Set visibility
+        if (firstLayer && firstLayer.setVisible) {
+          firstLayer.setVisible(layerData.visible !== false);
+        }
+      } else {
+        // Create a new layer for layers after the first one
+        const layer = layerManager.createLayer({
+          visible: layerData.visible !== false, // Default to visible if not specified
+          radius: layerData.state.radius || 100,
+          segments: layerData.state.segments || 3,
+          copies: layerData.state.copies || 1
+        });
+        
+        // Apply saved state to the new layer
+        if (layer && layer.state && layerData.state) {
+          applyPropertiesToState(layer.state, layerData.state);
+        }
+        
+        // Apply color if available
+        if (layer && layerData.color && layer.setColor && window.THREE) {
+          const { r, g, b } = layerData.color;
+          layer.setColor(new window.THREE.Color(r, g, b));
+        }
+        
+        // Set visibility
+        if (layer && layer.setVisible) {
+          layer.setVisible(layerData.visible !== false);
+        }
+      }
+    });
+    
+    // Set active layer
+    if (activeLayerId !== undefined && layerManager.layers.length > 0) {
+      // Find the layer with the matching ID or use the first layer
+      const activeLayerIndex = layerManager.layers.findIndex(l => l.id === activeLayerId);
+      if (activeLayerIndex >= 0) {
+        layerManager.setActiveLayer(activeLayerIndex);
+      } else {
+        layerManager.setActiveLayer(0);
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error recreating layer structure:', error);
     return false;
   }
 }
@@ -680,67 +517,57 @@ export function setupAutoSave(state, interval = 5000) {
  */
 export function exportStateToFile(state) {
   try {
-    // Extract serializable properties as in saveState
+    // Use the same format as saveState for consistency
+    const layerManager = window._layers;
+    const globalState = window._globalState;
+    
+    // Create export data with the same structure as saveState
     const exportData = {
-      bpm: state.bpm,
-      radius: state.radius,
-      copies: state.copies,
-      segments: state.segments,
-      stepScale: state.stepScale,
-      angle: state.angle,
-      shapeType: state.shapeType,
-      modulusValue: state.modulusValue,
-      useModulus: state.useModulus,
+      // Store active state
+      activeState: extractSerializableState(state),
       
-      timeSubdivisionValue: state.timeSubdivisionValue,
-      useTimeSubdivision: state.useTimeSubdivision,
+      // Store global state if available
+      globalState: globalState ? {
+        bpm: globalState.bpm,
+        attack: globalState.attack,
+        decay: globalState.decay,
+        sustain: globalState.sustain,
+        release: globalState.release,
+        brightness: globalState.brightness,
+        volume: globalState.volume,
+        lastAngle: globalState.lastAngle,
+        useTimeSubdivision: globalState.useTimeSubdivision,
+        timeSubdivisionValue: globalState.timeSubdivisionValue,
+        useQuantization: globalState.useQuantization,
+        quantizationValue: globalState.quantizationValue,
+        useEqualTemperament: globalState.useEqualTemperament,
+        referenceFrequency: globalState.referenceFrequency
+      } : null,
       
-      quantizationValue: state.quantizationValue,
-      useQuantization: state.useQuantization,
-      
-      altScale: state.altScale,
-      altStepN: state.altStepN,
-      useAltScale: state.useAltScale,
-      
-      fractalValue: state.fractalValue,
-      useFractal: state.useFractal,
-      
-      euclidValue: state.euclidValue,
-      useEuclid: state.useEuclid,
-      
-      useIntersections: state.useIntersections,
-      useLerp: state.useLerp,
-      lerpTime: state.lerpTime,
-      
-      attack: state.attack,
-      decay: state.decay,
-      sustain: state.sustain,
-      release: state.release,
-      brightness: state.brightness,
-      volume: state.volume,
-      useEqualTemperament: state.useEqualTemperament,
-      referenceFrequency: state.referenceFrequency,
-      showAxisFreqLabels: state.showAxisFreqLabels,
-      showPointsFreqLabels: state.showPointsFreqLabels,
-      
-      // Include note parameter settings
-      durationMode: state.durationMode,
-      durationModulo: state.durationModulo,
-      minDuration: state.minDuration, 
-      maxDuration: state.maxDuration,
-      durationPhase: state.durationPhase,
-      
-      velocityMode: state.velocityMode,
-      velocityModulo: state.velocityModulo,
-      minVelocity: state.minVelocity,
-      maxVelocity: state.maxVelocity,
-      velocityPhase: state.velocityPhase,
-      
-      // Star polygon parameters
-      starSkip: state.starSkip,
-      useStars: state.useStars,
-      useCuts: state.useCuts
+      // Store all layers if available
+      layers: []
     };
+    
+    // Add active layer ID if available
+    if (layerManager) {
+      exportData.activeLayerId = layerManager.activeLayerId;
+      
+      // Add layer data for all layers
+      layerManager.layers.forEach(layer => {
+        if (layer && layer.state) {
+          exportData.layers.push({
+            id: layer.id,
+            visible: layer.visible,
+            color: layer.material?.color ? {
+              r: layer.material.color.r,
+              g: layer.material.color.g,
+              b: layer.material.color.b
+            } : null,
+            state: extractSerializableState(layer.state)
+          });
+        }
+      });
+    }
     
     // Add timestamp
     exportData.exportDate = new Date().toISOString();
