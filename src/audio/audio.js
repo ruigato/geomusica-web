@@ -1,4 +1,4 @@
-// src/audio/audio.js - Updated to handle note objects
+// src/audio/audio.js - Updated to handle note objects with improved parameter management
 
 import { Csound } from '@csound/browser';
 import { quantizeToEqualTemperament, getNoteName } from './frequencyUtils.js';
@@ -20,6 +20,215 @@ export const InstrumentType = {
 
 // Default instrument type
 let activeInstrument = InstrumentType.FM_BELL;
+
+/**
+ * Parameter manager for audio system to handle synchronization and validation
+ */
+class AudioParameterManager {
+  constructor() {
+    this.pendingParams = null;
+    this.isApplying = false;
+    this.defaultParams = {
+      attack: 0.01,
+      decay: 0.3,
+      sustain: 0.5,
+      release: 1.0,
+      brightness: 0.0,
+      volume: 0.8
+    };
+  }
+
+  /**
+   * Set pending parameters with validation
+   */
+  setPendingParams(params) {
+    if (!params || typeof params !== 'object') {
+      console.warn('[AUDIO] Invalid parameters object provided');
+      return false;
+    }
+
+    // Validate and clamp parameter values
+    const validatedParams = {};
+    
+    if (params.attack !== undefined) {
+      validatedParams.attack = this.validateRange(params.attack, 0.001, 10.0, 'attack');
+    }
+    if (params.decay !== undefined) {
+      validatedParams.decay = this.validateRange(params.decay, 0.001, 10.0, 'decay');
+    }
+    if (params.sustain !== undefined) {
+      validatedParams.sustain = this.validateRange(params.sustain, 0.0, 1.0, 'sustain');
+    }
+    if (params.release !== undefined) {
+      validatedParams.release = this.validateRange(params.release, 0.001, 10.0, 'release');
+    }
+    if (params.brightness !== undefined) {
+      validatedParams.brightness = this.validateRange(params.brightness, 0.0, 1.0, 'brightness');
+    }
+    if (params.volume !== undefined) {
+      validatedParams.volume = this.validateRange(params.volume, 0.0, 1.0, 'volume');
+    }
+
+    this.pendingParams = validatedParams;
+    return true;
+  }
+
+  /**
+   * Validate and clamp parameter to safe range
+   */
+  validateRange(value, min, max, paramName) {
+    if (isNaN(value) || value === null || value === undefined) {
+      console.warn(`[AUDIO] Invalid ${paramName} value: ${value}, using default`);
+      return this.defaultParams[paramName];
+    }
+    
+    const clamped = Math.max(min, Math.min(max, value));
+    if (clamped !== value) {
+      console.warn(`[AUDIO] ${paramName} value ${value} clamped to ${clamped} (range: ${min}-${max})`);
+    }
+    
+    return clamped;
+  }
+
+  /**
+   * Apply pending parameters with synchronization
+   */
+  async applyPendingParams() {
+    if (!this.pendingParams || this.isApplying) {
+      return false;
+    }
+
+    if (!csoundInstance || !csoundStarted) {
+      console.warn('[AUDIO] Cannot apply parameters - Csound not ready');
+      return false;
+    }
+
+    this.isApplying = true;
+    
+    try {
+      const params = this.pendingParams;
+      
+      // Apply all parameters atomically
+      if (params.attack !== undefined) {
+        await csoundInstance.setControlChannel("attack", params.attack);
+      }
+      if (params.decay !== undefined) {
+        await csoundInstance.setControlChannel("decay", params.decay);
+      }
+      if (params.sustain !== undefined) {
+        await csoundInstance.setControlChannel("sustain", params.sustain);
+      }
+      if (params.release !== undefined) {
+        await csoundInstance.setControlChannel("release", params.release);
+      }
+      if (params.brightness !== undefined) {
+        await csoundInstance.setControlChannel("brightness", params.brightness);
+      }
+      if (params.volume !== undefined) {
+        await csoundInstance.setControlChannel("masterVolume", params.volume);
+      }
+
+      console.log('[AUDIO] Applied pending parameters:', params);
+      this.pendingParams = null;
+      return true;
+    } catch (error) {
+      console.error('[AUDIO] Error applying pending parameters:', error);
+      return false;
+    } finally {
+      this.isApplying = false;
+    }
+  }
+
+  /**
+   * Check if there are pending parameters
+   */
+  hasPendingParams() {
+    return this.pendingParams !== null;
+  }
+
+  /**
+   * Clear pending parameters
+   */
+  clearPendingParams() {
+    this.pendingParams = null;
+  }
+}
+
+// Create global parameter manager instance
+const parameterManager = new AudioParameterManager();
+
+/**
+ * Validate note parameters with comprehensive checks
+ */
+function validateNoteParameters(note) {
+  if (!note || typeof note !== 'object') {
+    console.error('[AUDIO] Invalid note object - not an object:', note);
+    return {
+      frequency: 440,
+      duration: 0.3,
+      velocity: 0.7,
+      pan: 0.0,
+      noteName: 'A4'
+    };
+  }
+
+  const validated = {};
+
+  // Validate frequency
+  if (isNaN(note.frequency) || note.frequency === undefined || note.frequency === null) {
+    console.warn('[AUDIO] Invalid frequency, using default 440Hz:', note.frequency);
+    validated.frequency = 440;
+    validated.noteName = note.noteName || 'A4';
+  } else if (note.frequency <= 0) {
+    console.warn('[AUDIO] Negative or zero frequency, using default 440Hz:', note.frequency);
+    validated.frequency = 440;
+    validated.noteName = note.noteName || 'A4';
+  } else if (note.frequency < 10 || note.frequency > 22050) {
+    // Extended range check - allow subsonic and ultrasonic but warn
+    const clamped = Math.max(20, Math.min(20000, note.frequency));
+    console.warn(`[AUDIO] Frequency ${note.frequency}Hz outside audible range, clamped to ${clamped}Hz`);
+    validated.frequency = clamped;
+    validated.noteName = note.noteName || `${clamped}Hz`;
+  } else {
+    validated.frequency = note.frequency;
+    validated.noteName = note.noteName || `${note.frequency}Hz`;
+  }
+
+  // Validate duration
+  if (isNaN(note.duration) || note.duration === undefined || note.duration === null || note.duration <= 0) {
+    console.warn('[AUDIO] Invalid duration, using default 0.3s:', note.duration);
+    validated.duration = 0.3;
+  } else if (note.duration > 30) {
+    // Prevent extremely long notes that could cause memory issues
+    console.warn(`[AUDIO] Duration ${note.duration}s too long, clamped to 30s`);
+    validated.duration = 30;
+  } else {
+    validated.duration = note.duration;
+  }
+
+  // Validate velocity/amplitude
+  if (isNaN(note.velocity) || note.velocity === undefined || note.velocity === null) {
+    console.warn('[AUDIO] Invalid velocity, using default 0.7:', note.velocity);
+    validated.velocity = 0.7;
+  } else {
+    validated.velocity = Math.max(0, Math.min(1, note.velocity));
+    if (validated.velocity !== note.velocity) {
+      console.warn(`[AUDIO] Velocity ${note.velocity} clamped to ${validated.velocity} (range: 0-1)`);
+    }
+  }
+
+  // Validate pan
+  if (isNaN(note.pan) || note.pan === undefined || note.pan === null) {
+    validated.pan = 0.0;
+  } else {
+    validated.pan = Math.max(-1, Math.min(1, note.pan));
+    if (validated.pan !== note.pan) {
+      console.warn(`[AUDIO] Pan ${note.pan} clamped to ${validated.pan} (range: -1 to 1)`);
+    }
+  }
+
+  return validated;
+}
 
 /**
  * Get the Csound instance
@@ -161,8 +370,8 @@ export async function setupAudio() {
             await csoundInstance.setControlChannel("masterVolume", 0.8);
             
             // Check if we have any pending parameters to apply
-            if (window.pendingSynthParams) {
-              applySynthParameters(window.pendingSynthParams).then(() => {
+            if (parameterManager.hasPendingParams()) {
+              parameterManager.applyPendingParams().then(() => {
                 console.log("Applied pending synth parameters after initialization");
               });
             }
@@ -199,28 +408,16 @@ export async function setupAudio() {
  */
 export async function applySynthParameters(params) {
   if (!csoundInstance || !csoundStarted) {
-    console.warn("Csound not initialized yet, will apply parameters on first note");
+    console.warn("Csound not initialized yet, will apply parameters when ready");
     
-    // Store params to apply when audio starts
-    window.pendingSynthParams = params;
+    // Store params to apply when audio starts using parameter manager
+    parameterManager.setPendingParams(params);
     return false;
   }
   
-  try {
-    // Apply all parameters
-    await csoundInstance.setControlChannel("attack", params.attack || 0.01);
-    await csoundInstance.setControlChannel("decay", params.decay || 0.3);
-    await csoundInstance.setControlChannel("sustain", params.sustain || 0.5);
-    await csoundInstance.setControlChannel("release", params.release || 1.0);
-    await csoundInstance.setControlChannel("brightness", params.brightness || 0.0);
-    await csoundInstance.setControlChannel("masterVolume", params.volume || 0.8);
-    
-    console.log("All synth parameters applied successfully:", params);
-    return true;
-  } catch (error) {
-    console.error("Error applying synth parameters:", error);
-    return false;
-  }
+  // Use parameter manager for validation and application
+  parameterManager.setPendingParams(params);
+  return await parameterManager.applyPendingParams();
 }
 
 /**
@@ -228,48 +425,22 @@ export async function applySynthParameters(params) {
  * @param {Object} note - Note object with all parameters
  * @returns {boolean} True if successful
  */
-// Improved playNote function in audio.js
 export function playNote(note) {
   if (!csoundInstance || !csoundStarted) return false;
   
   try {
-    // Log the full note object
+    // Use comprehensive parameter validation
+    const validatedNote = validateNoteParameters(note);
     
-    // Extract parameters with proper defaults
-    const frequency = note && note.frequency ? note.frequency : 440;
-    const amplitude = note && note.velocity ? note.velocity : 0.7;
-    const duration = note && note.duration ? note.duration : 0.3;
-    const pan = note && note.pan ? note.pan : 0.0;
-    
-  
     // Apply any pending parameters before playing the note
-    if (window.pendingSynthParams) {
-     
-      // Apply parameters directly (don't wait for the Promise)
-      if (window.pendingSynthParams.attack !== undefined) 
-        csoundInstance.setControlChannel("attack", window.pendingSynthParams.attack);
-      if (window.pendingSynthParams.decay !== undefined) 
-        csoundInstance.setControlChannel("decay", window.pendingSynthParams.decay);
-      if (window.pendingSynthParams.sustain !== undefined) 
-        csoundInstance.setControlChannel("sustain", window.pendingSynthParams.sustain);
-      if (window.pendingSynthParams.release !== undefined) 
-        csoundInstance.setControlChannel("release", window.pendingSynthParams.release);
-      if (window.pendingSynthParams.brightness !== undefined) 
-        csoundInstance.setControlChannel("brightness", window.pendingSynthParams.brightness);
-      if (window.pendingSynthParams.volume !== undefined) 
-        csoundInstance.setControlChannel("masterVolume", window.pendingSynthParams.volume);
-      
-      // Clear pending parameters
-      window.pendingSynthParams = null;
+    if (parameterManager.hasPendingParams()) {
+      parameterManager.applyPendingParams().catch(error => {
+        console.error('[AUDIO] Error applying pending parameters:', error);
+      });
     }
     
-    // Limit duration to reasonable values
-    const safeDuration = Math.max(0.05, Math.min(10, duration));
-    
-
-    
     // Build Csound score event with instrument 1 (FM Bell)
-    const scoreEvent = `i 1 0 ${safeDuration} ${frequency} ${amplitude} ${safeDuration} ${pan}`;
+    const scoreEvent = `i 1 0 ${validatedNote.duration} ${validatedNote.frequency} ${validatedNote.velocity} ${validatedNote.duration} ${validatedNote.pan}`;
     
     // Play the note
     csoundInstance.readScore(scoreEvent);
@@ -285,15 +456,14 @@ export function playNote(note) {
 export async function setMasterVolume(volume) {
   if (!csoundInstance || !csoundStarted) {
     // Store as pending parameter if Csound not ready
-    if (!window.pendingSynthParams) window.pendingSynthParams = {};
-    window.pendingSynthParams.volume = volume;
+    parameterManager.setPendingParams({ volume });
     return false;
   }
   
-  const safeVolume = Math.max(0, Math.min(1, volume));
+  const validatedVolume = parameterManager.validateRange(volume, 0.0, 1.0, 'volume');
   
   try {
-    await csoundInstance.setControlChannel("masterVolume", safeVolume);
+    await csoundInstance.setControlChannel("masterVolume", validatedVolume);
     return true;
   } catch (error) {
     console.error("Error setting master volume:", error);
@@ -310,54 +480,13 @@ export async function triggerAudio(note) {
   if (!csoundInstance || !csoundStarted) return note;
   
   try {
-    // More thorough validation of the note object
-    if (!note || typeof note !== 'object') {
-      console.error("Invalid note object received (not an object):", note);
-      return note;
-    }
+    // Use comprehensive validation
+    const validatedNote = validateNoteParameters(note);
     
-    // Check for NaN frequency which is a common issue
-    if (isNaN(note.frequency) || note.frequency === undefined || note.frequency <= 0) {
-      console.error("Invalid frequency in note object:", note);
-      
-      // Create a safe fallback note with default frequency
-      const safeNote = {
-        ...note,
-        frequency: 440, // Default to A4
-        noteName: note.noteName || "A4"
-      };
-      
-      return playNote(safeNote);
-    }
+    // Play the validated note
+    playNote(validatedNote);
     
-    // Additional frequency sanity check - limit to audible range
-    if (note.frequency < 20 || note.frequency > 20000) {
-      console.warn(`Frequency ${note.frequency}Hz outside normal audible range, clamping to valid range`);
-      const clampedNote = {
-        ...note,
-        frequency: Math.max(20, Math.min(20000, note.frequency))
-      };
-      return playNote(clampedNote);
-    }
-    
-    // Check if we have a Csound instance object instead of a proper note
-    if (note && note.name && note.name.includes("Csound")) {
-      console.error("Received Csound instance as note object - this is a bug");
-      return playNote({
-        frequency: 440,
-        duration: 0.3,
-        velocity: 0.7,
-        pan: 0
-      });
-    }
-    
-    // Create a fresh copy to avoid reference issues
-    const noteCopy = { ...note };
-    
-    // Play the note
-    playNote(noteCopy);
-    
-    return noteCopy;
+    return validatedNote;
   } catch (error) {
     console.error("Error in triggerAudio:", error);
     return note;
@@ -368,42 +497,27 @@ export async function triggerAudio(note) {
 export async function setEnvelope(attack, decay, sustain, release) {
   if (!csoundInstance || !csoundStarted) {
     // Store as pending parameters if Csound not ready
-    if (!window.pendingSynthParams) window.pendingSynthParams = {};
-    window.pendingSynthParams.attack = attack;
-    window.pendingSynthParams.decay = decay;
-    window.pendingSynthParams.sustain = sustain;
-    window.pendingSynthParams.release = release;
+    parameterManager.setPendingParams({ attack, decay, sustain, release });
     return false;
   }
   
-  try {
-    await csoundInstance.setControlChannel("attack", attack);
-    await csoundInstance.setControlChannel("decay", decay);
-    await csoundInstance.setControlChannel("sustain", sustain);
-    await csoundInstance.setControlChannel("release", release);
-    return true;
-  } catch (error) {
-    console.error("Error setting envelope:", error);
-    return false;
-  }
+  // Use parameter manager for validation
+  const params = { attack, decay, sustain, release };
+  parameterManager.setPendingParams(params);
+  return await parameterManager.applyPendingParams();
 }
 
 // Set brightness parameter
 export async function setBrightness(brightness) {
   if (!csoundInstance || !csoundStarted) {
     // Store as pending parameter if Csound not ready
-    if (!window.pendingSynthParams) window.pendingSynthParams = {};
-    window.pendingSynthParams.brightness = brightness;
+    parameterManager.setPendingParams({ brightness });
     return false;
   }
   
-  try {
-    await csoundInstance.setControlChannel("brightness", brightness);
-    return true;
-  } catch (error) {
-    console.error("Error setting brightness:", error);
-    return false;
-  }
+  // Use parameter manager for validation
+  parameterManager.setPendingParams({ brightness });
+  return await parameterManager.applyPendingParams();
 }
 
 // Start Csound time updates - now just a stub
@@ -421,6 +535,9 @@ export function stopCsoundTimeUpdates() {
 export async function cleanupAudio() {
   // Stop time updates first
   stopCsoundTimeUpdates();
+  
+  // Clear any pending parameters
+  parameterManager.clearPendingParams();
   
   if (csoundInstance) {
     try {
