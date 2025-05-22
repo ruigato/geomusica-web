@@ -20,10 +20,6 @@ export class GlobalStateManager {
     this.brightness = 1.0;
     this.volume = 0.8;
     
-    // Time subdivision settings
-    this.useTimeSubdivision = DEFAULT_VALUES.USE_TIME_SUBDIVISION;
-    this.timeSubdivisionValue = DEFAULT_VALUES.TIME_SUBDIVISION_VALUE;
-    
     // Quantization settings
     this.useQuantization = DEFAULT_VALUES.USE_QUANTIZATION;
     this.quantizationValue = DEFAULT_VALUES.QUANTIZATION_VALUE;
@@ -41,8 +37,6 @@ export class GlobalStateManager {
       release: false,
       brightness: false,
       volume: false,
-      timeSubdivision: false,
-      useTimeSubdivision: false,
       quantization: false,
       useQuantization: false,
       useEqualTemperament: false,
@@ -63,31 +57,7 @@ export class GlobalStateManager {
     }
   }
   
-  /**
-   * Set time subdivision value
-   * @param {number} value New time subdivision value
-   */
-  setTimeSubdivisionValue(value) {
-    const newValue = Number(value);
-    if (this.timeSubdivisionValue !== newValue) {
-      this.timeSubdivisionValue = newValue;
-      this.parameterChanges.timeSubdivision = true;
-      console.log(`[GLOBAL] Time subdivision changed to ${newValue}`);
-    }
-  }
   
-  /**
-   * Toggle time subdivision
-   * @param {boolean} value Enable/disable time subdivision
-   */
-  setUseTimeSubdivision(value) {
-    const newValue = Boolean(value);
-    if (this.useTimeSubdivision !== newValue) {
-      this.useTimeSubdivision = newValue;
-      this.parameterChanges.useTimeSubdivision = true;
-      console.log(`[GLOBAL] Time subdivision ${newValue ? 'enabled' : 'disabled'}`);
-    }
-  }
   
   /**
    * Set quantization value

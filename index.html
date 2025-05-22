@@ -160,7 +160,7 @@
       </div>
     </div>
 
-    <!-- TIME SUBDIVISION section -->
+    <!-- TIME SUBDIVISION section (Layer-specific) -->
     <section>
       <h2 class="section-title">TIME SUBDIVISION</h2>
       <div class="section-content">
@@ -169,11 +169,12 @@
           <div id="timeSubdivisionRadioGroup" class="radio-group">
             <!-- Radio buttons will be added by JavaScript -->
           </div>
-          <div class="help-text">Controls rotation speed: values more than 1x speed up time, values less than 1x slow it down</div>
+          <div class="help-text">Controls rotation speed relative to global BPM: 1/8x to 8x</div>
         </div>
         <div class="control">
           <label for="useTimeSubdivisionCheckbox">Use Speed Multiplier:</label>
           <input type="checkbox" id="useTimeSubdivisionCheckbox">
+          <div class="help-text">When enabled, this layer rotates at a different speed than global BPM</div>
         </div>
       </div>
     </section>
@@ -332,7 +333,6 @@
       </div>
     </section>
     
-    <!-- Added new NOTE PARAMETERS section -->
     <section>
       <h2 class="section-title">INTERSECTIONS</h2>
       <div class="section-content">
@@ -344,7 +344,6 @@
       </div>
     </section>
 
-    <!-- Moved NOTE PARAMETERS section before SYNTH -->
     <section>
       <h2 class="section-title">NOTE PARAMETERS</h2>
       <div class="section-content">
@@ -452,7 +451,6 @@
           </div>
         </div>
 
-        <!-- Add these controls after the min/max velocity controls in the Velocity section -->
         <div class="control">
           <label for="velocityPhaseRange">Velocity Phase:</label>
           <div class="slider-container">
@@ -465,7 +463,6 @@
       </div>
     </section>
     
-    <!-- New SYNTH section with ADSR controls -->
     <section>
       <h2 class="section-title">SYNTH</h2>
       <div class="section-content">
@@ -569,4 +566,4 @@
   
   <script type="module" src="/src/main.js"></script>
 </body>
-</html>
+</html> 

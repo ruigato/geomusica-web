@@ -160,6 +160,67 @@ export function setupLayersUI(layerManager) {
 }
 
 /**
+ * Calculate the relative luminance of a color using the WCAG formula
+ * @param {THREE.Color} color Three.js color object
+ * @returns {number} Relative luminance value between 0 and 1
+ */
+function calculateLuminance(color) {
+  // Validate input
+  if (!color || typeof color.r !== 'number' || typeof color.g !== 'number' || typeof color.b !== 'number') {
+    console.warn('Invalid color object provided to calculateLuminance, using fallback');
+    return 0; // Default to dark (white text)
+  }
+  
+  // Ensure values are in valid range [0, 1]
+  const r = Math.max(0, Math.min(1, color.r || 0));
+  const g = Math.max(0, Math.min(1, color.g || 0));
+  const b = Math.max(0, Math.min(1, color.b || 0));
+  
+  // Apply gamma correction for accurate luminance calculation
+  const sRGBToLinear = (c) => {
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  
+  const rLinear = sRGBToLinear(r);
+  const gLinear = sRGBToLinear(g);
+  const bLinear = sRGBToLinear(b);
+  
+  // Calculate relative luminance using WCAG formula
+  return 0.2126 * rLinear + 0.7152 * gLinear + 0.0722 * bLinear;
+}
+
+/**
+ * Determine if text should be dark or light based on background color
+ * @param {THREE.Color} backgroundColor Three.js color object
+ * @returns {string} '#000000' for dark text or '#ffffff' for light text
+ */
+function getContrastColor(backgroundColor) {
+  const luminance = calculateLuminance(backgroundColor);
+  // Use WCAG recommended threshold of ~0.18 for better contrast
+  return luminance > 0.18 ? '#000000' : '#ffffff';
+}
+
+/**
+ * Safely convert Three.js color to RGB string with validation
+ * @param {THREE.Color} color Three.js color object
+ * @returns {string} RGB color string
+ */
+function colorToRGB(color) {
+  // Validate input
+  if (!color || typeof color.r !== 'number' || typeof color.g !== 'number' || typeof color.b !== 'number') {
+    console.warn('Invalid color object provided to colorToRGB, using fallback red');
+    return 'rgb(255, 0, 0)'; // Fallback to red
+  }
+  
+  // Ensure values are in valid range and convert to 0-255
+  const r = Math.round(Math.max(0, Math.min(1, color.r || 0)) * 255);
+  const g = Math.round(Math.max(0, Math.min(1, color.g || 0)) * 255);
+  const b = Math.round(Math.max(0, Math.min(1, color.b || 0)) * 255);
+  
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/**
  * Update the layer selection buttons based on current layers
  * @param {LayerManager} layerManager The layer manager instance
  */
@@ -183,13 +244,12 @@ function updateLayerButtons(layerManager) {
       button.classList.add('active');
     }
     
-    // Set button color to match layer
+    // Set button color to match layer with proper validation
     const color = layer.color;
-    button.style.backgroundColor = `rgb(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)})`;
+    button.style.backgroundColor = colorToRGB(color);
     
-    // Set button text color for visibility
-    const brightness = color.r * 0.299 + color.g * 0.587 + color.b * 0.114;
-    button.style.color = brightness > 0.5 ? '#000' : '#fff';
+    // Set button text color for optimal contrast
+    button.style.color = getContrastColor(color);
     
     // Add click handler to select layer
     button.addEventListener('click', () => {

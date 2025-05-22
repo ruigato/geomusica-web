@@ -5,13 +5,28 @@ import { ParameterMode } from '../notes/notes.js';
 // Debug flag to control logging
 const DEBUG_LOGGING = false;
 
-// Time subdivision values for radio buttons
+// Time subdivision values for radio buttons (8 slower to 8 faster than global BPM)
 const TIME_SUBDIVISION_VALUES = [
-  {value: 1, label: 'Whole'},
-  {value: 2, label: 'Half'},
-  {value: 4, label: 'Quarter'},
-  {value: 8, label: 'Eighth'},
-  {value: 16, label: 'Sixteenth'},
+  // 8 slower options
+  {value: 0.125, label: '1/8x'},
+  {value: 0.143, label: '1/7x'},
+  {value: 0.167, label: '1/6x'},
+  {value: 0.2, label: '1/5x'},
+  {value: 0.25, label: '1/4x'},
+  {value: 0.333, label: '1/3x'},
+  {value: 0.5, label: '1/2x'},
+  {value: 0.667, label: '2/3x'},
+  // Normal speed
+  {value: 1, label: '1x'},
+  // 8 faster options
+  {value: 1.5, label: '1.5x'},
+  {value: 2, label: '2x'},
+  {value: 3, label: '3x'},
+  {value: 4, label: '4x'},
+  {value: 5, label: '5x'},
+  {value: 6, label: '6x'},
+  {value: 7, label: '7x'},
+  {value: 8, label: '8x'},
 ];
 
 // Quantization values for radio buttons

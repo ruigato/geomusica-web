@@ -77,9 +77,7 @@ export const UI_RANGES = {
   ANGLE: [-180, 180],
   MODULUS_VALUE: [2, 16],
   ALT_SCALE: [0.1, 10],
-  ALT_STEP_N: [1, 32],
-  TIME_SUBDIVISION_VALUE: [0.125, 8],
-  QUANTIZATION_VALUE: [0, 8],
+    ALT_STEP_N: [1, 32],  TIME_SUBDIVISION_VALUE: [0.125, 8], // 8 slower to 8 faster than global BPM (17 total options)  QUANTIZATION_VALUE: [0, 8],
   REFERENCE_FREQ: [220, 880],
   FRACTAL_VALUE: [1, 9],
   EUCLID_VALUE: [1, 12], // UI range for Euclidean rhythm value
@@ -114,9 +112,7 @@ export const PARAMETER_RANGES = {
   SHOW_AXIS_FREQ_LABELS: { MIN: false, MAX: true, STEP: null },
   SHOW_POINTS_FREQ_LABELS: { MIN: false, MAX: true, STEP: null },
   
-  // Time subdivision ranges
-  TIME_SUBDIVISION_VALUE: { MIN: 0.125, MAX: 8, STEP: 0.125 },
-  USE_TIME_SUBDIVISION: { MIN: false, MAX: true, STEP: null },
+    // Time subdivision ranges (8 slower to 8 faster than global BPM)  TIME_SUBDIVISION_VALUE: { MIN: 0.125, MAX: 8, STEP: 0.125 },  USE_TIME_SUBDIVISION: { MIN: false, MAX: true, STEP: null },
   
   // Equal temperament ranges
   USE_EQUAL_TEMPERAMENT: { MIN: false, MAX: true, STEP: null },
