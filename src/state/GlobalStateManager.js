@@ -11,6 +11,11 @@ export class GlobalStateManager {
     this.bpm = DEFAULT_VALUES.BPM;
     this.lastTime = performance.now();
     this.lastAngle = 0;
+    this.previousAngle = 0;
+    
+    // Add explicit angle history tracking
+    this.angleHistory = [];
+    this.maxAngleHistoryLength = 10; // Keep track of recent angles
     
     // Audio engine parameters
     this.attack = 0.01;
@@ -251,7 +256,7 @@ export class GlobalStateManager {
     
     // Skip tiny time steps (often happen during timing system initialization)
     if (dt < 1) {
-      return { angle: this.lastAngle, lastAngle: this.lastAngle };
+      return { angle: this.lastAngle, lastAngle: this.previousAngle };
     }
     
     // Get time in seconds
@@ -268,19 +273,21 @@ export class GlobalStateManager {
     const degreesPerSecond = rotationsPerSecond * 360;
     const angleDelta = degreesPerSecond * seconds;
     
-    // Get the last angle and calculate the new angle
-    const lastAngle = this.lastAngle;
-    const angle = (lastAngle + angleDelta) % 360;
+    // Store the current angle as previous angle before updating
+    this.previousAngle = this.lastAngle;
+    
+    // Calculate the new angle
+    const angle = (this.lastAngle + angleDelta) % 360;
     
     // Debug logging periodically (about once every 5 seconds at 60fps)
     if (Math.random() < 0.003) { // ~0.3% chance each frame
-      console.log(`[ROTATION] BPM: ${this.bpm}, Rotations/sec: ${rotationsPerSecond.toFixed(2)}, Degrees/sec: ${degreesPerSecond.toFixed(2)}, Delta: ${angleDelta.toFixed(2)}°`);
+      console.log(`[ROTATION] BPM: ${this.bpm}, Rotations/sec: ${rotationsPerSecond.toFixed(2)}, Degrees/sec: ${degreesPerSecond.toFixed(2)}, Delta: ${angleDelta.toFixed(2)}°, Previous: ${this.previousAngle.toFixed(2)}°, Current: ${angle.toFixed(2)}°`);
     }
     
-    // Store for next frame
+    // Store current angle for next frame
     this.lastAngle = angle;
     this.lastTime = tNow;
     
-    return { angle, lastAngle };
+    return { angle, lastAngle: this.previousAngle };
   }
 } 

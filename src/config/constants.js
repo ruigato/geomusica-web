@@ -40,7 +40,7 @@ export const TICKS_PER_MEASURE = 1920; // In 4/4 time (480 ticks/beat * 4 beats/
 
 // Default values
 export const DEFAULT_VALUES = {
-  BPM: 120,
+  BPM: 10,
   RADIUS: 432,
   COPIES: 1,
   SEGMENTS: 4,

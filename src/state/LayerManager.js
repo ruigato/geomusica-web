@@ -284,6 +284,14 @@ export class LayerManager {
   updateLayerCount(count) {
     const currentCount = this.layers.length;
     
+    console.log(`[LAYER MANAGER] Updating layer count from ${currentCount} to ${count}`);
+    
+    // Ensure at least one layer always exists
+    if (count < 1) {
+      console.warn("[LAYER MANAGER] Attempted to set layer count to less than 1, forcing to 1");
+      count = 1;
+    }
+    
     // If we need to add layers
     if (count > currentCount) {
       for (let i = currentCount; i < count; i++) {
@@ -302,6 +310,22 @@ export class LayerManager {
         this.setActiveLayer(Math.max(0, count - 1));
       }
     }
+    
+    // Ensure the active layer exists and is visible
+    if (this.layers.length > 0 && this.activeLayerId === null) {
+      this.setActiveLayer(0);
+    }
+    
+    // Make sure all layers are properly visible
+    this.layers.forEach(layer => {
+      if (layer.group) {
+        layer.group.visible = layer.visible;
+        // Force update any material properties
+        if (layer.material) {
+          layer.material.needsUpdate = true;
+        }
+      }
+    });
   }
   
   /**
@@ -427,24 +451,6 @@ export class LayerManager {
           
           // Always log geometry recreation to help with debugging
           console.log(`[GEOMETRY UPDATE] Updated geometry for layer ${layerId}${isActiveLayer ? ' (ACTIVE)' : ''}: radius=${state.radius}, segments=${state.segments}, copies=${state.copies}`);
-        }
-        
-        // Detect triggers if this layer has copies
-        if (state.copies > 0) {
-          detectTriggers(
-            layer.baseGeo,
-            lastAngle,
-            angle,
-            state.copies,
-            layer.group,
-            state.lastTrig,
-            tNow,
-            (note) => {
-              // Add layer ID to the note for routing to correct instrument
-              const layerNote = { ...note, layerId: layerId };
-              return triggerAudioCallback(layerNote);
-            }
-          );
         }
         
         // IMPORTANT: Apply the rotation directly to the entire layer group

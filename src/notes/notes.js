@@ -31,7 +31,8 @@ export function createNote(triggerData, state) {
     isIntersection = false, 
     angle = 0, 
     lastAngle = 0, 
-    globalIndex 
+    globalIndex,
+    layerId = 0 // Extract layer ID from trigger data, default to 0
   } = triggerData;
   
   // Calculate base frequency from coordinates
@@ -96,6 +97,7 @@ export function createNote(triggerData, state) {
     coordinates: { x, y },
     time: Date.now(), // Current time in ms
     noteName,
+    layerId, // Include the layer ID in the note
     
     // For visualization/debugging
     parameterInfo

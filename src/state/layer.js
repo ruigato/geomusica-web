@@ -135,6 +135,11 @@ export class Layer {
       materialCreatedFor: `layer-${this.id}`
     };
     
+    // Initialize lastTrig property in state to track triggered points
+    if (!this.state.lastTrig) {
+      this.state.lastTrig = new Set();
+    }
+    
     // Log material creation with color info
     console.log(`[LAYER ${this.id}] Created material with color:`, {
       r: this.color.r,
@@ -148,6 +153,9 @@ export class Layer {
       Object.assign(this.state, options.state);
     }
     
+    // Set layer speed if not already set (for consistent rotation)
+    this.state.speed = this.state.speed || 1.0;
+    
     // Force visibility
     this.visible = true;
     
@@ -159,9 +167,24 @@ export class Layer {
       
       // Create initial geometry
       this.recreateGeometry();
+      
+      // Verify geometry was created
+      if (!this.baseGeo || !this.baseGeo.getAttribute || !this.baseGeo.getAttribute('position')) {
+        console.error(`[LAYER ERROR] Failed to create geometry for layer ${this.id}`);
+        // Try one more time with explicit parameters
+        this.baseGeo = createPolygonGeometry(100, 3, this.state);
+        console.log(`[LAYER RETRY] Attempted to recreate geometry with fallback parameters`);
+      }
     }
     
+    // Debug info
     console.log(`Layer ${this.id} initialized, group visible: ${this.group.visible}, radius: ${this.state.radius}, segments: ${this.state.segments}, copies: ${this.state.copies}`);
+    if (this.baseGeo) {
+      const positionAttr = this.baseGeo.getAttribute('position');
+      console.log(`Geometry created with ${positionAttr ? positionAttr.count : 'unknown'} vertices`);
+    } else {
+      console.warn(`No geometry created for layer ${this.id}`);
+    }
   }
   
   /**
@@ -274,17 +297,48 @@ export class Layer {
    * Force recreation of layer geometry with current parameters
    */
   recreateGeometry() {
+    console.log(`[LAYER ${this.id}] Recreating geometry with radius=${this.state.radius}, segments=${this.state.segments}`);
+    
     // Dispose old geometry if it exists
     if (this.baseGeo && this.baseGeo.dispose) {
       this.baseGeo.dispose();
     }
     
+    // Ensure we have valid parameters
+    if (!this.state.radius || this.state.radius <= 0) {
+      console.warn(`[LAYER ${this.id}] Invalid radius ${this.state.radius}, using default 100`);
+      this.state.radius = 100;
+    }
+    
+    if (!this.state.segments || this.state.segments < 3) {
+      console.warn(`[LAYER ${this.id}] Invalid segments ${this.state.segments}, using default 3`);
+      this.state.segments = 3;
+    }
+    
     // Create new geometry with current parameters
-    this.baseGeo = createPolygonGeometry(
-      this.state.radius,
-      this.state.segments,
-      this.state
-    );
+    try {
+      this.baseGeo = createPolygonGeometry(
+        this.state.radius,
+        this.state.segments,
+        this.state
+      );
+      
+      // Verify geometry was created properly
+      if (!this.baseGeo || !this.baseGeo.getAttribute || !this.baseGeo.getAttribute('position')) {
+        throw new Error("Geometry creation failed or resulted in invalid geometry");
+      }
+      
+      const positionAttr = this.baseGeo.getAttribute('position');
+      console.log(`[LAYER ${this.id}] Created geometry with ${positionAttr.count} vertices`);
+      
+    } catch (error) {
+      console.error(`[LAYER ${this.id}] Error creating geometry:`, error);
+      // Create a simple fallback geometry - a triangle
+      const fallbackRadius = 100;
+      const fallbackSegments = 3;
+      console.log(`[LAYER ${this.id}] Creating fallback geometry: radius=${fallbackRadius}, segments=${fallbackSegments}`);
+      this.baseGeo = createPolygonGeometry(fallbackRadius, fallbackSegments, this.state);
+    }
     
     // Force parameter changes to ensure render update
     this.state.parameterChanges.radius = true;
@@ -349,55 +403,70 @@ export class Layer {
    */
   updateAngle(currentTime) {
     // Store previous angle for marker hit detection
-    this.previousAngle = this.currentAngle || 0;
+    if (this.currentAngle !== undefined) {
+      this.previousAngle = this.currentAngle;
+    } else {
+      this.previousAngle = 0;
+    }
     
-    // Get global state manager (which should be attached to the group)
-    const globalState = this.group?.userData?.globalState;
+    let deltaAngle = 0;
     
+    // Access global state if available
+    const globalState = window._globalState;
     if (globalState) {
-      // Get base angle from global state (in degrees)
-      const baseAngleInDegrees = globalState.lastAngle || 0;
+      // Calculate the new base angle based on BPM
+      const bpm = globalState.bpm;
+      const secondsPerBeat = 60 / bpm;
       
-      // Initialize tracking properties if they don't exist
-      if (this.lastBaseAngle === undefined) {
-        this.lastBaseAngle = baseAngleInDegrees;
-        this.accumulatedAngle = baseAngleInDegrees;
-      }
+      // Get reference to last update time
+      const lastUpdateTime = this.lastUpdateTime || currentTime - 0.016;
       
-      // Calculate how much the base angle has changed since last frame
-      let deltaAngle = baseAngleInDegrees - this.lastBaseAngle;
+      // Calculate time delta in seconds
+      const timeDelta = currentTime - lastUpdateTime;
       
-      // Handle wraparound from 359->0 degrees
-      if (deltaAngle < -180) {
-        deltaAngle += 360;
-      } else if (deltaAngle > 180) {
-        deltaAngle -= 360;
-      }
+      // Improved angle calculation using precise timing
+      // Base degrees per second on BPM
+      // A complete 360° rotation should take 4 beats (1 bar) at the current BPM
+      const degreesPerSecond = (360 / (secondsPerBeat * 4)) * this.state.speed;
       
-      // Apply time subdivision multiplier to the delta if enabled
-      if (this.state.useTimeSubdivision && this.state.timeSubdivisionValue !== 1) {
-        const multiplier = this.state.timeSubdivisionValue;
-        deltaAngle *= multiplier;
-        
-        // Log the effect occasionally
-        if (Math.random() < 0.003) {
-          console.log(`[LAYER ${this.id}] Applied time subdivision: multiplier=${multiplier}, deltaAngle=${deltaAngle.toFixed(2)}°`);
-        }
+      // Calculate the angle change for this frame
+      deltaAngle = degreesPerSecond * timeDelta;
+      
+      // Get the current angle in degrees including any time acceleration
+      const currentAngleInDegrees = (this.lastBaseAngle || 0) + deltaAngle;
+      
+      // For debugging angular acceleration
+      if (Math.random() < 0.01) {
+        console.log(`[LAYER ${this.id}] Angular velocity: ${degreesPerSecond.toFixed(2)}°/s, delta: ${deltaAngle.toFixed(2)}°, current: ${currentAngleInDegrees.toFixed(2)}°`);
       }
       
       // Accumulate the angle continuously
-      this.accumulatedAngle = (this.accumulatedAngle + deltaAngle) % 360;
+      this.accumulatedAngle = (this.accumulatedAngle || 0) + deltaAngle;
       if (this.accumulatedAngle < 0) this.accumulatedAngle += 360;
       
       // Store the current base angle for next frame's calculation
-      this.lastBaseAngle = baseAngleInDegrees;
+      this.lastBaseAngle = currentAngleInDegrees;
       
       // Convert accumulated angle from degrees to radians
       this.currentAngle = (this.accumulatedAngle * Math.PI) / 180;
       
+      // Store the previous angle in radians for trigger detection
+      this.previousAngle = ((this.accumulatedAngle - deltaAngle) * Math.PI) / 180;
+      
       // Apply rotation to the group
       if (this.group) {
         this.group.rotation.z = this.currentAngle;
+        
+        // Store angles in userData for debugging
+        this.group.userData.currentAngle = this.currentAngle;
+        this.group.userData.previousAngle = this.previousAngle;
+        this.group.userData.deltaAngle = deltaAngle * Math.PI / 180;
+        this.group.userData.layerId = this.id;
+        
+        // Add debug log for rotation more frequently for debugging
+        if (Math.random() < 0.01) {
+          console.log(`[LAYER ${this.id}] Rotation: current=${this.currentAngle.toFixed(3)} rad (${(this.accumulatedAngle % 360).toFixed(1)}°), previous=${this.previousAngle.toFixed(3)} rad, delta=${(this.currentAngle - this.previousAngle).toFixed(5)} rad`);
+        }
       }
     } else {
       // Fallback calculation if no global state is available

@@ -162,9 +162,10 @@ function releaseAxisLabel(label) {
  * @param {string} text Text content of the label
  * @param {THREE.Camera} camera Camera for positioning
  * @param {THREE.WebGLRenderer} renderer Renderer for positioning
+ * @param {Object} options Additional options for the label
  * @returns {Object} Label object with ID and DOM element
  */
-export function createOrUpdateLabel(id, worldPos, text, camera, renderer) {
+export function createOrUpdateLabel(id, worldPos, text, camera, renderer, options = {}) {
   if (!pointLabelContainer) initLabelContainers();
   
   const screenPos = worldToScreen(worldPos, camera, renderer);
@@ -185,10 +186,35 @@ export function createOrUpdateLabel(id, worldPos, text, camera, renderer) {
   label.dataset.worldY = worldPos.y;
   label.dataset.worldZ = worldPos.z || 0;
   
-  // Update position and text
+  // Update position
   label.style.left = `${screenPos.x}px`;
   label.style.top = `${screenPos.y}px`;
-  label.textContent = text;
+  
+  // Apply custom class name if provided
+  if (options.className) {
+    label.className = options.className;
+  } else {
+    label.className = 'point-frequency-label';
+  }
+  
+  // Store reference to tracked object if provided
+  if (options.trackedObject) {
+    label.dataset.trackedObjectId = options.trackedObject.id;
+  }
+  
+  // Set visibility
+  if (options.alwaysVisible) {
+    label.dataset.alwaysVisible = 'true';
+  } else {
+    delete label.dataset.alwaysVisible;
+  }
+  
+  // Update content - support both text and HTML content
+  if (options.isHTML) {
+    label.innerHTML = text;
+  } else {
+    label.textContent = text;
+  }
   
   return { id: 'point-' + id, domElement: label };
 }

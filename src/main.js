@@ -90,16 +90,18 @@ function syncStateAcrossSystems(isLayerSwitch = false) {
   }
   
   const activeLayer = layerManager?.getActiveLayer();
-  if (activeLayer?.group) {
-    activeLayer.group.userData.state = state;
-    activeLayer.group.userData.globalState = globalState;
+  if (activeLayer) {
+    console.log(`[STATE SYNC] Active layer ${activeLayerId} has geometry: ${Boolean(activeLayer.baseGeo)}, visible: ${activeLayer.visible}`);
     
-    // Verify the active layer's state is correctly set
-    console.log(`[STATE SYNC] Active layer ${activeLayerId} state:`, {
-      radius: activeLayer.state.radius,
-      segments: activeLayer.state.segments,
-      copies: activeLayer.state.copies
-    });
+    // Ensure the layer has proper geometry
+    if (!activeLayer.baseGeo || !activeLayer.baseGeo.getAttribute || !activeLayer.baseGeo.getAttribute('position')) {
+      console.warn(`[STATE SYNC] Layer ${activeLayerId} missing valid geometry, recreating...`);
+      activeLayer.recreateGeometry();
+    }
+    
+    // Force visibility to ensure rendering
+    activeLayer.visible = true;
+    activeLayer.group.visible = true;
   }
   
   if (audioInstance) {
@@ -520,7 +522,7 @@ function initializeApplication() {
   debugButton.textContent = 'Recreate Geometry';
   debugButton.style.position = 'absolute';
   debugButton.style.bottom = '50px';
-  debugButton.style.left = '10px';
+  debugButton.style.right = '10px';
   debugButton.style.zIndex = '1000';
   debugButton.style.padding = '10px';
   debugButton.style.backgroundColor = '#f00';
@@ -559,7 +561,7 @@ function initializeApplication() {
   compareLayersButton.textContent = 'Compare Layers';
   compareLayersButton.style.position = 'absolute';
   compareLayersButton.style.bottom = '90px';
-  compareLayersButton.style.left = '10px';
+  compareLayersButton.style.right = '10px';
   compareLayersButton.style.zIndex = '1000';
   compareLayersButton.style.padding = '10px';
   compareLayersButton.style.backgroundColor = '#00f';
@@ -591,7 +593,7 @@ function initializeApplication() {
   recreateAllButton.textContent = 'Recreate ALL Geometries';
   recreateAllButton.style.position = 'absolute';
   recreateAllButton.style.bottom = '130px';
-  recreateAllButton.style.left = '10px';
+  recreateAllButton.style.right = '10px';
   recreateAllButton.style.zIndex = '1000';
   recreateAllButton.style.padding = '10px';
   recreateAllButton.style.backgroundColor = '#f0f';
@@ -638,7 +640,7 @@ function initializeApplication() {
   fixLayerColorsButton.textContent = 'Fix Layer Colors';
   fixLayerColorsButton.style.position = 'absolute';
   fixLayerColorsButton.style.bottom = '170px';
-  fixLayerColorsButton.style.left = '10px';
+  fixLayerColorsButton.style.right = '10px';
   fixLayerColorsButton.style.zIndex = '1000';
   fixLayerColorsButton.style.padding = '10px';
   fixLayerColorsButton.style.backgroundColor = '#0ff'; // Cyan
@@ -672,7 +674,7 @@ function initializeApplication() {
   debugSceneButton.textContent = 'Debug Scene';
   debugSceneButton.style.position = 'absolute';
   debugSceneButton.style.bottom = '210px';
-  debugSceneButton.style.left = '10px';
+  debugSceneButton.style.right = '10px';
   debugSceneButton.style.zIndex = '1000';
   debugSceneButton.style.padding = '10px';
   debugSceneButton.style.backgroundColor = '#f00';
@@ -733,10 +735,10 @@ function initializeApplication() {
   forceRedrawButton.textContent = 'FORCE REDRAW ALL';
   forceRedrawButton.style.position = 'absolute';
   forceRedrawButton.style.bottom = '250px';
-  forceRedrawButton.style.left = '10px';
+  forceRedrawButton.style.right = '10px';
   forceRedrawButton.style.zIndex = '1000';
   forceRedrawButton.style.padding = '10px';
-  forceRedrawButton.style.backgroundColor = '#00f';
+  forceRedrawButton.style.backgroundColor = '#0a0';
   forceRedrawButton.style.color = '#fff';
   forceRedrawButton.style.border = 'none';
   forceRedrawButton.style.borderRadius = '5px';
@@ -838,7 +840,17 @@ function initializeApplication() {
       
       // Handling audio triggers
       const handleAudioTrigger = (note) => {
-        triggerAudio(note, csound);
+        // Log the note to verify layerId is being passed correctly
+        console.log(`[AUDIO TRIGGER] Playing note with frequency ${note.frequency.toFixed(1)}Hz on layer ${note.layerId}, instrument ${note.layerId + 1}`);
+        
+        // Ensure the note has all required properties
+        if (!note.layerId && note.layerId !== 0) {
+          console.warn('[AUDIO TRIGGER] Note missing layerId, defaulting to 0');
+          note.layerId = 0;
+        }
+        
+        // Call the audio engine with the complete note
+        return triggerAudio(note);
       };
       
       // Start animation with global state for timing

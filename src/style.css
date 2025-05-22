@@ -355,6 +355,72 @@ section:nth-child(5) h2 {
   transform: translate(-50%, -50%);
 }
 
+/* Trigger label styles for different layers */
+.trigger-label {
+  position: absolute;
+  font-family: "Perfect DOS VGA 437", monospace;
+  font-size: 14px;
+  text-align: center;
+  background-color: rgba(0, 0, 0, 0.6);
+  padding: 4px 6px;
+  border-radius: 4px;
+  pointer-events: none;
+  transform: translate(-50%, -120%);
+  transition: opacity 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Layer-specific trigger label styling */
+.trigger-label.layer-0 {
+  color: #00ffff; /* Cyan for layer 0 */
+  border-color: rgba(0, 255, 255, 0.5);
+}
+
+.trigger-label.layer-1 {
+  color: #ff00ff; /* Magenta for layer 1 */
+  border-color: rgba(255, 0, 255, 0.5);
+}
+
+.trigger-label.layer-2 {
+  color: #ffff00; /* Yellow for layer 2 */
+  border-color: rgba(255, 255, 0, 0.5);
+}
+
+.trigger-label.layer-3 {
+  color: #00ff00; /* Green for layer 3 */
+  border-color: rgba(0, 255, 0, 0.5);
+}
+
+/* Layer-specific note name and frequency styling */
+.note-name.layer-0, .frequency.layer-0 {
+  color: #00ffff; /* Cyan for layer 0 */
+}
+
+.note-name.layer-1, .frequency.layer-1 {
+  color: #ff00ff; /* Magenta for layer 1 */
+}
+
+.note-name.layer-2, .frequency.layer-2 {
+  color: #ffff00; /* Yellow for layer 2 */
+}
+
+.note-name.layer-3, .frequency.layer-3 {
+  color: #00ff00; /* Green for layer 3 */
+}
+
+/* Note name styling for all layers */
+.note-name {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 2px;
+}
+
+/* Frequency styling for all layers */
+.frequency {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
 /* Layer styles */
 .layer-buttons {
   display: flex;
@@ -399,4 +465,34 @@ section:nth-child(5) h2 {
   color: #fff;
   border: 1px solid #555;
   border-radius: 4px;
+}
+
+/* Debug controls styles */
+.debug-container {
+  float: right;
+  width: 45%;
+  margin-top: 20px;
+  padding: 10px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background-color: rgba(50, 50, 50, 0.5);
+  box-sizing: border-box;
+}
+
+.debug-button {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 5px;
+  background-color: #444;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background-color 0.2s;
+}
+
+.debug-button:hover {
+  background-color: #555;
 }

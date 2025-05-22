@@ -31,7 +31,7 @@ export function setupLayersUI(layerManager) {
   layerCountInput.id = 'layerCountNumber';
   layerCountInput.min = '1';
   layerCountInput.max = '10';
-  layerCountInput.value = '3';
+  layerCountInput.value = '1';
   layerCountInput.addEventListener('change', (e) => {
     const count = parseInt(e.target.value, 10);
     if (!isNaN(count) && count >= 1) {
@@ -243,10 +243,6 @@ export function updateLayersUI(layerManager) {
 function addDebugButtons(container, layerManager) {
   const debugContainer = document.createElement('div');
   debugContainer.className = 'debug-container';
-  debugContainer.style.marginTop = '20px';
-  debugContainer.style.padding = '10px';
-  debugContainer.style.border = '1px solid #444';
-  debugContainer.style.borderRadius = '4px';
   
   const debugTitle = document.createElement('h3');
   debugTitle.textContent = 'Debug Controls';
@@ -257,7 +253,6 @@ function addDebugButtons(container, layerManager) {
   const verifyStateButton = document.createElement('button');
   verifyStateButton.textContent = 'Verify Layer State';
   verifyStateButton.className = 'debug-button';
-  verifyStateButton.style.marginRight = '10px';
   verifyStateButton.addEventListener('click', () => {
     if (typeof layerManager.debugActiveLayerState === 'function') {
       layerManager.debugActiveLayerState();
@@ -271,7 +266,6 @@ function addDebugButtons(container, layerManager) {
   const recreateGeometryButton = document.createElement('button');
   recreateGeometryButton.textContent = 'Recreate Geometry';
   recreateGeometryButton.className = 'debug-button';
-  recreateGeometryButton.style.marginRight = '10px';
   recreateGeometryButton.addEventListener('click', () => {
     const activeLayer = layerManager.getActiveLayer();
     if (activeLayer) {

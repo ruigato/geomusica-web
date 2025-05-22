@@ -18,68 +18,149 @@ import { createNote } from '../notes/notes.js';
 const vertexCircleGeometry = new THREE.CircleGeometry(1, 12); // Fewer segments (12) for performance
 
 /**
- * Create a polygon geometry with the given parameters
- * @param {number} radius Radius of the polygon
- * @param {number} segments Number of segments in the polygon
- * @param {Object} state Application state for additional parameters
- * @returns {THREE.BufferGeometry} The created geometry
+ * Creates a polygon geometry with the given radius and segment count
+ * @param {number} radius - Radius of the polygon
+ * @param {number} segments - Number of sides
+ * @param {Object} state - Application state for additional parameters
+ * @returns {THREE.BufferGeometry} - The created geometry
  */
-export function createPolygonGeometry(radius, segments, state = null) {
-  // Get layer ID from state if available for debugging
-  const layerId = state && state.layerId !== undefined ? state.layerId : 'unknown';
+export function createPolygonGeometry(radius, segments, state) {
+  console.log(`[GEOMETRY] Creating polygon with radius=${radius}, segments=${segments}`);
   
-  console.log(`[GEOMETRY CREATE] Creating polygon geometry for layer ${layerId} with radius=${radius}, segments=${segments}`);
-  
-  // Ensure segments is a proper integer and at least 3
-  const numSegments = Math.max(3, Math.round(segments));
-  
-  // We'll be creating geometry from scratch to support star polygons, fractal geometry, etc.
-  let points = [];
-  
-  // Use appropriate creation method based on state parameters
-  if (state && state.useStars) {
-    // Create a star polygon using the specified skip value
-    points = createStarPolygonPoints(radius, numSegments, state.starSkip, state);
-  } else if (state && state.useEuclid) {
-    // Create a subset of points using Euclidean rhythm
-    points = createEuclideanPoints(radius, numSegments, state.euclidValue, state);
-  } else if (state && state.useFractal) {
-    // Create a fractal polygon
-    points = createFractalPolygonPoints(radius, numSegments, state.fractalValue, state);
-  } else {
-    // Create a regular polygon
-    points = createRegularPolygonPoints(radius, numSegments, state);
+  // Ensure valid parameters
+  if (!radius || radius <= 0) {
+    console.warn("[GEOMETRY] Invalid radius, using default 100");
+    radius = 100;
   }
   
-  // Create geometry from points
+  if (!segments || segments < 3) {
+    console.warn("[GEOMETRY] Invalid segment count, using default 3");
+    segments = 3;
+  }
+  
+  // Create a new buffer geometry
   const geometry = new THREE.BufferGeometry();
   
-  // Convert points to Float32Array for position attribute
-  const positionArray = new Float32Array(points.length * 3);
+  // Calculate vertices for the polygon
+  const vertices = [];
+  const step = Math.PI * 2 / segments;
   
-  for (let i = 0; i < points.length; i++) {
-    positionArray[i * 3] = points[i].x;
-    positionArray[i * 3 + 1] = points[i].y;
-    positionArray[i * 3 + 2] = 0; // Z-coordinate is always 0 in 2D
+  // Use alternate scale for frequency calculation
+  let useAltScale = false;
+  let altScale = null;
+  let altStepN = 1;
+  
+  // Use Euclidean rhythm for vertex distribution
+  let useEuclid = false;
+  let euclidValue = 0;
+  
+  // Use stars instead of regular polygons
+  let useStars = false;
+  let starSkip = 2;
+  
+  // Use modulus for some segments
+  let useModulus = false;
+  let modulus = 1;
+  
+  // Read parameters from state if available
+  if (state) {
+    useAltScale = state.useAltScale || false;
+    altScale = state.altScale || 'pentatonic';
+    altStepN = state.altStepN || 1;
+    
+    useEuclid = state.useEuclid || false;
+    euclidValue = state.euclidValue || 0;
+    
+    useStars = state.useStars || false;
+    starSkip = state.starSkip || 2;
+    
+    useModulus = state.useModulus || false;
+    modulus = state.modulus || 1;
   }
   
-  // Set the position attribute
-  geometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
-  
-  // For audio trigger detection - add the vertex count to the geometry userData
-  if (geometry.userData === undefined) {
-    geometry.userData = {};
+  try {
+    // Generate points for polygon, star, or Euclidean rhythm
+    if (useStars) {
+      // Create a star pattern by connecting vertices with a step of starSkip
+      // For example, a pentagram is created by skipping every 2nd vertex of a pentagon
+      for (let i = 0; i < segments; i++) {
+        const index = (i * starSkip) % segments;
+        const angle = index * step;
+        const x = radius * Math.cos(angle);
+        const y = radius * Math.sin(angle);
+        const z = 0;
+        
+        vertices.push(x, y, z);
+      }
+      
+      // Close the loop by adding the first vertex again
+      const firstX = vertices[0];
+      const firstY = vertices[1];
+      const firstZ = vertices[2];
+      vertices.push(firstX, firstY, firstZ);
+      
+    } else if (useEuclid) {
+      // Create a rhythm using the Euclidean algorithm for even distribution
+      const rhythm = calculateEuclideanRhythm(segments, euclidValue);
+      
+      for (let i = 0; i < segments; i++) {
+        if (rhythm[i]) {
+          const angle = i * step;
+          const x = radius * Math.cos(angle);
+          const y = radius * Math.sin(angle);
+          const z = 0;
+          
+          vertices.push(x, y, z);
+        }
+      }
+      
+      // Make sure to close the shape
+      if (vertices.length > 0) {
+        const firstX = vertices[0];
+        const firstY = vertices[1];
+        const firstZ = vertices[2];
+        vertices.push(firstX, firstY, firstZ);
+      }
+      
+    } else {
+      // Standard polygon or modulo pattern
+      for (let i = 0; i <= segments; i++) {
+        // For modulo pattern, skip vertices based on the modulus
+        if (useModulus && i % modulus !== 0 && i < segments) continue;
+        
+        const angle = (i % segments) * step;
+        const x = radius * Math.cos(angle);
+        const y = radius * Math.sin(angle);
+        const z = 0;
+        
+        vertices.push(x, y, z);
+      }
+    }
+    
+    // Set up the buffer attributes
+    const positionAttribute = new THREE.Float32BufferAttribute(vertices, 3);
+    geometry.setAttribute('position', positionAttribute);
+    
+    // Log success
+    console.log(`[GEOMETRY] Created polygon with ${positionAttribute.count} vertices`);
+    
+    return geometry;
+  } catch (error) {
+    console.error("[GEOMETRY] Error creating geometry:", error);
+    
+    // Create a simple fallback triangle
+    const fallbackGeometry = new THREE.BufferGeometry();
+    const fallbackVertices = [
+      100, 0, 0,    // Vertex 1
+      -50, 86.6, 0, // Vertex 2
+      -50, -86.6, 0,// Vertex 3
+      100, 0, 0     // Close the loop
+    ];
+    fallbackGeometry.setAttribute('position', new THREE.Float32BufferAttribute(fallbackVertices, 3));
+    console.log("[GEOMETRY] Created fallback triangle geometry");
+    
+    return fallbackGeometry;
   }
-  
-  // Set the layer ID in the geometry userData
-  if (state && state.layerId !== undefined) {
-    geometry.userData.layerId = state.layerId;
-  }
-  
-  // Store number of vertices for use in trigger detection
-  geometry.userData.vertexCount = points.length;
-  
-  return geometry;
 }
 
 /**
@@ -519,6 +600,15 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       
       // Create a group for this copy to hold both the lines and vertex circles
       const copyGroup = new THREE.Group();
+      copyGroup.name = `copy-${i}`;
+      
+      // Add clear identification to the copy group's userData
+      copyGroup.userData = {
+        isCopyObject: true,
+        copyIndex: i,
+        scale: finalScale,
+        layerId: state?.layerId
+      };
       
       // Use the current geometry (may have been updated with intersections)
       // Create a modified material based on the original but with increased visibility
@@ -530,16 +620,25 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       
       // IMPORTANT: Use the original material's color instead of hardcoding green
       // This ensures each layer maintains its own color
-      // lineMaterial.color = new THREE.Color(0x00ff00); // Bright green (REMOVED)
       
       lineMaterial.linewidth = 5; // Much thicker lines
       
       // Create line loop with the enhanced material
       const lines = new THREE.LineLoop(baseGeo, lineMaterial);
       lines.scale.set(finalScale, finalScale, 1);
+      lines.name = `polygon-${i}`;
       
       // Set renderOrder to ensure it renders on top of other objects
       lines.renderOrder = 10; // Higher render order
+      
+      // IMPORTANT: Also add userData to the line object itself
+      lines.userData = {
+        isCopyObject: true,
+        isPolygon: true,
+        copyIndex: i,
+        scale: finalScale,
+        layerId: state?.layerId
+      };
       
       // Add the line geometry to the copy group
       copyGroup.add(lines);
@@ -633,6 +732,15 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     
     // Create a group for this copy to hold both the lines and vertex circles
     const copyGroup = new THREE.Group();
+    copyGroup.name = `copy-${i}`;
+    
+    // Add clear identification to the copy group's userData
+    copyGroup.userData = {
+      isCopyObject: true,
+      copyIndex: i,
+      scale: finalScale,
+      layerId: state?.layerId
+    };
     
     // Use the current geometry (may have been updated with intersections)
     // Create a modified material based on the original but with increased visibility
@@ -644,16 +752,25 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     
     // IMPORTANT: Use the original material's color instead of hardcoding green
     // This ensures each layer maintains its own color
-    // lineMaterial.color = new THREE.Color(0x00ff00); // Bright green (REMOVED)
     
     lineMaterial.linewidth = 5; // Much thicker lines
     
     // Create line loop with the enhanced material
     const lines = new THREE.LineLoop(baseGeo, lineMaterial);
     lines.scale.set(finalScale, finalScale, 1);
+    lines.name = `polygon-${i}`;
     
     // Set renderOrder to ensure it renders on top of other objects
     lines.renderOrder = 10; // Higher render order
+    
+    // IMPORTANT: Also add userData to the line object itself
+    lines.userData = {
+      isCopyObject: true,
+      isPolygon: true,
+      copyIndex: i,
+      scale: finalScale,
+      layerId: state?.layerId
+    };
     
     // Add the line geometry to the copy group
     copyGroup.add(lines);
