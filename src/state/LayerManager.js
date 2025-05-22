@@ -763,4 +763,66 @@ export class LayerManager {
     
     console.log('------ END LAYER STATE DEBUG ------');
   }
+
+  /**
+   * Update a layer's color and ensure it's reflected in all UI and geometry
+   * @param {number} layerId ID of the layer to update
+   * @param {THREE.Color|string} color The new color
+   */
+  updateLayerColor(layerId, color) {
+    if (layerId < 0 || layerId >= this.layers.length) {
+      console.error(`Invalid layer ID for color update: ${layerId}`);
+      return;
+    }
+    
+    const layer = this.layers[layerId];
+    if (!layer) return;
+    
+    // Set the new color
+    layer.setColor(color);
+    
+    // Force material update for all children
+    if (layer.group) {
+      layer.group.traverse(child => {
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(mat => {
+              mat.color = layer.color;
+              mat.needsUpdate = true;
+            });
+          } else {
+            child.material.color = layer.color;
+            child.material.needsUpdate = true;
+          }
+        }
+      });
+    }
+    
+    // Update any UI elements if needed
+    if (window.updateLayersUI && typeof window.updateLayersUI === 'function') {
+      try {
+        window.updateLayersUI(this);
+      } catch (error) {
+        console.error(`Error updating layers UI after color change: ${error.message}`);
+      }
+    }
+    
+    // If this is the active layer, force a UI update
+    if (layerId === this.activeLayerId) {
+      // Update color picker in the UI if it exists
+      const colorPicker = document.getElementById('layerColorPicker');
+      if (colorPicker) {
+        const hexColor = '#' + layer.color.getHexString();
+        colorPicker.value = hexColor;
+      }
+      
+      // Update layer buttons
+      const updateLayerButtons = window.updateLayerButtons;
+      if (typeof updateLayerButtons === 'function') {
+        updateLayerButtons(this);
+      }
+    }
+    
+    return layer;
+  }
 } 

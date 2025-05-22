@@ -98,7 +98,46 @@ export function setupLayersUI(layerManager) {
   layerColorPicker.addEventListener('change', (e) => {
     const activeLayer = layerManager.getActiveLayer();
     if (activeLayer) {
-      activeLayer.setColor(e.target.value);
+      const activeLayerId = activeLayer.id;
+      
+      // Use the new method that handles all update aspects
+      if (typeof layerManager.updateLayerColor === 'function') {
+        layerManager.updateLayerColor(activeLayerId, e.target.value);
+      } else {
+        // Fallback to the original implementation with enhancements
+        // Set the new color
+        activeLayer.setColor(e.target.value);
+        
+        // Immediately update the layer buttons to reflect the new color
+        updateLayerButtons(layerManager);
+        
+        // Force a geometry update to reflect the color change
+        if (activeLayer.recreateGeometry) {
+          activeLayer.recreateGeometry();
+        }
+        
+        // Force material update for all instances of this layer
+        if (activeLayer.group) {
+          activeLayer.group.traverse(child => {
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                child.material.forEach(mat => {
+                  mat.color = activeLayer.color;
+                  mat.needsUpdate = true;
+                });
+              } else {
+                child.material.color = activeLayer.color;
+                child.material.needsUpdate = true;
+              }
+            }
+          });
+        }
+        
+        // Update UI and sync state to ensure color change takes effect immediately
+        if (typeof window.syncStateAcrossSystems === 'function') {
+          window.syncStateAcrossSystems();
+        }
+      }
     }
   });
   
@@ -224,7 +263,7 @@ function colorToRGB(color) {
  * Update the layer selection buttons based on current layers
  * @param {LayerManager} layerManager The layer manager instance
  */
-function updateLayerButtons(layerManager) {
+export function updateLayerButtons(layerManager) {
   const container = document.getElementById('layerButtons');
   if (!container) return;
   
@@ -279,6 +318,9 @@ function updateLayerButtons(layerManager) {
     container.appendChild(button);
   }
 }
+
+// Make the function globally available
+window.updateLayerButtons = updateLayerButtons;
 
 /**
  * Update UI elements to reflect the active layer

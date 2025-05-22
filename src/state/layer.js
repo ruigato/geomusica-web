@@ -212,6 +212,32 @@ export class Layer {
         });
       }
     }
+    
+    // Update color for all children in the group
+    if (this.group) {
+      this.group.traverse(child => {
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(mat => {
+              mat.color = this.color;
+              mat.needsUpdate = true;
+            });
+          } else {
+            child.material.color = this.color;
+            child.material.needsUpdate = true;
+          }
+        }
+      });
+    }
+    
+    // Mark parameters as changed to force render updates
+    if (this.state && this.state.parameterChanges) {
+      // Set a special flag for color changes
+      this.state.parameterChanges.color = true;
+    }
+    
+    // Return this for method chaining
+    return this;
   }
   
   /**
