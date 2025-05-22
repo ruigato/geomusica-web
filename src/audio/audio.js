@@ -306,29 +306,49 @@ export async function setMasterVolume(volume) {
  * @param {Object} note - Complete note object
  * @returns {Object} The same note object for chaining
  */
-// Improved triggerAudio function in audio.js
 export async function triggerAudio(note) {
   if (!csoundInstance || !csoundStarted) return note;
   
   try {
-    // Log the received note
-    
-    // Check if we have a valid note object
-    if (!note || typeof note !== 'object' || !note.frequency) {
-      console.error("Invalid or incomplete note object received:", note);
-      
-      // If we have a Csound instance object instead of a proper note,
-      // this is a bug. Return a simple valid note object to avoid errors.
-      if (note && note.name && note.name.includes("Csound")) {
-        return playNote({
-          frequency: 440,
-          duration: 0.3,
-          velocity: 0.7,
-          pan: 0
-        });
-      }
-      
+    // More thorough validation of the note object
+    if (!note || typeof note !== 'object') {
+      console.error("Invalid note object received (not an object):", note);
       return note;
+    }
+    
+    // Check for NaN frequency which is a common issue
+    if (isNaN(note.frequency) || note.frequency === undefined || note.frequency <= 0) {
+      console.error("Invalid frequency in note object:", note);
+      
+      // Create a safe fallback note with default frequency
+      const safeNote = {
+        ...note,
+        frequency: 440, // Default to A4
+        noteName: note.noteName || "A4"
+      };
+      
+      return playNote(safeNote);
+    }
+    
+    // Additional frequency sanity check - limit to audible range
+    if (note.frequency < 20 || note.frequency > 20000) {
+      console.warn(`Frequency ${note.frequency}Hz outside normal audible range, clamping to valid range`);
+      const clampedNote = {
+        ...note,
+        frequency: Math.max(20, Math.min(20000, note.frequency))
+      };
+      return playNote(clampedNote);
+    }
+    
+    // Check if we have a Csound instance object instead of a proper note
+    if (note && note.name && note.name.includes("Csound")) {
+      console.error("Received Csound instance as note object - this is a bug");
+      return playNote({
+        frequency: 440,
+        duration: 0.3,
+        velocity: 0.7,
+        pan: 0
+      });
     }
     
     // Create a fresh copy to avoid reference issues

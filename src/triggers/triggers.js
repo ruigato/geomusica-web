@@ -1,6 +1,6 @@
-// src/triggers/triggers.js - Updated to use global sequential index approach
+// src/triggers/triggers.js - Complete redesign for layer system
 import * as THREE from 'three';
-import { MARK_LIFE, OVERLAP_THRESHOLD, TICKS_PER_BEAT, TICKS_PER_MEASURE } from '../config/constants.js';
+import { MARK_LIFE, OVERLAP_THRESHOLD, TICKS_PER_BEAT, TICKS_PER_MEASURE, ANIMATION_STATES, MAX_VELOCITY } from '../config/constants.js';
 import { createOrUpdateLabel, createAxisLabel, removeLabel } from '../ui/domLabels.js';
 import { getFrequency } from '../geometry/geometry.js';
 import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils.js';
@@ -12,11 +12,14 @@ import {
 } from '../time/time.js';
 import { createNote } from '../notes/notes.js';
 
-// Store for pending triggers
-let pendingTriggers = [];
+// Debug flag to control logging
+const DEBUG_LOGGING = false;
 
-// Global sequential index counter for trigger events
-let globalSequentialIndex = 0;
+// Map to track triggered points and prevent re-triggering
+const recentTriggers = new Map();
+
+// Store for pending triggers when using quantization
+let pendingTriggers = [];
 
 /**
  * Calculate distance between two points in 2D space
@@ -38,22 +41,99 @@ function distanceBetweenPoints(x1, y1, x2, y2) {
  * @returns {boolean} True if point is overlapping with existing points
  */
 function isPointOverlapping(x, y, activePoints) {
-  if (!activePoints || activePoints.length === 0) {
-    return false;
-  }
+  if (!activePoints || activePoints.length === 0) return false;
   
   for (const point of activePoints) {
     const distance = distanceBetweenPoints(x, y, point.x, point.y);
-    if (distance < OVERLAP_THRESHOLD) {
-      return true; // Point is too close to an existing active point
-    }
+    if (distance < OVERLAP_THRESHOLD) return true;
   }
   
-  return false; // No overlap detected
+  return false;
 }
 
 /**
- * Store a trigger for future execution
+ * Calculate a frequency based on position and state
+ * @param {number} x X coordinate in local space 
+ * @param {number} y Y coordinate in local space
+ * @param {Object} state Application state
+ * @returns {Object} Frequency data object
+ */
+function calculateFrequency(x, y, state) {
+  // Safety check for invalid inputs
+  if (isNaN(x) || isNaN(y) || x === undefined || y === undefined) {
+    console.warn(`Invalid coordinates for frequency calculation: x=${x}, y=${y}`);
+    // Return a safe default
+    return {
+      frequency: 440, // Default to A4
+      noteName: "A4",
+      angle: 0,
+      distance: 100
+    };
+  }
+  
+  // Calculate distance from origin (0,0)
+  const distance = Math.sqrt(x*x + y*y);
+  
+  // If distance calculation resulted in NaN or is zero, use a safe default
+  if (isNaN(distance) || distance === 0) {
+    console.warn(`Invalid distance calculated from coordinates: x=${x}, y=${y}, distance=${distance}`);
+    return {
+      frequency: 440, // Default to A4
+      noteName: "A4",
+      angle: 0,
+      distance: 100
+    };
+  }
+  
+  // Base frequency calculation (higher for points further from center)
+  let frequency = distance * 2;
+  
+  // Calculate angle from center (for tonal variation)
+  const angle = Math.atan2(y, x);
+  
+  // Ensure frequency is not NaN
+  if (isNaN(frequency)) {
+    console.warn(`Invalid frequency calculated: distance=${distance}, using default 440Hz`);
+    frequency = 440; // Default to A4
+  }
+  
+  // Limit to reasonable audio range (80-1000 Hz)
+  frequency = Math.max(80, Math.min(1000, frequency));
+  
+  // Process through equal temperament if enabled
+  let noteName = null;
+  if (state && state.useEqualTemperament) {
+    // Get reference frequency with safe default
+    const refFreq = (state.referenceFrequency && !isNaN(state.referenceFrequency)) 
+      ? state.referenceFrequency 
+      : 440;
+    
+    try {
+      frequency = quantizeToEqualTemperament(frequency, refFreq);
+      noteName = getNoteName(frequency, refFreq);
+    } catch (e) {
+      // If quantization fails, use unquantized frequency
+      console.warn(`Equal temperament calculation failed: ${e.message}, using unquantized frequency`);
+    }
+  }
+  
+  // Final safety check - if after all processing frequency is still NaN, use default
+  if (isNaN(frequency)) {
+    console.warn(`Frequency still invalid after processing, using default 440Hz`);
+    frequency = 440;
+    noteName = "A4";
+  }
+  
+  return { 
+    frequency, 
+    noteName,
+    angle,
+    distance
+  };
+}
+
+/**
+ * Store a trigger for future execution when using quantization
  * @param {Object} triggerInfo - Trigger information
  * @param {number} quantizedTime - Time when trigger should execute
  */
@@ -62,7 +142,7 @@ function storePendingTrigger(triggerInfo, quantizedTime) {
   const storedInfo = {
     ...triggerInfo,
     executeTime: quantizedTime,
-    note: triggerInfo.note ? {...triggerInfo.note} : null // Make a copy of the note object
+    note: triggerInfo.note ? {...triggerInfo.note} : null
   };
   
   pendingTriggers.push(storedInfo);
@@ -90,65 +170,22 @@ export function processPendingTriggers(currentTime, audioCallback, scene) {
   
   // Execute the triggers
   for (const trigger of triggersToExecute) {
-    const { note, worldRot, executeTime, camera, renderer, isQuantized } = trigger;
+    const { note, worldRot, executeTime, camera, renderer, isQuantized, layer } = trigger;
     
     if (note) {
       // Make a deep copy of the note to ensure we're not modifying the original
       const noteCopy = { ...note };
       noteCopy.time = executeTime;
       
-
       // IMPORTANT: Send the complete note object copy
       audioCallback(noteCopy);
       
       // Create a marker with visual feedback
       if (scene && worldRot !== undefined && noteCopy.frequency !== undefined) {
-        createMarker(worldRot, noteCopy.coordinates.x, noteCopy.coordinates.y, scene, noteCopy, camera, renderer, isQuantized);
+        createMarker(worldRot, noteCopy.x, noteCopy.y, scene, noteCopy, camera, renderer, isQuantized, layer);
       }
     }
   }
-}
-
-/**
- * Parse a quantization value and convert to ticks
- * @param {string} quantValue - Quantization value (e.g., "1-4", "1-8T")
- * @param {number} measureTicks - Ticks per measure (default: TICKS_PER_MEASURE)
- * @returns {number} Ticks per quantization unit
- */
-function parseQuantizationValue(quantValue, measureTicks = TICKS_PER_MEASURE) {
-  if (!quantValue) return TICKS_PER_BEAT; // Default to quarter notes
-  
-  // Check if it's a triplet
-  const isTriplet = quantValue.endsWith('T');
-  
-  // Get the denominator (4 for quarter notes, 8 for eighth notes, etc.)
-  const denominator = parseInt(quantValue.replace('1/', '').replace('T', ''));
-  
-  if (isNaN(denominator) || denominator <= 0) {
-    return TICKS_PER_BEAT; // Default to quarter notes
-  }
-  
-  // Calculate the number of ticks
-  if (isTriplet) {
-    // For triplets, divide by 3 to get 3 notes where 2 would normally fit
-    return Math.round((measureTicks / denominator) * (2/3));
-  } else {
-    return measureTicks / denominator;
-  }
-}
-
-/**
- * Quantize time to nearest grid point
- * @param {number} timeTicks - Time in ticks
- * @param {number} gridTicks - Grid size in ticks
- * @returns {number} Quantized time in ticks
- */
-function quantizeToGrid(timeTicks, gridTicks) {
-  if (gridTicks <= 0) return timeTicks;
-  
-  // Find the nearest grid point
-  const gridIndex = Math.round(timeTicks / gridTicks);
-  return gridIndex * gridTicks;
 }
 
 /**
@@ -168,8 +205,8 @@ function handleQuantizedTrigger(tNow, state, triggerInfo) {
     };
   }
   
-  // Get the BPM
-  const bpm = state.bpm || 120;
+  // Get the BPM - try from global state first, then local state
+  const bpm = state.globalState?.bpm || state.bpm || 120;
   
   // Convert current time to ticks
   const currentTicks = secondsToTicks(tNow, bpm);
@@ -235,21 +272,88 @@ function handleQuantizedTrigger(tNow, state, triggerInfo) {
 }
 
 /**
+ * Parse a quantization value and convert to ticks
+ * @param {string} quantValue - Quantization value (e.g., "1/4", "1/8T")
+ * @param {number} measureTicks - Ticks per measure
+ * @returns {number} Ticks per quantization unit
+ */
+function parseQuantizationValue(quantValue, measureTicks = TICKS_PER_MEASURE) {
+  if (!quantValue) return TICKS_PER_BEAT; // Default to quarter notes
+  
+  // Check if it's a triplet
+  const isTriplet = quantValue.endsWith('T');
+  
+  // Get the denominator (4 for quarter notes, 8 for eighth notes, etc.)
+  const denominator = parseInt(quantValue.replace('1/', '').replace('T', ''));
+  
+  if (isNaN(denominator) || denominator <= 0) {
+    return TICKS_PER_BEAT; // Default to quarter notes
+  }
+  
+  // Calculate the number of ticks
+  if (isTriplet) {
+    // For triplets, divide by 3 to get 3 notes where 2 would normally fit
+    return Math.round((measureTicks / denominator) * (2/3));
+  } else {
+    return measureTicks / denominator;
+  }
+}
+
+/**
+ * Quantize time to nearest grid point
+ * @param {number} timeTicks - Time in ticks
+ * @param {number} gridTicks - Grid size in ticks
+ * @returns {number} Quantized time in ticks
+ */
+function quantizeToGrid(timeTicks, gridTicks) {
+  if (gridTicks <= 0) return timeTicks;
+  
+  // Find the nearest grid point
+  const gridIndex = Math.round(timeTicks / gridTicks);
+  return gridIndex * gridTicks;
+}
+
+/**
  * Create a marker at the given coordinates with note information
- * @param {number} worldRot Rotation angle in radians
- * @param {number} x X coordinate in local space
- * @param {number} y Y coordinate in local space
+ * @param {number} angle Current rotation angle in radians
+ * @param {number} worldX X coordinate in world space
+ * @param {number} worldY Y coordinate in world space
  * @param {THREE.Scene} scene Scene to add marker to
  * @param {Object} note Note object with frequency, duration, velocity info
  * @param {THREE.Camera} camera Camera for label positioning
  * @param {THREE.WebGLRenderer} renderer Renderer for label positioning
  * @param {boolean} isQuantized Whether this is a quantized trigger
+ * @param {Object} layer The layer object this marker belongs to
  * @returns {Object} Created marker
  */
-function createMarker(worldRot, x, y, scene, note, camera = null, renderer = null, isQuantized = false) {
-  // Check if the scene's userData contains our markers array
-  if (!scene.userData.markers) {
-    scene.userData.markers = [];
+function createMarker(angle, worldX, worldY, scene, note, camera = null, renderer = null, isQuantized = false, layer = null) {
+  // Determine where to store the marker
+  let markersArray = null;
+  
+  // First priority: use the provided layer
+  if (layer && Array.isArray(layer.markers)) {
+    markersArray = layer.markers;
+  }
+  // Second priority: get active layer from scene
+  else if (scene && scene._layerManager && scene._layerManager.getActiveLayer()) {
+    const activeLayer = scene._layerManager.getActiveLayer();
+    if (!activeLayer.markers) {
+      activeLayer.markers = [];
+    }
+    markersArray = activeLayer.markers;
+  }
+  // Last resort: use scene's userData
+  else if (scene) {
+    if (!scene.userData.markers) {
+      scene.userData.markers = [];
+    }
+    markersArray = scene.userData.markers;
+  }
+  
+  // If we couldn't find a place to store markers, log error and return
+  if (!markersArray) {
+    console.error("Could not find a place to store markers");
+    return null;
   }
   
   const frequency = note.frequency;
@@ -280,12 +384,10 @@ function createMarker(worldRot, x, y, scene, note, camera = null, renderer = nul
   // Create the mesh
   const markerMesh = new THREE.Mesh(markerGeom, markerMat);
   
-  // Position in world space - rotate the point
-  const worldX = x * Math.cos(worldRot) - y * Math.sin(worldRot);
-  const worldY = x * Math.sin(worldRot) + y * Math.cos(worldRot);
-  
+  // Position directly using world coordinates - no rotation needed
   markerMesh.position.set(worldX, worldY, 5); // Slightly in front
   
+  // Add to scene
   scene.add(markerMesh);
   
   // Create text label if frequency is provided and axis labels are enabled
@@ -309,376 +411,417 @@ function createMarker(worldRot, x, y, scene, note, camera = null, renderer = nul
     // Create a unique ID for this temporary label
     const labelId = `axis-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Create axis crossing label
+    // Create axis crossing label - use world coordinates directly
     const worldPosition = new THREE.Vector3(worldX, worldY, 5);
     textLabel = createAxisLabel(labelId, worldPosition, displayText, camera, renderer);
   }
   
-  // Add to our markers array with life value
+  // Add to markers array with life value and animation state
   const marker = {
     mesh: markerMesh,
     textLabel: textLabel,
     life: MARK_LIFE,
+    originalLife: MARK_LIFE,
+    animState: ANIMATION_STATES.IDLE,
     isQuantized: isQuantized,
     noteInfo: {
       frequency,
       duration,
       velocity
-    }
+    },
+    justHit: false,
+    velocity: 0,
+    pan: note.pan || 0,
+    frequency: frequency,
+    // Store position for updating
+    position: new THREE.Vector3(worldX, worldY, 5),
+    // Keep track of which layer this marker belongs to
+    layerId: layer ? layer.id : (scene._layerManager ? scene._layerManager.activeLayerId : null),
+    createdAt: performance.now()
   };
   
-  if (scene.userData.state && scene.userData.state.markers) {
-    scene.userData.state.markers.push(marker);
-  } else {
-    // Fall back to scene's userData if state is not available
-    scene.userData.markers.push(marker);
-  }
+  // Add the marker to the appropriate array
+  markersArray.push(marker);
   
   return marker;
 }
 
 /**
- * Reset the global sequential index
- * This should be called when significant changes happen to the geometry
+ * Reset the trigger system - call when geometry changes
  */
-export function resetGlobalSequentialIndex() {
-  globalSequentialIndex = 0;
+export function resetTriggerSystem() {
+  recentTriggers.clear();
+  pendingTriggers = [];
 }
 
 /**
- * Detect axis crossings and trigger audio
- * @param {THREE.BufferGeometry} baseGeo Base geometry
- * @param {number} lastAngle Previous rotation angle
- * @param {number} angle Current rotation angle
- * @param {number} copies Number of polygon copies
- * @param {THREE.Group} group Group containing polygon copies
- * @param {Set} lastTrig Set of triggers from last frame
- * @param {number} tNow Current time
- * @param {Function} audioCallback Function to call when trigger occurs
- * @returns {Set} Set of current triggers
+ * Detect triggers for a specific layer
+ * @param {Object} layer Layer object
+ * @param {number} tNow Current time in seconds
+ * @param {Function} audioCallback Callback to trigger audio
+ * @returns {boolean} Whether any triggers were detected
  */
-export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTrig, tNow, audioCallback) {
-  const triggeredNow = new Set();
-  const triggeredPoints = []; // Store positions of triggered points
-  
-  // Get application state from group's parent (scene)
-  const state = group.parent?.userData?.state;
-  
-  // Get vertices from buffer geometry
-  const positions = baseGeo.getAttribute('position').array;
-  const count = baseGeo.getAttribute('position').count;
-  
-  // Get camera and renderer for axis labels
-  const camera = group.parent?.userData?.camera;
-  const renderer = group.parent?.userData?.renderer;
-  
-  // Check if geometry has changed significantly (reset sequential index)
-  if (state && state.parameterChanges && 
-      (state.parameterChanges.segments || 
-       state.parameterChanges.copies || 
-       state.parameterChanges.modulus || 
-       state.parameterChanges.useModulus)) {
-    resetGlobalSequentialIndex();
+export function detectLayerTriggers(layer, tNow, audioCallback) {
+  if (!layer || !layer.state || !layer.group || !layer.baseGeo) {
+    if (DEBUG_LOGGING) console.warn("Invalid layer for trigger detection");
+    return false;
   }
   
-  // First detect crossings for regular vertices
+  // Get layer data
+  const state = layer.state;
+  const group = layer.group;
+  
+  // Skip processing if group is not visible
+  if (!group.visible) {
+    return false;
+  }
+  
+  // Ensure lastTrig set exists
+  if (!layer.lastTrig) layer.lastTrig = new Set();
+  
+  // Get the scene from the group's parent
+  const scene = group.parent;
+  if (!scene) {
+    if (DEBUG_LOGGING) console.warn("Cannot find scene for layer:", layer.id);
+    return false;
+  }
+  
+  // Get camera and renderer from scene's userData
+  const camera = scene?.userData?.camera;
+  const renderer = scene?.userData?.renderer;
+  
+  // Setup variables for tracking triggers
+  const triggeredNow = new Set();
+  const triggeredPoints = [];
+  
+  // Check how many copies we have
+  let copies = 0;
+  if (state.copies) {
+    copies = state.copies;
+  } else if (group.children) {
+    // Count real copies (excluding intersection marker groups)
+    copies = group.children.filter(child => 
+      !(child.userData && child.userData.isIntersectionGroup)
+    ).length - 1; // Subtract 1 for the debug sphere
+  }
+  
+  // Skip if no copies or zero segments
+  if (copies <= 0 || state.segments <= 0) {
+    if (DEBUG_LOGGING) console.log(`Layer ${layer.id}: Skipping trigger detection (copies=${copies}, segments=${state.segments})`);
+    return false;
+  }
+  
+  // Skip detection if angle hasn't changed enough
+  const lastAngle = layer.previousAngle || 0;
+  const angle = layer.currentAngle || 0;
+  
+  // For radians, a small value is appropriate (0.001 ~ 0.057 degrees)
+  const minAngleDelta = 0.0005; 
+  
+  if (Math.abs(angle - lastAngle) < minAngleDelta) {
+    return false;
+  }
+  
+  // Store the current rotation state of the group
+  const originalRotation = group.rotation.z;
+  
+  // IMPORTANT: Temporarily reset rotation to zero to work with pre-rotated geometry
+  // This ensures we're working with the geometry after all modifications but before rotation
+  group.rotation.z = 0;
+  group.updateMatrixWorld(true); // Force matrix update with rotation reset
+  
+  // Create a temporary matrix to store world transforms
+  const worldMatrix = new THREE.Matrix4();
+  
+  // Store the previous frame vertices' world positions if not available
+  if (!layer.prevWorldVertices) {
+    layer.prevWorldVertices = new Map();
+  }
+  
+  // Track if we've triggered anything in this update
+  let anyTriggers = false;
+  
+  // Process each copy
   for (let ci = 0; ci < copies; ci++) {
-    // Check that we have enough children in the group
-    if (ci >= group.children.length) continue;
+    // Find the correct child for this copy
+    let copyIndex = ci;
+    let copyGroup = null;
     
-    // Each copy is a Group containing the LineLoop and vertex circles
-    const copyGroup = group.children[ci];
+    // Find the copy group, skipping non-copy groups
+    for (let i = 0; i < group.children.length; i++) {
+      const child = group.children[i];
+      // Skip debug objects and intersection groups
+      if (child.userData && child.userData.isIntersectionGroup) continue;
+      if (child.type === 'Mesh' && child.geometry && child.geometry.type === 'SphereGeometry') continue;
+      if (child.type === 'Line') continue;
+      
+      // If we've found enough real copy groups to match our target, use this one
+      if (copyIndex === 0) {
+        copyGroup = child;
+        break;
+      }
+      
+      // Otherwise, decrement our counter and continue
+      copyIndex--;
+    }
     
-    // Skip the intersection marker group if we encounter it
-    if (copyGroup.userData && copyGroup.userData.isIntersectionGroup) {
+    // Skip if we couldn't find a valid copy group
+    if (!copyGroup || !copyGroup.children || copyGroup.children.length === 0) {
+      if (DEBUG_LOGGING) console.warn(`Could not find copy group ${ci} for layer ${layer.id}`);
       continue;
     }
     
-    // Make sure the copy group has children
-    if (!copyGroup.children || copyGroup.children.length === 0) continue;
+    // The first child should be the LineLoop
+    const mesh = copyGroup.children.find(child => child.type === 'LineLoop');
+    if (!mesh) {
+      if (DEBUG_LOGGING) console.warn(`Could not find LineLoop in copy group ${ci} for layer ${layer.id}`);
+      continue;
+    }
     
-    // The first child is the LineLoop
-    const mesh = copyGroup.children[0];
+    // Get the world matrix for this mesh (includes all transformations EXCEPT rotation)
+    mesh.updateMatrixWorld();
+    worldMatrix.copy(mesh.matrixWorld);
     
-    // Use the copy group's local rotation plus the current group rotation for world rotation
-    const localRotation = copyGroup.rotation.z || 0;
-    const lastWorldRot = lastAngle + localRotation;
-    const worldRot = angle + localRotation;
+    // Validate geometry and attributes
+    if (!mesh.geometry || !mesh.geometry.getAttribute('position')) {
+      if (DEBUG_LOGGING) console.warn(`Invalid geometry for copy ${ci} of layer ${layer.id}`);
+      continue;
+    }
     
-    const worldScale = mesh.scale.x;
+    const positions = mesh.geometry.getAttribute('position');
+    if (!positions || !positions.count) {
+      if (DEBUG_LOGGING) console.warn(`Invalid position attribute for copy ${ci} of layer ${layer.id}`);
+      continue;
+    }
+    
+    const count = positions.count;
+    
+    // Validate base geometry
+    if (!layer.baseGeo || !layer.baseGeo.getAttribute('position') || !layer.baseGeo.getAttribute('position').array) {
+      if (DEBUG_LOGGING) console.warn(`Invalid base geometry for layer ${layer.id}`);
+      continue;
+    }
+    
+    const basePositions = layer.baseGeo.getAttribute('position').array;
+    
+    // Temp vectors for calculations
+    const worldPos = new THREE.Vector3();
+    const prevWorldPos = new THREE.Vector3();
+    
+    // Create rotation matrix for trigger detection
+    const rotationMatrix = new THREE.Matrix4().makeRotationZ(angle);
+    
+    // Track triggers per copy to detect anomalies
+    let triggersInCopy = 0;
     
     // Process each vertex in this copy
     for (let vi = 0; vi < count; vi++) {
-      const x0 = positions[vi * 3];
-      const y0 = positions[vi * 3 + 1];
+      // Create a unique key for this vertex
+      const key = `${layer.id}-${ci}-${vi}`;
       
-      const x1 = x0 * worldScale;
-      const y1 = y0 * worldScale;
+      // Skip if already triggered in this frame
+      if (triggeredNow.has(key)) continue;
       
-      // Calculate vertex positions at previous and current angles
-      const prevX = x1 * Math.cos(lastWorldRot) - y1 * Math.sin(lastWorldRot);
-      const prevY = x1 * Math.sin(lastWorldRot) + y1 * Math.cos(lastWorldRot);
-      
-      const currX = x1 * Math.cos(worldRot) - y1 * Math.sin(worldRot);
-      const currY = x1 * Math.sin(worldRot) + y1 * Math.cos(worldRot);
-      
-      // Calculate the world position of the vertex at current angle
-      const worldX = currX;
-      const worldY = currY;
-      
-      const key = `${ci}-${vi}`;
-      
-      // To detect a crossing:
-      // 1. The point must have crossed from right to left (positive X to negative X)
-      // 2. The point must be above the X-axis (positive Y)
-      // 3. The point must not have been triggered last frame
-      
-      // Improved crossing detection handling jumps in angle
-      let hasCrossed = false;
-      
-      // Basic case: point crosses from right to left
-      if (prevX > 0 && currX <= 0 && currY > 0 && !lastTrig.has(key)) {
-        hasCrossed = true;
-      } 
-      // Handle the case where angle change is so large that traditional crossing detection fails
-      // Check if the point's path would have crossed the Y-axis
-      else if (!lastTrig.has(key) && currY > 0) {
-        // Calculate angular displacement relative to Y-axis
-        const prevAngleFromYAxis = Math.atan2(prevX, prevY);
-        const currAngleFromYAxis = Math.atan2(currX, currY);
+      try {
+        // Get current vertex world position without rotation
+        worldPos.fromBufferAttribute(positions, vi);
         
-        // If the angles are on opposite sides of the Y-axis, and we've moved enough
-        // to cross it, mark as a crossing
-        if (Math.sign(prevAngleFromYAxis) > 0 && Math.sign(currAngleFromYAxis) <= 0) {
-          const angleDiff = Math.abs(prevAngleFromYAxis - currAngleFromYAxis);
-          // Only count it if the angle difference is reasonable (to avoid false positives)
-          if (angleDiff < Math.PI) {
-            hasCrossed = true;
-          }
+        // Skip invalid vertices
+        if (isNaN(worldPos.x) || isNaN(worldPos.y) || isNaN(worldPos.z)) {
+          continue;
         }
-      }
-      
-      if (hasCrossed) {
-        // Check if this point overlaps with any previously triggered points
-        if (!isPointOverlapping(worldX, worldY, triggeredPoints)) {
-          // Add this point to the list of triggered points
-          triggeredPoints.push({ x: worldX, y: worldY });
-          
-          // Calculate global sequential index
-          const globalIndex = (ci * count) + vi;
-          
-          // Prepare trigger data for note creation
-          const triggerData = {
-            x: x1,
-            y: y1,
-            copyIndex: ci,
-            vertexIndex: vi,
-            isIntersection: false,
-            angle,
-            lastAngle,
-            globalIndex // Pass the global sequential index
-          };
-          
-          // Create note object with modulo parameters
-          const note = createNote(triggerData, state);
-          
-          // Add pan calculation to the note (based on angle)
-          note.pan = Math.sin(worldRot);
-          
-          // Enhanced quantization logic
-          if (state && state.useQuantization) {
-            // Create trigger info object with all needed data - use a copy of the note
-            const triggerInfo = {
-              note: {...note}, // Create a copy to avoid reference issues
-              worldRot,
-              camera,
-              renderer,
-              isQuantized: true
-            };
+        
+        // Apply world matrix to get position in world space (but without rotation)
+        worldPos.applyMatrix4(worldMatrix);
+        
+        // Store original non-rotated position for frequency calculation
+        const nonRotatedPos = worldPos.clone();
+        
+        // Apply rotation manually for trigger detection
+        worldPos.applyMatrix4(rotationMatrix);
+        
+        // Get previous vertex world position
+        let hasPrevPos = false;
+        if (layer.prevWorldVertices.has(key)) {
+          prevWorldPos.copy(layer.prevWorldVertices.get(key));
+          hasPrevPos = true;
+        } else {
+          // For first frame, use current position
+          prevWorldPos.copy(worldPos);
+        }
+        
+        // Store current position for next frame (with rotation)
+        layer.prevWorldVertices.set(key, worldPos.clone());
+        
+        // Skip first frame trigger detection if we don't have previous positions
+        if (!hasPrevPos) continue;
+        
+        // Unwrap position values
+        const currX = worldPos.x;
+        const currY = worldPos.y;
+        const prevX = prevWorldPos.x;
+        const prevY = prevWorldPos.y;
+        
+        // STRICT CROSSING DETECTION: 
+        // 1. Point must be above X-axis (Y > 0)
+        // 2. Must cross from right side to left side (X > 0 to X <= 0)
+        // 3. Not triggered last frame
+        const hasCrossed = prevX > 0 && currX <= 0 && currY > 0 && !layer.lastTrig.has(key);
+        
+        if (hasCrossed) {
+          // Check for overlap with previously triggered points
+          if (!isPointOverlapping(currX, currY, triggeredPoints)) {
+            // Add to triggered points
+            triggeredPoints.push({ x: currX, y: currY });
             
-            // Handle quantized trigger (may schedule for later)
-            const { shouldTrigger, triggerTime, isQuantized } = 
-              handleQuantizedTrigger(tNow, state, triggerInfo);
-            
-            if (shouldTrigger) {
-              // Set the precise trigger time
-              const noteCopy = {...note};
-              noteCopy.time = triggerTime;
-              
-              // IMPORTANT: We need to pass a copy of the entire note object here
-              audioCallback(noteCopy);
-              
-              // Create a marker with visual feedback for quantization
-              createMarker(worldRot, x1, y1, group.parent, noteCopy, camera, renderer, isQuantized);
+            // Check base geometry bounds
+            if (vi * 3 + 1 >= basePositions.length) {
+              console.warn(`Vertex index out of range: ${vi} for layer ${layer.id}`);
+              continue;
             }
             
-            // Always add to triggered set to prevent re-triggering
-            triggeredNow.add(key);
-          } else {
-            // Regular non-quantized trigger - use a copy
-            const noteCopy = {...note};
-            audioCallback(noteCopy);
-            createMarker(worldRot, x1, y1, group.parent, noteCopy, camera, renderer, false);
+            // Get original local coordinates from the baseGeo for frequency calculation
+            const x0 = basePositions[vi * 3];
+            const y0 = basePositions[vi * 3 + 1];
+            
+            // Validate coordinates
+            if (x0 === undefined || y0 === undefined || isNaN(x0) || isNaN(y0)) {
+              console.warn(`Invalid base coordinates at ${vi} for layer ${layer.id}: x=${x0}, y=${y0}`);
+              continue;
+            }
+            
+            // Use the non-rotated position from the transformed geometry
+            // This already has all scaling factors applied (including modulus)
+            const nonRotatedX = nonRotatedPos.x;
+            const nonRotatedY = nonRotatedPos.y;
+            
+            // Calculate frequency directly from the transformed coordinates
+            // This ensures it matches exactly with the visual representation
+            const frequency = Math.hypot(nonRotatedX, nonRotatedY);
+            
+            // Create note with the frequency from transformed geometry
+            const note = {
+              frequency: frequency,
+              noteName: state.useEqualTemperament ? getNoteName(frequency, state.referenceFrequency || 440) : null,
+              duration: state.maxDuration || 0.5,
+              velocity: state.maxVelocity || 0.8,
+              pan: Math.sin(angle),  // Use current angle for pan
+              x: nonRotatedX,  // Store transformed coordinates
+              y: nonRotatedY,
+              worldX: currX,  // Store world coordinates
+              worldY: currY,
+              copyIndex: ci,
+              vertexIndex: vi,
+              layerId: layer.id,
+              time: tNow
+            };
+            
+            // Handle quantization
+            if (state.useQuantization) {
+              // Create trigger info
+              const triggerInfo = {
+                note: {...note},
+                worldRot: angle,
+                camera,
+                renderer,
+                isQuantized: true,
+                layer
+              };
+              
+              // Handle quantization
+              const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(tNow, state, triggerInfo);
+              
+              if (shouldTrigger) {
+                // Trigger with precise time
+                const noteCopy = {...note};
+                noteCopy.time = triggerTime;
+                
+                // Trigger audio
+                audioCallback(noteCopy);
+                
+                // IMPORTANT: angle is already in radians here, pass directly to createMarker
+                createMarker(angle, currX, currY, scene, noteCopy, camera, renderer, isQuantized, layer);
+                
+                if (DEBUG_LOGGING) {
+                  console.log(`Layer ${layer.id}: Triggered vertex ${vi} in copy ${ci}`);
+                }
+                
+                // Increment counter
+                triggersInCopy++;
+                anyTriggers = true;
+              }
+            } else {
+              // Regular non-quantized trigger
+              audioCallback(note);
+              
+              // IMPORTANT: angle is already in radians here, pass directly to createMarker
+              createMarker(angle, currX, currY, scene, note, camera, renderer, false, layer);
+              
+              if (DEBUG_LOGGING) {
+                console.log(`Layer ${layer.id}: Triggered vertex ${vi} in copy ${ci}`);
+              }
+              
+              // Increment counter
+              triggersInCopy++;
+              anyTriggers = true;
+            }
+            
+            // Add to triggered set
             triggeredNow.add(key);
           }
-        } else {
-          // Point is overlapping, still add to triggered set but don't trigger audio
-          triggeredNow.add(key);
         }
+      } catch (error) {
+        console.error(`Error in trigger detection for layer ${layer.id}, copy ${ci}, vertex ${vi}:`, error);
       }
+    }
+    
+    // Detect anomalies - too many triggers at once may indicate a problem
+    if (triggersInCopy > 3) {
+      console.warn(`Potential anomaly: ${triggersInCopy} triggers in one frame for layer ${layer.id}, copy ${ci}`);
     }
   }
   
-  // Now check intersection points if they exist
-  const intersectionGroup = group.children.find(child => 
-    child.userData && child.userData.isIntersectionGroup
-  );
+  // IMPORTANT: Restore the original rotation of the group
+  group.rotation.z = originalRotation;
+  group.updateMatrixWorld(true); // Force matrix update with rotation restored
   
-  if (intersectionGroup && intersectionGroup.children && intersectionGroup.children.length > 0) {
-    // Process each intersection point for possible triggers
-    for (let i = 0; i < intersectionGroup.children.length; i++) {
-      const pointMesh = intersectionGroup.children[i];
-      
-      // Skip if this is a frequency label or a Group
-      if (pointMesh.userData && pointMesh.userData.isFrequencyLabel) {
-        continue;
-      }
-      
-      // Skip if this is a Group (like a text label group)
-      if (pointMesh.type === 'Group') {
-        continue;
-      }
-      
-      const localPos = pointMesh.position.clone();
-      
-      // Calculate previous and current positions
-      const prevX = localPos.x * Math.cos(lastAngle) - localPos.y * Math.sin(lastAngle);
-      const prevY = localPos.x * Math.sin(lastAngle) + localPos.y * Math.cos(lastAngle);
-      
-      const currX = localPos.x * Math.cos(angle) - localPos.y * Math.sin(angle);
-      const currY = localPos.x * Math.sin(angle) + localPos.y * Math.cos(angle);
-      
-      // Calculate world position
-      const worldX = localPos.x * Math.cos(angle) - localPos.y * Math.sin(angle);
-      const worldY = localPos.x * Math.sin(angle) + localPos.y * Math.cos(angle);
-      
-      // Create a unique key for this intersection point
-      const key = `intersection-${i}`;
-      
-      // Similar improved crossing detection logic for intersection points
-      let hasCrossed = false;
-      
-      // Basic case: point crosses from right to left
-      if (prevX > 0 && currX <= 0 && currY > 0 && !lastTrig.has(key)) {
-        hasCrossed = true;
-      }
-      // Handle the case where angle change is so large that traditional crossing detection fails
-      else if (!lastTrig.has(key) && currY > 0) {
-        // Calculate angular displacement relative to Y-axis
-        const prevAngleFromYAxis = Math.atan2(prevX, prevY);
-        const currAngleFromYAxis = Math.atan2(currX, currY);
-        
-        // If the angles are on opposite sides of the Y-axis, and we've moved enough
-        // to cross it, mark as a crossing
-        if (Math.sign(prevAngleFromYAxis) > 0 && Math.sign(currAngleFromYAxis) <= 0) {
-          const angleDiff = Math.abs(prevAngleFromYAxis - currAngleFromYAxis);
-          // Only count it if the angle difference is reasonable (to avoid false positives)
-          if (angleDiff < Math.PI) {
-            hasCrossed = true;
-          }
-        }
-      }
-      
-      if (hasCrossed) {
-        // Check for overlap with already triggered points
-        if (!isPointOverlapping(worldX, worldY, triggeredPoints)) {
-          // Add to triggered points
-          triggeredPoints.push({ x: worldX, y: worldY });
-          
-          // Calculate global sequential index for intersection point
-          // Comes after all regular vertices
-          const globalIndex = (copies * count) + i;
-          
-          // Prepare trigger data for note creation
-          const triggerData = {
-            x: localPos.x,
-            y: localPos.y,
-            isIntersection: true,
-            intersectionIndex: i,
-            angle,
-            lastAngle,
-            globalIndex // Pass the global sequential index
-          };
-          
-          // Create note object with modulo parameters
-          const note = createNote(triggerData, state);
-          
-          // Add pan calculation to the note (based on angle)
-          note.pan = Math.sin(angle);
-          
-          // Enhanced quantization logic for intersection points
-          if (state && state.useQuantization) {
-            // Create trigger info object with note and visualization parameters - use a copy
-            const triggerInfo = {
-              note: {...note}, // Create a copy to avoid reference issues
-              worldRot: angle, // Use global angle since this is not in a copy group
-              camera,
-              renderer,
-              isQuantized: true
-            };
-            
-            // Handle quantized trigger (may schedule for later)
-            const { shouldTrigger, triggerTime, isQuantized } = 
-              handleQuantizedTrigger(tNow, state, triggerInfo);
-            
-            if (shouldTrigger) {
-              // Set the precise trigger time
-              const noteCopy = {...note};
-              noteCopy.time = triggerTime;
-              
-              // Trigger audio now with the complete note copy
-              audioCallback(noteCopy);
-              
-              // Create a marker with visual feedback for quantization
-              createMarker(angle, localPos.x, localPos.y, group.parent, noteCopy, camera, renderer, isQuantized);
-            }
-            
-            // Always add to triggered set to prevent re-triggering
-            triggeredNow.add(key);
-          } else {
-            // Regular non-quantized trigger - use a copy
-            const noteCopy = {...note};
-            audioCallback(noteCopy);
-            createMarker(angle, localPos.x, localPos.y, group.parent, noteCopy, camera, renderer, false);
-            triggeredNow.add(key);
-          }
-        } else {
-          // Point is overlapping, just add to triggered set
-          triggeredNow.add(key);
-        }
-      }
-    }
-  }
+  // Update the layer's last triggered set
+  layer.lastTrig = triggeredNow;
   
-  return triggeredNow;
+  // Return true if we triggered anything
+  return anyTriggers;
 }
 
 /**
- * Clean up expired markers
- * @param {THREE.Scene} scene Scene containing markers
- * @param {Array} markers Array of markers to clean up
+ * Clean up expired markers with fading
+ * @param {Object} layer Layer to process markers for
  */
-export function clearExpiredMarkers(scene, markers) {
-  if (!markers || !Array.isArray(markers)) return;
+export function clearLayerMarkers(layer) {
+  if (!layer || !Array.isArray(layer.markers)) return;
   
+  const scene = layer.group?.parent;
+  if (!scene) return;
+  
+  const markers = layer.markers;
+  
+  // Process each marker
   for (let j = markers.length - 1; j >= 0; j--) {
     const marker = markers[j];
     marker.life--;
     
-    // Update opacity
+    // Update opacity for fading
     if (marker.mesh && marker.mesh.material) {
-      const baseOpacity = marker.noteInfo ? marker.noteInfo.velocity : 0.7;
-      marker.mesh.material.opacity = baseOpacity * (marker.life / MARK_LIFE);
+      // Calculate fade factor
+      const fadeProgress = marker.life / (marker.originalLife || MARK_LIFE);
+      const baseOpacity = marker.noteInfo?.velocity || 0.7;
+      
+      // Apply fade
+      marker.mesh.material.opacity = baseOpacity * fadeProgress;
+      
+      // Update color based on state
+      if (marker.animState === ANIMATION_STATES.HIT) {
+        marker.mesh.material.color.setRGB(1, 1, 0); // Yellow for hit markers
+      }
     }
     
     // Remove expired markers
@@ -703,12 +846,93 @@ export function clearExpiredMarkers(scene, markers) {
 }
 
 /**
- * Get position of a point after rotation
- * @param {number} x X coordinate in local space
- * @param {number} y Y coordinate in local space
- * @param {number} rotationAngle Rotation angle in radians
- * @returns {Object} Rotated position {x, y}
+ * Legacy function for compatibility
  */
+export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTrig, tNow, audioCallback) {
+  // Try to find the layer from the group
+  let layer = null;
+  
+  // Check if we have a layer manager
+  if (group.parent && group.parent._layerManager) {
+    // First try to get layer by group's userData layerId
+    if (group.userData && group.userData.layerId !== undefined) {
+      layer = group.parent._layerManager.layers.find(l => l.id === group.userData.layerId);
+    }
+    
+    // If that failed, use active layer
+    if (!layer) {
+      layer = group.parent._layerManager.getActiveLayer();
+    }
+    
+    // If we found a layer, delegate to the new method
+    if (layer) {
+      // Update layer state with the provided arguments
+      layer.previousAngle = lastAngle;
+      layer.currentAngle = angle;
+      layer.baseGeo = baseGeo;
+      layer.lastTrig = lastTrig;
+      
+      // Call the new method
+      return detectLayerTriggers(layer, tNow, audioCallback);
+    }
+  }
+  
+  // If no layer found, use legacy fallback behavior
+  const triggeredNow = new Set();
+  
+  console.warn("Using legacy trigger detection - layer system not found");
+  
+  return triggeredNow;
+}
+
+/**
+ * Legacy function for compatibility
+ */
+export function clearExpiredMarkers(scene, markers) {
+  // If we have a layer manager, clear markers for all layers
+  if (scene && scene._layerManager && scene._layerManager.layers) {
+    for (const layer of scene._layerManager.layers) {
+      clearLayerMarkers(layer);
+    }
+    return;
+  }
+  
+  // Legacy fallback
+  if (!markers || !Array.isArray(markers)) return;
+  
+  for (let j = markers.length - 1; j >= 0; j--) {
+    const marker = markers[j];
+    marker.life--;
+    
+    // Update opacity
+    if (marker.mesh && marker.mesh.material) {
+      const fadeProgress = marker.life / MARK_LIFE;
+      const baseOpacity = marker.noteInfo ? marker.noteInfo.velocity : 0.7;
+      marker.mesh.material.opacity = baseOpacity * fadeProgress;
+    }
+    
+    // Remove expired markers
+    if (marker.life <= 0) {
+      // Clean up mesh
+      if (marker.mesh) {
+        scene.remove(marker.mesh);
+        
+        if (marker.mesh.geometry) marker.mesh.geometry.dispose();
+        if (marker.mesh.material) marker.mesh.material.dispose();
+      }
+      
+      // Clean up text label
+      if (marker.textLabel && marker.textLabel.id) {
+        removeLabel(marker.textLabel.id);
+      }
+      
+      // Remove from array
+      markers.splice(j, 1);
+    }
+  }
+}
+
+// Legacy functions for compatibility
 export function getRotatedPosition(x, y, rotationAngle) {
   return {
     x: x * Math.cos(rotationAngle) - y * Math.sin(rotationAngle),
@@ -716,14 +940,6 @@ export function getRotatedPosition(x, y, rotationAngle) {
   };
 }
 
-/**
- * Check if a point crosses the Y-axis during rotation
- * @param {number} prevX Previous X coordinate
- * @param {number} prevY Previous Y coordinate 
- * @param {number} currX Current X coordinate
- * @param {number} currY Current Y coordinate
- * @returns {boolean} True if point crosses the Y-axis
- */
 export function checkAxisCrossing(prevX, prevY, currX, currY) {
   // Basic case: point crosses from right to left and is above X-axis
   if (prevX > 0 && currX <= 0 && currY > 0) {
@@ -744,4 +960,9 @@ export function checkAxisCrossing(prevX, prevY, currX, currY) {
   }
   
   return false;
+}
+
+export function resetGlobalSequentialIndex() {
+  // Clear all recent triggers
+  recentTriggers.clear();
 }

@@ -2,6 +2,12 @@
 import * as THREE from 'three';
 import Stats from 'stats.js';
 
+// Debug flag to control the visibility of debug buttons
+const DEBUG_BUTTONS = false;
+
+// Expose debug flag globally
+window.DEBUG_BUTTONS = DEBUG_BUTTONS;
+
 // Import modules
 import { setupUI } from './ui/ui.js';
 import { setupSynthUI } from './ui/synthUI.js';
@@ -136,20 +142,6 @@ function syncStateAcrossSystems(isLayerSwitch = false) {
   if (isLayerSwitch && state && typeof state.resetParameterChanges === 'function') {
     console.log(`[STATE SYNC] Explicitly resetting parameter changes during layer switch`);
     state.resetParameterChanges();
-    
-    // Special handling for layer 2 (third layer) to prevent the issue
-    // where changes to layer 3 cause unnecessary geometry updates when switching layers
-    if (state.layerId === 2) {
-      // Double check that parameter changes are truly reset
-      const anyRemainingChanges = Object.values(state.parameterChanges).some(flag => flag);
-      if (anyRemainingChanges) {
-        console.warn(`[STATE SYNC] Layer 2 still has parameter changes after reset - forcing reset`);
-        // Force reset by ensuring all flags are false
-        Object.keys(state.parameterChanges).forEach(key => {
-          state.parameterChanges[key] = false;
-        });
-      }
-    }
   }
   
   // SKIP GEOMETRY RECREATION IF THIS IS JUST A LAYER SWITCH
@@ -520,7 +512,7 @@ function initializeApplication() {
   debugButton.textContent = 'Recreate Geometry';
   debugButton.style.position = 'absolute';
   debugButton.style.bottom = '50px';
-  debugButton.style.left = '10px';
+  debugButton.style.right = '10px';
   debugButton.style.zIndex = '1000';
   debugButton.style.padding = '10px';
   debugButton.style.backgroundColor = '#f00';
@@ -528,6 +520,7 @@ function initializeApplication() {
   debugButton.style.border = 'none';
   debugButton.style.borderRadius = '5px';
   debugButton.style.cursor = 'pointer';
+  debugButton.style.display = DEBUG_BUTTONS ? 'block' : 'none';
   
   debugButton.addEventListener('click', () => {
     const activeLayer = layerManager.getActiveLayer();
@@ -559,7 +552,7 @@ function initializeApplication() {
   compareLayersButton.textContent = 'Compare Layers';
   compareLayersButton.style.position = 'absolute';
   compareLayersButton.style.bottom = '90px';
-  compareLayersButton.style.left = '10px';
+  compareLayersButton.style.right = '10px';
   compareLayersButton.style.zIndex = '1000';
   compareLayersButton.style.padding = '10px';
   compareLayersButton.style.backgroundColor = '#00f';
@@ -567,6 +560,7 @@ function initializeApplication() {
   compareLayersButton.style.border = 'none';
   compareLayersButton.style.borderRadius = '5px';
   compareLayersButton.style.cursor = 'pointer';
+  compareLayersButton.style.display = DEBUG_BUTTONS ? 'block' : 'none';
   
   compareLayersButton.addEventListener('click', () => {
     if (layerManager && layerManager.layers.length > 0) {
@@ -591,7 +585,7 @@ function initializeApplication() {
   recreateAllButton.textContent = 'Recreate ALL Geometries';
   recreateAllButton.style.position = 'absolute';
   recreateAllButton.style.bottom = '130px';
-  recreateAllButton.style.left = '10px';
+  recreateAllButton.style.right = '10px';
   recreateAllButton.style.zIndex = '1000';
   recreateAllButton.style.padding = '10px';
   recreateAllButton.style.backgroundColor = '#f0f';
@@ -599,6 +593,7 @@ function initializeApplication() {
   recreateAllButton.style.border = 'none';
   recreateAllButton.style.borderRadius = '5px';
   recreateAllButton.style.cursor = 'pointer';
+  recreateAllButton.style.display = DEBUG_BUTTONS ? 'block' : 'none';
   
   recreateAllButton.addEventListener('click', () => {
     if (layerManager && layerManager.layers.length > 0) {
@@ -638,7 +633,7 @@ function initializeApplication() {
   fixLayerColorsButton.textContent = 'Fix Layer Colors';
   fixLayerColorsButton.style.position = 'absolute';
   fixLayerColorsButton.style.bottom = '170px';
-  fixLayerColorsButton.style.left = '10px';
+  fixLayerColorsButton.style.right = '10px';
   fixLayerColorsButton.style.zIndex = '1000';
   fixLayerColorsButton.style.padding = '10px';
   fixLayerColorsButton.style.backgroundColor = '#0ff'; // Cyan
@@ -646,6 +641,7 @@ function initializeApplication() {
   fixLayerColorsButton.style.border = 'none';
   fixLayerColorsButton.style.borderRadius = '5px';
   fixLayerColorsButton.style.cursor = 'pointer';
+  fixLayerColorsButton.style.display = DEBUG_BUTTONS ? 'block' : 'none';
   
   fixLayerColorsButton.addEventListener('click', () => {
     if (layerManager && typeof layerManager.forceSyncLayerColors === 'function') {
@@ -672,7 +668,7 @@ function initializeApplication() {
   debugSceneButton.textContent = 'Debug Scene';
   debugSceneButton.style.position = 'absolute';
   debugSceneButton.style.bottom = '210px';
-  debugSceneButton.style.left = '10px';
+  debugSceneButton.style.right = '10px';
   debugSceneButton.style.zIndex = '1000';
   debugSceneButton.style.padding = '10px';
   debugSceneButton.style.backgroundColor = '#f00';
@@ -680,6 +676,7 @@ function initializeApplication() {
   debugSceneButton.style.border = 'none';
   debugSceneButton.style.borderRadius = '5px';
   debugSceneButton.style.cursor = 'pointer';
+  debugSceneButton.style.display = DEBUG_BUTTONS ? 'block' : 'none';
   
   debugSceneButton.addEventListener('click', () => {
     console.log('---------- SCENE DEBUG ----------');

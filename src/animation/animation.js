@@ -1,72 +1,67 @@
-// src/animation/animation.js - Updated to use browser performance timing
+// src/animation/animation.js - Updated for browser performance timing
 import * as THREE from 'three';
-import { ANIMATION_STATES, MAX_VELOCITY, MARK_LIFE } from '../config/constants.js';
-import { detectIntersections, applyVelocityToMarkers } from '../geometry/intersections.js';
 import { getCurrentTime } from '../time/time.js';
+import { processPendingTriggers } from '../triggers/triggers.js';
+import { ANIMATION_STATES, MAX_VELOCITY } from '../config/constants.js';
+import { detectIntersections, applyVelocityToMarkers } from '../geometry/intersections.js';
 import { updateLabelPositions } from '../ui/domLabels.js';
 
-// Track the last frame time
-let lastTime = 0;
+// Frame counter and timing stats
 let frameCount = 0;
+let lastTime = 0;
 let fpsStats = { min: Infinity, max: 0, avg: 0, frames: 0, total: 0 };
 
 /**
- * Main animation function
- * Uses browser performance timing for smooth animation
+ * Main animation function using browser performance timing
+ * @param {Object} props Animation properties and dependencies
  */
 export function animate(props) {
   const { 
     scene, 
-    renderer, 
-    group, 
     cam, 
-    baseGeo, 
-    mat, 
-    stats, 
+    renderer, 
     state, 
+    triggerAudioCallback, 
     globalState,
-    triggerAudioCallback
+    stats 
   } = props;
   
-  // Always request next frame first to ensure animation loop continues
+  // Use requestAnimationFrame to schedule the next frame
   requestAnimationFrame(() => animate(props));
   
-  // Skip animation frame if scene or renderer isn't ready
-  if (!scene || !renderer) {
-    return;
-  }
+  // Get current time in seconds using browser performance API
+  const currentTime = getCurrentTime();
   
+  // Calculate time delta in seconds (with a reasonable cap to prevent huge jumps)
+  const timeDelta = Math.min(currentTime - lastTime, 0.1); // Cap at 100ms
+  
+  // Update lastTime for next frame
+  lastTime = currentTime;
+  
+  // Update FPS stats
   frameCount++;
+  if (timeDelta > 0) {
+    const fps = 1 / timeDelta;
+    fpsStats.frames++;
+    fpsStats.total += fps;
+    fpsStats.avg = fpsStats.total / fpsStats.frames;
+    fpsStats.min = Math.min(fpsStats.min, fps);
+    fpsStats.max = Math.max(fpsStats.max, fps);
+  }
   
   // Update stats if available
   if (stats) {
     stats.begin();
   }
   
-  // Get current time from time.js - Simple browser performance timing
-  const currentTime = getCurrentTime();
-  
-  // Calculate time delta
-  let timeDelta = 0;
-  if (lastTime > 0) {
-    // Compute delta in seconds, clamping to reasonable values
-    timeDelta = Math.min(0.1, Math.max(0.001, currentTime - lastTime));
-    
-    // Track FPS stats
-    const fps = 1 / timeDelta;
-    fpsStats.min = Math.min(fpsStats.min, fps);
-    fpsStats.max = Math.max(fpsStats.max, fps);
-    fpsStats.total += fps;
-    fpsStats.frames++;
-    fpsStats.avg = fpsStats.total / fpsStats.frames;
-  }
-  
-  // Store current time for next frame
-  lastTime = currentTime;
-  
   // Update state.lastTime which is used for angle calculation
   if (state && typeof state.lastTime !== 'undefined') {
     state.lastTime = currentTime;
+  }
+  
+  // Process any pending quantized triggers
+  if (triggerAudioCallback) {
+    processPendingTriggers(currentTime, triggerAudioCallback, scene);
   }
   
   // Periodically log timing info
@@ -113,7 +108,15 @@ export function animate(props) {
     
     // Update markers (dots) based on intersections
     if (activeLayer.state.needsIntersectionUpdate) {
-      detectIntersections(activeLayer);
+      // Only detect intersections if they're enabled
+      const useIntersections = activeLayer.state.useIntersections === true;
+      const useStarCuts = activeLayer.state.useStars === true && activeLayer.state.useCuts === true;
+      
+      if (useIntersections || useStarCuts) {
+        detectIntersections(activeLayer);
+      }
+      
+      // Always reset the flag regardless
       activeLayer.state.needsIntersectionUpdate = false;
     }
     
@@ -131,68 +134,46 @@ export function animate(props) {
       globalState.updateAngle(currentTime * 1000);
     }
     
-    // Update all layers with their respective angles
-    if (scene._layerManager && scene._layerManager.layers) {
-      scene._layerManager.layers.forEach(layer => {
-        if (layer && layer.visible && typeof layer.updateAngle === 'function') {
-          layer.updateAngle(currentTime);
-        }
-      });
-    }
+    // IMPORTANT: Remove per-layer angle updates here
+    // Layer rotation will be handled in LayerManager.updateLayers instead
+    // This prevents double-application of rotation
     
     // Check if any markers need to trigger audio
     const markers = activeLayer.markers;
-    if (markers) {
-      markers.forEach(marker => {
-        // Check if marker was hit in this frame
-        if (marker.animState === ANIMATION_STATES.HIT && 
-            marker.velocity >= MAX_VELOCITY * 0.9 && 
-            marker.justHit && 
-            triggerAudioCallback) {
-          
-          // Create note object
-          const note = {
-            frequency: marker.frequency || 440,
-            velocity: 0.8,
-            duration: marker.lifetime / 1000 || 0.5,
-            pan: marker.pan || 0
-          };
-          
-          // Trigger audio
-          triggerAudioCallback(note);
-          
-          // Mark as processed
-          marker.justHit = false;
-        }
-      });
-    }
-  }
-  
-  // Update DOM label positions if we have an active layer
-  if (activeLayer && activeLayer.markers) {
-    updateLabelPositions(activeLayer.markers, cam, renderer);
-  }
-  
-  // Render the scene
-  renderer.render(scene, cam);
-  
-  // Debug rendering issues occasionally
-  if (frameCount % 900 === 0) {
-    console.log('[ANIMATION] Render stats:', {
-      renderer: {
-        info: renderer.info,
-        fps: Math.round(1/timeDelta)
-      },
-      timing: {
-        current: currentTime.toFixed(3),
-        delta: timeDelta.toFixed(4)
+    if (markers && markers.length > 0) {
+      for (let i = 0; i < markers.length; i++) {
+        const marker = markers[i];
+        
+        // Skip markers that aren't in hit state
+        if (marker.state !== ANIMATION_STATES.HIT) continue;
+        
+        // Get velocity from marker or use max velocity
+        const velocity = marker.velocity !== undefined ? marker.velocity : MAX_VELOCITY;
+        
+        // Create frequency from marker and trigger audio
+        const note = {
+          frequency: marker.frequency,
+          noteName: marker.noteName || "",
+          velocity: velocity,
+          duration: 0.5,
+          x: marker.position.x,
+          y: marker.position.y,
+          // Add additional properties for debugging
+          markerId: i,
+          time: currentTime
+        };
+        
+        triggerAudioCallback(note);
+        
+        // Change state to triggered
+        marker.state = ANIMATION_STATES.TRIGGERED;
       }
-    });
-  }
-  
-  // Update stats if available
-  if (stats) {
-    stats.end();
+    }
+    
+    // Update DOM label positions if the function is available
+    if (typeof updateLabelPositions === 'function') {
+      updateLabelPositions(activeLayer, cam, renderer);
+    }
   }
   
   // Inside the animate function, after updating global angle
@@ -212,5 +193,13 @@ export function animate(props) {
     
     // Update all layers via the layer manager
     scene._layerManager.updateLayers(animationParams);
+  }
+  
+  // Render the scene
+  renderer.render(scene, cam);
+  
+  // End stats tracking
+  if (stats) {
+    stats.end();
   }
 }

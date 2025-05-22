@@ -1,5 +1,9 @@
 // src/ui/layersUI.js - UI controls for managing layers
 import { LayerManager } from '../state/LayerManager.js';
+import { updateUIFromState } from '../state/statePersistence.js';
+
+// Import DEBUG_BUTTONS flag from main.js if it exists, otherwise default to false
+const DEBUG_BUTTONS = window.DEBUG_BUTTONS !== undefined ? window.DEBUG_BUTTONS : false;
 
 /**
  * Set up the Layer tab UI with controls for managing layers
@@ -7,7 +11,17 @@ import { LayerManager } from '../state/LayerManager.js';
  * @returns {Object} Object containing UI references
  */
 export function setupLayersUI(layerManager) {
+  if (!layerManager) {
+    console.error('Cannot set up layers UI: No layer manager provided');
+    return null;
+  }
+  
+  // Create the layer tab container
   const layerTab = document.getElementById('layer-tab');
+  if (!layerTab) {
+    console.error('Cannot set up layers UI: No layer tab element found');
+    return null;
+  }
   
   // Clear existing content
   layerTab.innerHTML = '';
@@ -133,7 +147,9 @@ export function setupLayersUI(layerManager) {
   updateLayerButtons(layerManager);
   
   // Add debug buttons to the layer tab
-  addDebugButtons(layerTab, layerManager);
+  if (DEBUG_BUTTONS) {
+    addDebugButtons(layerTab, layerManager);
+  }
   
   // Return references to UI elements
   return {
@@ -247,10 +263,16 @@ function addDebugButtons(container, layerManager) {
   debugContainer.style.padding = '10px';
   debugContainer.style.border = '1px solid #444';
   debugContainer.style.borderRadius = '4px';
+  debugContainer.style.position = 'absolute';
+  debugContainer.style.right = '10px';
+  debugContainer.style.top = '250px';
+  debugContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+  debugContainer.style.zIndex = '1000';
   
   const debugTitle = document.createElement('h3');
   debugTitle.textContent = 'Debug Controls';
   debugTitle.style.margin = '0 0 10px 0';
+  debugTitle.style.color = '#fff';
   debugContainer.appendChild(debugTitle);
   
   // Create button for layer state verification
@@ -258,6 +280,12 @@ function addDebugButtons(container, layerManager) {
   verifyStateButton.textContent = 'Verify Layer State';
   verifyStateButton.className = 'debug-button';
   verifyStateButton.style.marginRight = '10px';
+  verifyStateButton.style.marginBottom = '10px';
+  verifyStateButton.style.padding = '5px 10px';
+  verifyStateButton.style.backgroundColor = '#f00';
+  verifyStateButton.style.color = '#fff';
+  verifyStateButton.style.border = 'none';
+  verifyStateButton.style.borderRadius = '4px';
   verifyStateButton.addEventListener('click', () => {
     if (typeof layerManager.debugActiveLayerState === 'function') {
       layerManager.debugActiveLayerState();
@@ -272,6 +300,11 @@ function addDebugButtons(container, layerManager) {
   recreateGeometryButton.textContent = 'Recreate Geometry';
   recreateGeometryButton.className = 'debug-button';
   recreateGeometryButton.style.marginRight = '10px';
+  recreateGeometryButton.style.padding = '5px 10px';
+  recreateGeometryButton.style.backgroundColor = '#00f';
+  recreateGeometryButton.style.color = '#fff';
+  recreateGeometryButton.style.border = 'none';
+  recreateGeometryButton.style.borderRadius = '4px';
   recreateGeometryButton.addEventListener('click', () => {
     const activeLayer = layerManager.getActiveLayer();
     if (activeLayer) {
@@ -281,6 +314,6 @@ function addDebugButtons(container, layerManager) {
   });
   debugContainer.appendChild(recreateGeometryButton);
   
-  // Add container to the parent
-  container.appendChild(debugContainer);
+  // Add to document body instead of container for absolute positioning
+  document.body.appendChild(debugContainer);
 } 

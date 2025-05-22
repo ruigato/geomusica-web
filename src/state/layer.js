@@ -3,6 +3,9 @@ import { createAppState } from './state.js';
 import * as THREE from 'three';
 import { createPolygonGeometry } from '../geometry/geometry.js';
 
+// Debug flag to control logging
+const DEBUG_LOGGING = false;
+
 /**
  * Layer class that encapsulates geometry, state, and rendering for a single layer
  */
@@ -58,25 +61,33 @@ export class Layer {
     this.state.parameterChanges.radius = true;
     this.state.parameterChanges.stepScale = true;
     
-    console.log(`Layer ${id} created with: copies=${this.state.copies}, segments=${this.state.segments}, radius=${this.state.radius}`);
-    console.log(`Layer ${id} color:`, this.color);
+    if (DEBUG_LOGGING) {
+      console.log(`Layer ${id} created with: copies=${this.state.copies}, segments=${this.state.segments}, radius=${this.state.radius}`);
+      console.log(`Layer ${id} color:`, this.color);
+    }
     
     // Override the setRadius, setSegments, and setCopies methods to add layer-specific logging
     const originalSetRadius = this.state.setRadius;
     this.state.setRadius = (value) => {
-      console.log(`[LAYER ${this.id}] Setting radius to ${value}`);
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Setting radius to ${value}`);
+      }
       return originalSetRadius.call(this.state, value);
     };
     
     const originalSetSegments = this.state.setSegments;
     this.state.setSegments = (value) => {
-      console.log(`[LAYER ${this.id}] Setting segments to ${value}`);
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Setting segments to ${value}`);
+      }
       return originalSetSegments.call(this.state, value);
     };
     
     const originalSetCopies = this.state.setCopies;
     this.state.setCopies = (value) => {
-      console.log(`[LAYER ${this.id}] Setting copies to ${value}`);
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Setting copies to ${value}`);
+      }
       return originalSetCopies.call(this.state, value);
     };
     
@@ -84,7 +95,7 @@ export class Layer {
     const originalHasParameterChanged = this.state.hasParameterChanged;
     this.state.hasParameterChanged = function() {
       const hasChanges = originalHasParameterChanged.call(this);
-      if (hasChanges) {
+      if (hasChanges && DEBUG_LOGGING) {
         const changedParams = Object.entries(this.parameterChanges)
           .filter(([_, val]) => val)
           .map(([key, _]) => key)
@@ -136,12 +147,14 @@ export class Layer {
     };
     
     // Log material creation with color info
-    console.log(`[LAYER ${this.id}] Created material with color:`, {
-      r: this.color.r,
-      g: this.color.g,
-      b: this.color.b,
-      hex: '#' + this.color.getHexString()
-    });
+    if (DEBUG_LOGGING) {
+      console.log(`[LAYER ${this.id}] Created material with color:`, {
+        r: this.color.r,
+        g: this.color.g,
+        b: this.color.b,
+        hex: '#' + this.color.getHexString()
+      });
+    }
     
     // Apply any state overrides from options
     if (options.state) {
@@ -161,7 +174,9 @@ export class Layer {
       this.recreateGeometry();
     }
     
-    console.log(`Layer ${this.id} initialized, group visible: ${this.group.visible}, radius: ${this.state.radius}, segments: ${this.state.segments}, copies: ${this.state.copies}`);
+    if (DEBUG_LOGGING) {
+      console.log(`Layer ${this.id} initialized, group visible: ${this.group.visible}, radius: ${this.state.radius}, segments: ${this.state.segments}, copies: ${this.state.copies}`);
+    }
   }
   
   /**
@@ -180,12 +195,14 @@ export class Layer {
       this.material.color = this.color;
       this.material.needsUpdate = true; // Important! This forces Three.js to update the material
       
-      console.log(`[LAYER ${this.id}] Updated material color to:`, {
-        r: this.color.r,
-        g: this.color.g,
-        b: this.color.b,
-        hex: '#' + this.color.getHexString()
-      });
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Updated material color to:`, {
+          r: this.color.r,
+          g: this.color.g,
+          b: this.color.b,
+          hex: '#' + this.color.getHexString()
+        });
+      }
     }
   }
   
@@ -205,30 +222,41 @@ export class Layer {
    */
   activate() {
     this.active = true;
-    console.log(`[LAYER] Layer ${this.id} activated with state:`, {
-      radius: this.state.radius,
-      segments: this.state.segments,
-      copies: this.state.copies
-    });
+    if (DEBUG_LOGGING) {
+      console.log(`[LAYER] Layer ${this.id} activated with state:`, {
+        radius: this.state.radius,
+        segments: this.state.segments,
+        copies: this.state.copies
+      });
+    }
     
     // Hook into state change methods to add debug logging for this layer
     const originalSetRadius = this.state.setRadius;
     this.state.setRadius = (value) => {
-      console.log(`[LAYER ${this.id}] Setting radius to ${value}`);
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Setting radius to ${value}`);
+      }
       return originalSetRadius.call(this.state, value);
     };
     
     const originalSetSegments = this.state.setSegments;
     this.state.setSegments = (value) => {
-      console.log(`[LAYER ${this.id}] Setting segments to ${value}`);
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Setting segments to ${value}`);
+      }
       return originalSetSegments.call(this.state, value);
     };
     
     const originalSetCopies = this.state.setCopies;
     this.state.setCopies = (value) => {
-      console.log(`[LAYER ${this.id}] Setting copies to ${value}`);
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Setting copies to ${value}`);
+      }
       return originalSetCopies.call(this.state, value);
     };
+    
+    // Ensure this layer has valid geometry for trigger detection when activated
+    this.ensureValidGeometry();
   }
   
   /**
@@ -236,7 +264,9 @@ export class Layer {
    */
   deactivate() {
     this.active = false;
-    console.log(`[LAYER] Layer ${this.id} deactivated`);
+    if (DEBUG_LOGGING) {
+      console.log(`[LAYER] Layer ${this.id} deactivated`);
+    }
     
     // Remove debug hooks from state methods when deactivating
     if (this.state._originalSetRadius) {
@@ -249,6 +279,53 @@ export class Layer {
     
     if (this.state._originalSetCopies) {
       this.state.setCopies = this.state._originalSetCopies;
+    }
+  }
+  
+  /**
+   * Ensure this layer has valid geometry that can be used for trigger detection
+   * This is essential for triggers to work correctly
+   */
+  ensureValidGeometry() {
+    // If no geometry exists or it's invalid, recreate it
+    if (!this.baseGeo || !this.baseGeo.getAttribute('position')) {
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Ensuring valid geometry for trigger detection`);
+      }
+      this.recreateGeometry();
+    }
+    
+    // Ensure the geometry has the necessary userData for trigger detection
+    if (this.baseGeo && !this.baseGeo.userData.layerId) {
+      this.baseGeo.userData.layerId = this.id;
+      this.baseGeo.userData.vertexCount = this.state.segments;
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Added layerId and vertexCount to geometry userData`);
+      }
+    }
+    
+    // Ensure the group has the state reference for trigger detection
+    if (this.group) {
+      this.group.userData.state = this.state;
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Ensured group has state reference for trigger detection`);
+      }
+      
+      // Make sure the group is visible
+      if (!this.group.visible) {
+        this.group.visible = true;
+        if (DEBUG_LOGGING) {
+          console.log(`[LAYER ${this.id}] Forced group visibility for trigger detection`);
+        }
+      }
+    }
+    
+    // Initialize lastTrig set if it doesn't exist
+    if (!this.state.lastTrig) {
+      this.state.lastTrig = new Set();
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Initialized lastTrig set for trigger detection`);
+      }
     }
   }
   
@@ -291,7 +368,9 @@ export class Layer {
     this.state.parameterChanges.segments = true;
     this.state.parameterChanges.copies = true;
     
-    console.log(`[GEOMETRY UPDATE] Recreated geometry for layer ${this.id}: segments=${this.state.segments}, radius=${this.state.radius}, copies=${this.state.copies}`);
+    if (DEBUG_LOGGING) {
+      console.log(`[GEOMETRY UPDATE] Recreated geometry for layer ${this.id}: segments=${this.state.segments}, radius=${this.state.radius}, copies=${this.state.copies}`);
+    }
     
     return this.baseGeo;
   }
@@ -338,13 +417,18 @@ export class Layer {
     // Force geometry recreation
     this.recreateGeometry();
     
-    console.log(`Forced visibility for layer ${this.id}`);
+    if (DEBUG_LOGGING) {
+      console.log(`Forced visibility for layer ${this.id}`);
+    }
     
     return this;
   }
   
   /**
-   * Update the layer's angle for animation and marker detection
+   * Update the layer's angle for animation and marker detection.
+   * This method ONLY calculates and tracks angles but DOES NOT apply rotation.
+   * The actual rotation is applied by LayerManager.updateLayers to avoid double-application.
+   * 
    * @param {number} currentTime Current time in seconds
    */
   updateAngle(currentTime) {
@@ -379,8 +463,8 @@ export class Layer {
         const multiplier = this.state.timeSubdivisionValue;
         deltaAngle *= multiplier;
         
-        // Log the effect occasionally
-        if (Math.random() < 0.003) {
+        // Log the effect occasionally, only if debug logging is enabled
+        if (DEBUG_LOGGING && Math.random() < 0.003) {
           console.log(`[LAYER ${this.id}] Applied time subdivision: multiplier=${multiplier}, deltaAngle=${deltaAngle.toFixed(2)}°`);
         }
       }
@@ -395,14 +479,14 @@ export class Layer {
       // Convert accumulated angle from degrees to radians
       this.currentAngle = (this.accumulatedAngle * Math.PI) / 180;
       
-      // Apply rotation to the group
-      if (this.group) {
-        this.group.rotation.z = this.currentAngle;
-      }
+      // IMPORTANT: DO NOT apply rotation here!
+      // LayerManager.updateLayers will handle applying rotation to the group.
     } else {
       // Fallback calculation if no global state is available
       // This shouldn't happen in normal operation
-      console.warn(`[LAYER ${this.id}] No global state available for angle update`);
+      if (DEBUG_LOGGING) {
+        console.warn(`[LAYER ${this.id}] No global state available for angle update`);
+      }
       
       // Default to a slow rotation (45 degrees per second)
       const lastUpdateTime = this.lastUpdateTime || (currentTime - 0.016);
@@ -411,10 +495,8 @@ export class Layer {
       
       this.currentAngle = (this.currentAngle || 0) + rotationSpeed * deltaTime;
       
-      // Apply rotation to the group
-      if (this.group) {
-        this.group.rotation.z = this.currentAngle;
-      }
+      // IMPORTANT: DO NOT apply rotation here!
+      // LayerManager.updateLayers will handle applying rotation to the group.
     }
     
     // Store the time for future delta calculations

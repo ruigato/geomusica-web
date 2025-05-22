@@ -2,6 +2,24 @@
 import { UI_RANGES, QUANTIZATION_VALUES } from '../config/constants.js';
 import { ParameterMode } from '../notes/notes.js';
 
+// Debug flag to control logging
+const DEBUG_LOGGING = false;
+
+// Time subdivision values for radio buttons
+const TIME_SUBDIVISION_VALUES = [
+  {value: 1, label: 'Whole'},
+  {value: 2, label: 'Half'},
+  {value: 4, label: 'Quarter'},
+  {value: 8, label: 'Eighth'},
+  {value: 16, label: 'Sixteenth'},
+];
+
+// Quantization values for radio buttons
+const QUANTIZATION_VALUES_FOR_RADIO_BUTTONS = [
+  'off', '1/1', '1/2', '1/4', '1/8', '1/16', '1/32', '1/64',
+  '1/4T', '1/8T', '1/16T', '1/32T',
+];
+
 // Function to set up modulus radio buttons - MOVED TO TOP OF FILE
 function setupModulusRadioButtons(container, state, type = null) {
   if (!container) return; // Null check
@@ -65,28 +83,8 @@ function setupTimeSubdivisionRadioButtons(container, state) {
   // Clear any existing content
   container.innerHTML = '';
   
-  // Create radio buttons for each division option
-  // Format: [displayed value, actual multiplier]
-  const divisions = [
-    // Faster options (>1x)
-    ["8x", 8],
-    ["6x", 6],
-    ["4x", 4],
-    ["3x", 3],
-    ["2x", 2],
-    ["1.5x", 1.5],
-    // Normal speed
-    ["1x", 1],
-    // Slower options (<1x)
-    ["1/1.5x", 1/1.5],
-    ["1/2x", 1/2],
-    ["1/3x", 1/3],
-    ["1/4x", 1/4],
-    ["1/6x", 1/6],
-    ["1/8x", 1/8]
-  ];
-  
-  for (const [label, value] of divisions) {
+  // Create a radio button for each time subdivision value
+  for (const {value, label} of TIME_SUBDIVISION_VALUES) {
     const radioItem = document.createElement('div');
     radioItem.className = 'radio-item';
     
@@ -109,7 +107,9 @@ function setupTimeSubdivisionRadioButtons(container, state) {
         
         // Set time subdivision value on the active layer
         activeState.setTimeSubdivisionValue(parseFloat(value));
-        console.log(`[LAYER ${activeState.layerId || 'unknown'}] Time subdivision changed to ${value}`);
+        if (DEBUG_LOGGING) {
+          console.log(`[LAYER ${activeState.layerId || 'unknown'}] Time subdivision changed to ${value}`);
+        }
       }
     });
     
@@ -131,7 +131,7 @@ function setupQuantizationRadioButtons(container, state) {
   container.innerHTML = '';
   
   // Create a radio button for each quantization value
-  for (const value of QUANTIZATION_VALUES) {
+  for (const value of QUANTIZATION_VALUES_FOR_RADIO_BUTTONS) {
     const radioItem = document.createElement('div');
     radioItem.className = 'radio-item';
     

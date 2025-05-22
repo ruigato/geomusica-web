@@ -14,6 +14,9 @@ import { createOrUpdateLabel } from '../ui/domLabels.js';
 import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils.js';
 import { createNote } from '../notes/notes.js';
 
+// Debug flag to control logging
+const DEBUG_LOGGING = false;
+
 // Reuse geometries for better performance
 const vertexCircleGeometry = new THREE.CircleGeometry(1, 12); // Fewer segments (12) for performance
 
@@ -25,33 +28,62 @@ const vertexCircleGeometry = new THREE.CircleGeometry(1, 12); // Fewer segments 
  * @returns {THREE.BufferGeometry} The created geometry
  */
 export function createPolygonGeometry(radius, segments, state = null) {
-  // Get layer ID from state if available for debugging
+  // Ensure we have valid inputs
+  radius = radius || 300;
+  segments = segments || 3;
+  
+  // Add this for debugging to track when we're creating new geometry
   const layerId = state && state.layerId !== undefined ? state.layerId : 'unknown';
   
-  console.log(`[GEOMETRY CREATE] Creating polygon geometry for layer ${layerId} with radius=${radius}, segments=${segments}`);
-  
-  // Ensure segments is a proper integer and at least 3
-  const numSegments = Math.max(3, Math.round(segments));
-  
-  // We'll be creating geometry from scratch to support star polygons, fractal geometry, etc.
-  let points = [];
-  
-  // Use appropriate creation method based on state parameters
-  if (state && state.useStars) {
-    // Create a star polygon using the specified skip value
-    points = createStarPolygonPoints(radius, numSegments, state.starSkip, state);
-  } else if (state && state.useEuclid) {
-    // Create a subset of points using Euclidean rhythm
-    points = createEuclideanPoints(radius, numSegments, state.euclidValue, state);
-  } else if (state && state.useFractal) {
-    // Create a fractal polygon
-    points = createFractalPolygonPoints(radius, numSegments, state.fractalValue, state);
-  } else {
-    // Create a regular polygon
-    points = createRegularPolygonPoints(radius, numSegments, state);
+  if (DEBUG_LOGGING) {
+    console.log(`[GEOMETRY CREATE] Creating polygon geometry for layer ${layerId} with radius=${radius}, segments=${segments}`);
   }
   
+  // Get the specific shape type from state if available
+  const shapeType = state?.shapeType || 'regular';
+  
+  // Handle different shape types
+  switch (shapeType) {
+    case 'star':
+      // Create a star polygon
+      const starPoints = createStarPolygonPoints(radius, segments, state?.starInnerRadius || radius * 0.5);
+      return createGeometryFromPoints(starPoints, state);
+      
+    case 'fractal':
+      // Create a fractal-like shape
+      const fractalPoints = createFractalPolygonPoints(radius, segments, state?.fractalDepth || 1, state?.fractalScale || 0.5);
+      return createGeometryFromPoints(fractalPoints, state);
+      
+    case 'regular':
+    default:
+      // Create a regular polygon
+      return createRegularPolygonGeometry(radius, segments, state);
+  }
+}
+
+/**
+ * Create a regular polygon geometry
+ * @param {number} radius Radius of the polygon
+ * @param {number} segments Number of segments
+ * @param {Object} state Application state
+ * @returns {THREE.BufferGeometry} The created geometry
+ */
+function createRegularPolygonGeometry(radius, segments, state) {
+  // Create points for a regular polygon
+  const points = createRegularPolygonPoints(radius, segments, state);
+  
   // Create geometry from points
+  return createGeometryFromPoints(points, state);
+}
+
+/**
+ * Create geometry from an array of points
+ * @param {Array<THREE.Vector2>} points Array of 2D points
+ * @param {Object} state Application state
+ * @returns {THREE.BufferGeometry} The created geometry
+ */
+function createGeometryFromPoints(points, state) {
+  // Create geometry
   const geometry = new THREE.BufferGeometry();
   
   // Convert points to Float32Array for position attribute
@@ -71,7 +103,7 @@ export function createPolygonGeometry(radius, segments, state = null) {
     geometry.userData = {};
   }
   
-  // Set the layer ID in the geometry userData
+  // Set the layer ID in the geometry userData if available in state
   if (state && state.layerId !== undefined) {
     geometry.userData.layerId = state.layerId;
   }
@@ -343,239 +375,94 @@ export function cleanupIntersectionMarkers(scene) {
   }
 }
 
-// Add a counter for logging at the module level
+// Keep track of how many times we've called updateGroup
 let updateGroupCallCounter = 0;
 
 /**
- * Update the group of polygon copies
- * @param {THREE.Group} group - Group to update
- * @param {number} copies - Number of copies
- * @param {number} stepScale - Scale factor between copies
- * @param {THREE.BufferGeometry} baseGeo - Base geometry
- * @param {THREE.Material} mat - Material to use
- * @param {number} segments - Number of segments
- * @param {number} angle - Rotation angle between copies
- * @param {Object} state - Application state
- * @param {boolean} isLerping - Whether we're currently lerping
- * @param {boolean} justCalculatedIntersections - Whether we just calculated intersections
+ * Update the display group with copies of the base geometry
+ * @param {THREE.Group} group Group to update
+ * @param {number} copies Number of copies to create
+ * @param {number} stepScale Scale factor between copies
+ * @param {THREE.BufferGeometry} baseGeo Base geometry
+ * @param {THREE.Material} mat Material to use
+ * @param {number} segments Number of segments
+ * @param {number} angle Angle between copies in degrees
+ * @param {Object} state Application state
+ * @param {boolean} isLerping Whether values are currently being lerped
+ * @param {boolean} justCalculatedIntersections Whether intersections were just calculated
  */
 export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, angle = 0, state = null, isLerping = false, justCalculatedIntersections = false) {
-  // Only log on first call or when parameters change
-  updateGroupCallCounter++;
-  if (updateGroupCallCounter % 900 === 0) {
-    console.log(`UpdateGroup called: copies=${copies}, segments=${segments}, group.children=${group.children.length}`);
+  // Skip update if invalid inputs
+  if (!group || !baseGeo || !mat) {
+    console.error("Missing required parameters for updateGroup");
+    return;
   }
+
+  // Store debug objects to restore them later
+  const debugObjects = [];
+  
+  // Find and temporarily store debug sphere and other debug objects
+  for (let i = group.children.length - 1; i >= 0; i--) {
+    const child = group.children[i];
+    if (child.type === 'Mesh' && child.geometry && child.geometry.type === 'SphereGeometry') {
+      debugObjects.push(child);
+      group.remove(child);
+      continue;
+    }
+    
+    // Store intersection marker groups separately
+    if (child.userData && child.userData.isIntersectionGroup) {
+      debugObjects.push(child);
+      group.remove(child);
+      continue;
+    }
+  }
+  
+  // Clear all remaining children (the actual shape copies)
+  while (group.children.length > 0) {
+    const child = group.children[group.children.length - 1];
+    
+    // Dispose geometries and materials
+    if (child.geometry && child.geometry !== baseGeo) {
+      child.geometry.dispose();
+    }
+    
+    if (child.material) {
+      if (Array.isArray(child.material)) {
+        child.material.forEach(m => m.dispose());
+      } else {
+        child.material.dispose();
+      }
+    }
+    
+    group.remove(child);
+  }
+  
+  // Handle case where copies is 0 or less
+  if (copies <= 0) {
+    // Make the group invisible when no copies
+    group.visible = false;
+    
+    // Restore debug objects
+    for (const debugObj of debugObjects) {
+      group.add(debugObj);
+    }
+    
+    return;
+  }
+  
+  // Make sure the group is visible
+  group.visible = true;
+  
+  // Increment the call counter
+  updateGroupCallCounter++;
   
   // Ensure segments is a proper integer
   const numSegments = Math.round(segments);
   
-  // Enhanced OPTIMIZATION: More robust check to skip update if nothing changed
-  // The +5 accounts for the debug objects (sphere + 3 axis lines + parent group)
-  if (!isLerping && 
-      !justCalculatedIntersections && 
-      state && !state.needsIntersectionUpdate &&
-      group.children.length === copies + 5 && // +5 for debug objects and marker group
-      updateGroupCallCounter > 10) { // Don't skip during first few calls for stability
-    
-    // Special handling for layer 2 (third layer) to prevent the issue
-    // where changes to layer 3 cause unnecessary geometry updates when switching layers
-    if (state.layerId === 2) {
-      // Double check parameter changes for this layer
-      const hasChanges = Object.values(state.parameterChanges).some(flag => flag);
-      if (hasChanges) {
-        console.warn(`[GEOMETRY WARNING] Layer 2 still has parameter changes that should have been reset - forcing reset`);
-        // Force reset the parameter changes
-        Object.keys(state.parameterChanges).forEach(key => {
-          state.parameterChanges[key] = false;
-        });
-      }
-    }
-    
-    // Add enhanced debug info when we're skipping updates
-    if (updateGroupCallCounter % 300 === 0) {
-      // Log the layerId for clarity
-      const layerId = state.layerId !== undefined ? state.layerId : 'unknown';
-      console.log(`[GEOMETRY SKIP] Layer ${layerId}: Skipping geometry update - no changes detected`);
-      
-      // Log parameter change flags for debugging
-      if (state.parameterChanges) {
-        const changedParams = Object.entries(state.parameterChanges)
-          .filter(([_, val]) => val)
-          .map(([key, _]) => key)
-          .join(", ");
-        
-        if (changedParams) {
-          console.warn(`[GEOMETRY WARNING] Layer ${layerId} has parameter changes (${changedParams}) but update was skipped`);
-        }
-      }
-    }
-    
-    // Still ensure group is visible
-    group.visible = true;
-    return; // Skip the rest of the update
-  }
-  
   // Clean up existing point frequency labels if they exist
   if (state && state.pointFreqLabels) {
     state.cleanupPointFreqLabels();
-  }
-  
-  // IMPORTANT: Make sure the group is visible
-  group.visible = true;
-  
-  // Clean up the group
-  group.clear();
-  
-  // Add a simple visible debug object
-  const debugSphere = new THREE.Mesh(
-    new THREE.SphereGeometry(10, 16, 16),  // Much smaller sphere (10 instead of 50)
-    new THREE.MeshBasicMaterial({ color: 0xff0000 })
-  );
-  debugSphere.position.set(0, 0, 0);
-  group.add(debugSphere);
-  
-  // Add multiple visible lines in different directions
-  const axes = [
-    { start: new THREE.Vector3(-20, 0, 0), end: new THREE.Vector3(20, 0, 0), color: 0x00ff00 },  // X-axis (green)
-    { start: new THREE.Vector3(0, -20, 0), end: new THREE.Vector3(0, 20, 0), color: 0x0000ff },  // Y-axis (blue)
-    { start: new THREE.Vector3(0, 0, -20), end: new THREE.Vector3(0, 0, 20), color: 0xff00ff }   // Z-axis (magenta)
-  ];
-  
-  axes.forEach(axis => {
-    const lineGeo = new THREE.BufferGeometry().setFromPoints([axis.start, axis.end]);
-    const lineMat = new THREE.LineBasicMaterial({ color: axis.color });
-    const line = new THREE.Line(lineGeo, lineMat);
-    group.add(line);
-  });
-  
-  // Only log this message once
-  if (updateGroupCallCounter === 1) {
-    console.log("Added smaller debug objects to group");
-  }
-  
-  // Cache the base radius once to use for all modulus calculations
-  const baseRadius = state ? state.radius : 0;
-  
-  // Early exit with warning if copies is 0 or negative
-  if (copies <= 0) {
-    console.warn("UpdateGroup called with copies <= 0, nothing will be rendered");
-    return;
-  }
-  
-  // Early exit with warning if baseGeo is invalid
-  if (!baseGeo || !baseGeo.getAttribute || !baseGeo.getAttribute('position')) {
-    console.error("UpdateGroup called with invalid baseGeo, cannot render");
-    return;
-  }
-  
-  // Only create markers if we have multiple copies
-  const hasEnoughCopiesForIntersections = copies > 1;
-
-  // For intersection detection, we'll need to create a temporary group to calculate intersections
-  // before they're added to the actual group
-  let tempGroup = null;
-  let intersectionPoints = [];
-  
-  // Check if we need to find intersections and have multiple copies
-  // OPTIMIZATION: Only do this when needsIntersectionUpdate is true to avoid per-frame recalculation
-  if (state && (state.useIntersections || (state.useStars && state.useCuts)) && 
-      state.needsIntersectionUpdate && 
-      (copies > 1 || (state.useStars && state.useCuts))) {
-    // Create a temporary group for intersection calculation
-    tempGroup = new THREE.Group();
-    tempGroup.position.copy(group.position);
-    tempGroup.rotation.copy(group.rotation);
-    tempGroup.scale.copy(group.scale);
-    tempGroup.userData = { state: state }; // Important: add state to userData to avoid "No state found" errors
-    
-    // First create all the polygon copies in the temp group
-    for (let i = 0; i < copies; i++) {
-      // Base scale factor from step scale
-      let stepScaleFactor = Math.pow(stepScale, i);
-      
-      // Initialize final scale variables
-      let finalScale = stepScaleFactor;
-      
-      // Determine scale based on different features
-      if (state) {
-        if (state.useModulus) {
-          // Get the sequence value (increasing from 1/modulus to 1.0)
-          const modulusScale = state.getScaleFactorForCopy(i);
-          finalScale = modulusScale * stepScaleFactor;  // Apply both modulus scale and step scale
-        } else if (state.useAltScale) {
-          // Apply alt scale multiplier if this is an Nth copy (without modulus)
-          // Always use the current altScale value (which will be lerped if lerping is enabled)
-          if ((i + 1) % state.altStepN === 0) {
-            finalScale = stepScaleFactor * state.altScale;
-          }
-        }
-      }
-      
-      // Each copy gets a cumulative angle (i * angle) in degrees
-      const cumulativeAngleDegrees = i * angle;
-      
-      // Convert to radians only when setting the actual Three.js rotation
-      const cumulativeAngleRadians = (cumulativeAngleDegrees * Math.PI) / 180;
-      
-      // Create a group for this copy to hold both the lines and vertex circles
-      const copyGroup = new THREE.Group();
-      
-      // Use the current geometry (may have been updated with intersections)
-      // Create a modified material based on the original but with increased visibility
-      const lineMaterial = mat.clone();
-      lineMaterial.transparent = false;
-      lineMaterial.opacity = 1.0;
-      lineMaterial.depthTest = false;
-      lineMaterial.depthWrite = false;
-      
-      // IMPORTANT: Use the original material's color instead of hardcoding green
-      // This ensures each layer maintains its own color
-      // lineMaterial.color = new THREE.Color(0x00ff00); // Bright green (REMOVED)
-      
-      lineMaterial.linewidth = 5; // Much thicker lines
-      
-      // Create line loop with the enhanced material
-      const lines = new THREE.LineLoop(baseGeo, lineMaterial);
-      lines.scale.set(finalScale, finalScale, 1);
-      
-      // Set renderOrder to ensure it renders on top of other objects
-      lines.renderOrder = 10; // Higher render order
-      
-      // Add the line geometry to the copy group
-      copyGroup.add(lines);
-      
-      // Apply rotation to the copy group
-      copyGroup.rotation.z = cumulativeAngleRadians;
-      
-      // Add the whole copy group to the temp group
-      tempGroup.add(copyGroup);
-    }
-    
-    // Find all intersection points between the copies in the temp group
-    intersectionPoints = findAllIntersections(tempGroup);
-    
-    // Update the geometry with intersections before creating the real group
-    if (intersectionPoints.length > 0) {
-      // Store intersection points in state
-      state.intersectionPoints = intersectionPoints;
-      
-      // Reset the flag since we've updated the intersections
-      state.needsIntersectionUpdate = false;
-    } else {
-      // Reset the flag even if no intersections found
-      state.needsIntersectionUpdate = false;
-      state.intersectionPoints = [];
-    }
-  }
-  
-  // Create point frequency labels if enabled
-  const shouldCreatePointLabels = state && 
-                                 state.showPointsFreqLabels && 
-                                 !isLerping;
-  
-  // If we should create point labels, initialize the array
-  if (shouldCreatePointLabels) {
-    state.pointFreqLabels = [];
   }
   
   // Get camera and renderer from scene's userData (assuming they're stored there)
@@ -588,19 +475,14 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   // Calculate global sequential index for vertex indexing
   let globalVertexIndex = 0;
   
-  // Clean up temporary group if it exists
-  if (tempGroup) {
-    tempGroup.traverse(child => {
-      if (child.geometry && child !== baseGeo) child.geometry.dispose();
-      if (child.material) {
-        if (Array.isArray(child.material)) {
-          child.material.forEach(m => m.dispose());
-        } else {
-          child.material.dispose();
-        }
-      }
-    });
-    tempGroup = null;
+  // Create point frequency labels if enabled
+  const shouldCreatePointLabels = state && 
+                                 state.showPointsFreqLabels && 
+                                 !isLerping;
+  
+  // If we should create point labels, initialize the array
+  if (shouldCreatePointLabels) {
+    state.pointFreqLabels = [];
   }
   
   // Now create the actual polygon copies for display
@@ -608,21 +490,11 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     // Base scale factor from step scale
     let stepScaleFactor = Math.pow(stepScale, i);
     
-    // Initialize final scale variables
+    // Apply modulus scaling if enabled
     let finalScale = stepScaleFactor;
-    
-    // Determine scale based on different features
-    if (state) {
-      if (state.useModulus) {
-        // Get the sequence value (increasing from 1/modulus to 1.0)
-        const modulusScale = state.getScaleFactorForCopy(i);
-        finalScale = modulusScale * stepScaleFactor;  // Apply both modulus scale and step scale
-      } else if (state.useAltScale) {
-        // Apply alt scale multiplier if this is an Nth copy (without modulus)
-        if ((i + 1) % state.altStepN === 0) {
-          finalScale = stepScaleFactor * state.altScale;
-        }
-      }
+    if (state && state.useModulus) {
+      const modulusScale = state.getScaleFactorForCopy(i);
+      finalScale = modulusScale * stepScaleFactor;
     }
     
     // Each copy gets a cumulative angle (i * angle) in degrees
@@ -644,7 +516,6 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     
     // IMPORTANT: Use the original material's color instead of hardcoding green
     // This ensures each layer maintains its own color
-    // lineMaterial.color = new THREE.Color(0x00ff00); // Bright green (REMOVED)
     
     lineMaterial.linewidth = 5; // Much thicker lines
     
@@ -763,6 +634,11 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     group.add(copyGroup);
   }
   
+  // After all copies are created, restore debug objects
+  for (const debugObj of debugObjects) {
+    group.add(debugObj);
+  }
+  
   // Finally, add the intersection point markers to the group (so they rotate with everything)
   // Only create/update markers if:
   // 1. We're using intersections OR (using stars AND using cuts) AND
@@ -772,7 +648,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   // 5. Either we just calculated new intersections OR we don't have markers yet
   const needToCreateMarkers = state && 
                              (state.useIntersections || (state.useStars && state.useCuts)) && 
-                             (hasEnoughCopiesForIntersections || (state.useStars && state.useCuts)) && // Only if we have enough copies or using star cuts
+                             (copies > 1 || (state.useStars && state.useCuts)) && // Only if we have enough copies or using star cuts
                              state.intersectionPoints && 
                              state.intersectionPoints.length > 0 && 
                              copies > 0 && // Don't create markers if copies = 0

@@ -60,6 +60,15 @@ export function findIntersection(p1, p2, p3, p4) {
  * @returns {number} Distance between points
  */
 function distanceBetweenPoints(p1, p2) {
+  // Safety check for null/undefined values
+  if (!p1 || !p2 || 
+      typeof p1.x !== 'number' || 
+      typeof p1.y !== 'number' || 
+      typeof p2.x !== 'number' || 
+      typeof p2.y !== 'number') {
+    return Infinity; // Return large distance to avoid considering these points
+  }
+  
   return Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
 }
 
@@ -591,6 +600,24 @@ export function createIntersectionMarkers(scene, intersectionPoints, group) {
 export function detectIntersections(layer) {
   if (!layer) return [];
   
+  // Skip if layer state doesn't exist
+  if (!layer.state) return [];
+  
+  // IMPORTANT: Skip intersection detection if explicitly disabled
+  // Check both useIntersections and useStars+useCuts flags
+  const useIntersections = layer.state.useIntersections === true;
+  const useStarCuts = layer.state.useStars === true && layer.state.useCuts === true;
+  
+  if (!useIntersections && !useStarCuts) {
+    // Return empty array when intersections are disabled
+    return [];
+  }
+  
+  // Skip if less than 2 copies (need at least 2 for intersections)
+  if (layer.state.copies < 2) {
+    return [];
+  }
+  
   // Get the current markers array or create a new one
   if (!layer.markers) {
     layer.markers = [];
@@ -609,8 +636,15 @@ export function detectIntersections(layer) {
   
   // Create markers for new intersections
   for (const intersection of intersections) {
+    // Skip if intersection is invalid (null or has NaN coordinates)
+    if (!intersection || isNaN(intersection.x) || isNaN(intersection.y)) {
+      continue;
+    }
+    
     // Check if this intersection already has a marker
     const exists = existingMarkers.some(m => 
+      m.position && 
+      intersection && 
       distanceBetweenPoints(m.position, intersection) < INTERSECTION_MERGE_THRESHOLD
     );
     
