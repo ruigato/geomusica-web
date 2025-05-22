@@ -3,7 +3,7 @@ import { Layer } from './layer.js';
 import * as THREE from 'three';
 import { createPolygonGeometry, calculateBoundingSphere } from '../geometry/geometry.js';
 import { updateGroup } from '../geometry/geometry.js';
-import { detectLayerTriggers } from '../triggers/triggers.js';
+import { detectLayerTriggers, clearLayerMarkers } from '../triggers/triggers.js';
 
 // Debug flag to control logging
 const DEBUG_LOGGING = false;
@@ -523,6 +523,9 @@ export class LayerManager {
           }
         );
       }
+      
+      // IMPORTANT: Clean up expired markers to allow fading
+      clearLayerMarkers(layer);
       
       // Reset parameter change flags
       state.resetParameterChanges();

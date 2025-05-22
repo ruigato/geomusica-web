@@ -48,6 +48,9 @@ export class Layer {
     this.material = null;
     this.visible = true;
     
+    // IMPORTANT: Initialize markers array for trigger markers
+    this.markers = [];
+    
     // Last time this layer was updated
     this.lastUpdateTime = 0;
     

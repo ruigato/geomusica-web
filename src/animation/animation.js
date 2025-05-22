@@ -1,7 +1,7 @@
 // src/animation/animation.js - Enhanced for high framerate trigger detection
 import * as THREE from 'three';
 import { getCurrentTime } from '../time/time.js';
-import { processPendingTriggers } from '../triggers/triggers.js';
+import { processPendingTriggers, clearLayerMarkers } from '../triggers/triggers.js';
 import { ANIMATION_STATES, MAX_VELOCITY } from '../config/constants.js';
 import { detectIntersections, applyVelocityToMarkers } from '../geometry/intersections.js';
 import { updateLabelPositions } from '../ui/domLabels.js';
@@ -231,6 +231,16 @@ export function animate(props) {
     
     // Update all layers via the layer manager
     scene._layerManager.updateLayers(animationParams);
+    
+    // IMPORTANT: Clean up expired markers for all layers
+    // This was missing and is why markers weren't fading out!
+    if (scene._layerManager.layers) {
+      for (const layer of scene._layerManager.layers) {
+        if (layer && typeof clearLayerMarkers === 'function') {
+          clearLayerMarkers(layer);
+        }
+      }
+    }
   }
   
   // Render the scene

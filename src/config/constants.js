@@ -1,7 +1,7 @@
 // src/config/constants.js - Updated with note parameter constants
 
 // Animation constants
-export const MARK_LIFE = 30;
+export const MARK_LIFE = 120;
 
 // Animation states for markers
 export const ANIMATION_STATES = {
