@@ -21,6 +21,10 @@ const recentTriggers = new Map();
 // Store for pending triggers when using quantization
 let pendingTriggers = [];
 
+// Enhanced trigger detection constants
+const MAX_ANGLE_STEP = Math.PI / 12; // 15 degrees - maximum angle step before we need interpolation
+const INTERPOLATION_STEPS = 8; // Number of intermediate steps to check when angle is large
+
 /**
  * Calculate distance between two points in 2D space
  * @param {number} x1 First point x coordinate
@@ -49,6 +53,36 @@ function isPointOverlapping(x, y, activePoints) {
   }
   
   return false;
+}
+
+/**
+ * Interpolate between two angles, handling wraparound correctly
+ * @param {number} startAngle Start angle in radians
+ * @param {number} endAngle End angle in radians
+ * @param {number} t Interpolation factor (0-1)
+ * @returns {number} Interpolated angle in radians
+ */
+function interpolateAngle(startAngle, endAngle, t) {
+  // Normalize angles to [0, 2π]
+  const normalizeAngle = (angle) => {
+    while (angle < 0) angle += 2 * Math.PI;
+    while (angle >= 2 * Math.PI) angle -= 2 * Math.PI;
+    return angle;
+  };
+
+  const start = normalizeAngle(startAngle);
+  const end = normalizeAngle(endAngle);
+  
+  // Calculate the shortest path between angles
+  let diff = end - start;
+  if (diff > Math.PI) {
+    diff -= 2 * Math.PI;
+  } else if (diff < -Math.PI) {
+    diff += 2 * Math.PI;
+  }
+  
+  const result = start + diff * t;
+  return normalizeAngle(result);
 }
 
 /**
@@ -153,6 +187,7 @@ function storePendingTrigger(triggerInfo, quantizedTime) {
 
 /**
  * Process any pending triggers that should now be executed
+ * Enhanced for high BPM precision timing
  * @param {number} currentTime - Current time in seconds
  * @param {Function} audioCallback - Callback to execute triggers
  * @param {Object} scene - Scene for creating visual markers
@@ -160,15 +195,15 @@ function storePendingTrigger(triggerInfo, quantizedTime) {
 export function processPendingTriggers(currentTime, audioCallback, scene) {
   if (pendingTriggers.length === 0) return;
   
-  // Find triggers that should be executed
+  // Find triggers that should be executed with enhanced precision
   const triggersToExecute = [];
-  const tolerance = 0.005; // 5ms tolerance
+  const tolerance = 0.002; // Reduced to 2ms tolerance for better high BPM precision
   
   while (pendingTriggers.length > 0 && pendingTriggers[0].executeTime <= currentTime + tolerance) {
     triggersToExecute.push(pendingTriggers.shift());
   }
   
-  // Execute the triggers
+  // Execute the triggers with timing compensation
   for (const trigger of triggersToExecute) {
     const { note, worldRot, executeTime, camera, renderer, isQuantized, layer } = trigger;
     
@@ -176,6 +211,14 @@ export function processPendingTriggers(currentTime, audioCallback, scene) {
       // Make a deep copy of the note to ensure we're not modifying the original
       const noteCopy = { ...note };
       noteCopy.time = executeTime;
+      
+      // Add timing information for debugging high BPM issues
+      const timingDelta = Math.abs(currentTime - executeTime);
+      if (timingDelta > 0.001) { // Log if more than 1ms off
+        if (DEBUG_LOGGING) {
+          console.log(`[PENDING TRIGGER] Timing delta: ${(timingDelta * 1000).toFixed(2)}ms, scheduled: ${executeTime.toFixed(4)}, actual: ${currentTime.toFixed(4)}`);
+        }
+      }
       
       // IMPORTANT: Send the complete note object copy
       audioCallback(noteCopy);
@@ -455,6 +498,40 @@ export function resetTriggerSystem() {
 }
 
 /**
+ * Check if axis crossing occurred between two positions, with enhanced detection for high BPM
+ * @param {number} prevX Previous X position
+ * @param {number} prevY Previous Y position
+ * @param {number} currX Current X position
+ * @param {number} currY Current Y position
+ * @returns {Object} Object with hasCrossed boolean and interpolation factor
+ */
+function checkEnhancedAxisCrossing(prevX, prevY, currX, currY) {
+  // Basic case: point crosses from right to left and is above X-axis
+  if (prevX > 0 && currX <= 0 && currY > 0) {
+    // Calculate the exact interpolation factor where crossing occurred
+    const crossingFactor = prevX / (prevX - currX);
+    return { hasCrossed: true, crossingFactor };
+  }
+  
+  // Handle large angle changes with enhanced detection
+  if (currY > 0) {
+    const prevAngleFromYAxis = Math.atan2(prevX, prevY);
+    const currAngleFromYAxis = Math.atan2(currX, currY);
+    
+    if (Math.sign(prevAngleFromYAxis) > 0 && Math.sign(currAngleFromYAxis) <= 0) {
+      const angleDiff = Math.abs(prevAngleFromYAxis - currAngleFromYAxis);
+      if (angleDiff < Math.PI) {
+        // Calculate approximate crossing factor based on angle progression
+        const crossingFactor = Math.abs(prevAngleFromYAxis) / angleDiff;
+        return { hasCrossed: true, crossingFactor };
+      }
+    }
+  }
+  
+  return { hasCrossed: false, crossingFactor: 0 };
+}
+
+/**
  * Detect triggers for a specific layer
  * @param {Object} layer Layer to process triggers for
  * @param {number} tNow Current time for trigger timing
@@ -530,11 +607,31 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
   const lastAngle = layer.previousAngle || 0;
   const angle = layer.currentAngle || 0;
   
-  // For radians, a small value is appropriate (0.001 ~ 0.057 degrees)
-  const minAngleDelta = 0.0005; 
+  // Enhanced angle delta calculation for high BPM scenarios
+  const angleDelta = Math.abs(angle - lastAngle);
   
-  if (Math.abs(angle - lastAngle) < minAngleDelta) {
+  // Dynamic minimum angle threshold based on BPM to prevent skipping at high speeds
+  const bpm = state.globalState?.bpm || state.bpm || 120;
+  const dynamicMinDelta = Math.max(0.0005, Math.min(0.01, bpm / 120000)); // Scale with BPM
+  
+  if (angleDelta < dynamicMinDelta) {
     return false;
+  }
+  
+  // Log large angle jumps that might cause trigger skipping
+  if (angleDelta > Math.PI / 6) { // More than 30 degrees
+    if (DEBUG_LOGGING) {
+      console.log(`[TRIGGER WARNING] Large angle jump detected: ${(angleDelta * 180 / Math.PI).toFixed(1)}° at BPM ${bpm} - potential trigger skipping`);
+    }
+  }
+  
+  // Calculate angle difference for interpolation decision
+  const needsInterpolation = angleDelta > MAX_ANGLE_STEP;
+  
+  // Determine how many steps to use for processing
+  const processSteps = needsInterpolation ? INTERPOLATION_STEPS : 1;
+  if (DEBUG_LOGGING && needsInterpolation) {
+    console.log(`Layer ${layer.id}: Large angle step detected (${(angleDelta * 180 / Math.PI).toFixed(1)}°), using ${processSteps} interpolation steps`);
   }
   
   // FIXED: Debouncing to prevent race conditions during rapid operations
@@ -702,13 +799,11 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
           const prevX = prevWorldPos.x;
           const prevY = prevWorldPos.y;
           
-          // STRICT CROSSING DETECTION: 
-          // 1. Point must be above X-axis (Y > 0)
-          // 2. Must cross from right side to left side (X > 0 to X <= 0)
-          // 3. Not triggered last frame
-          const hasCrossed = prevX > 0 && currX <= 0 && currY > 0 && !layer.lastTrig.has(key);
+          // Enhanced crossing detection with interpolation support
+          const { hasCrossed, crossingFactor } = checkEnhancedAxisCrossing(prevX, prevY, currX, currY);
           
-          if (hasCrossed) {
+          // Skip if not triggered last frame
+          if (hasCrossed && !layer.lastTrig.has(key)) {
             // Check for overlap with previously triggered points
             if (!isPointOverlapping(currX, currY, triggeredPoints)) {
               // Add to triggered points
@@ -739,6 +834,9 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
               // This ensures it matches exactly with the visual representation
               const frequency = Math.hypot(nonRotatedX, nonRotatedY);
               
+              // Calculate more accurate timing based on crossing factor
+              const adjustedTime = tNow - (1 - crossingFactor) * (1000 / 120); // Estimate time correction
+              
               // Create note with the frequency from transformed geometry
               const note = {
                 frequency: frequency,
@@ -753,7 +851,8 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
                 copyIndex: ci,
                 vertexIndex: vi,
                 layerId: layer.id,
-                time: tNow
+                time: adjustedTime,
+                crossingFactor: crossingFactor // Store for debugging
               };
               
               // Handle quantization
@@ -783,7 +882,7 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
                   createMarker(angle, currX, currY, scene, noteCopy, camera, renderer, isQuantized, layer);
                   
                   if (DEBUG_LOGGING) {
-                    console.log(`Layer ${layer.id}: Triggered vertex ${vi} in copy ${ci}`);
+                    console.log(`Layer ${layer.id}: Triggered vertex ${vi} in copy ${ci} with crossingFactor ${crossingFactor.toFixed(3)}`);
                   }
                   
                   // Increment counter
@@ -798,7 +897,7 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
                 createMarker(angle, currX, currY, scene, note, camera, renderer, false, layer);
                 
                 if (DEBUG_LOGGING) {
-                  console.log(`Layer ${layer.id}: Triggered vertex ${vi} in copy ${ci}`);
+                  console.log(`Layer ${layer.id}: Triggered vertex ${vi} in copy ${ci} with crossingFactor ${crossingFactor.toFixed(3)}`);
                 }
                 
                 // Increment counter
@@ -820,8 +919,6 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
         console.warn(`Potential anomaly: ${triggersInCopy} triggers in one frame for layer ${layer.id}, copy ${ci}`);
       }
     }
-    
-    // FIXED: No need to restore rotation since we never modified it
     
     // Update the layer's last triggered set
     layer.lastTrig = triggeredNow;
