@@ -51,8 +51,19 @@ export function createPolygonGeometry(radius, segments, state = null) {
       
     case 'fractal':
       // Create a fractal-like shape
-      const fractalPoints = createFractalPolygonPoints(radius, segments, state?.fractalDepth || 1, state?.fractalScale || 0.5);
+      if (DEBUG_LOGGING) {
+        console.log(`[GEOMETRY CREATE] Creating fractal polygon with fractalValue=${state?.fractalValue}, segments=${segments}`);
+      }
+      const fractalPoints = createFractalPolygonPoints(radius, segments, state?.fractalValue || 1, state);
       return createGeometryFromPoints(fractalPoints, state);
+      
+    case 'euclidean':
+      // Create a polygon with Euclidean rhythm
+      if (DEBUG_LOGGING) {
+        console.log(`[GEOMETRY CREATE] Creating Euclidean rhythm polygon with euclidValue=${state?.euclidValue}, segments=${segments}`);
+      }
+      const euclidPoints = createEuclideanPoints(radius, segments, state?.euclidValue || 3, state);
+      return createGeometryFromPoints(euclidPoints, state);
       
     case 'regular':
     default:
@@ -1022,41 +1033,41 @@ function createEuclideanPoints(radius, numSegments, pulseCount, state = null) {
  */
 function createFractalPolygonPoints(radius, numSegments, fractalValue, state = null) {
   // Start with a regular polygon
-  let points = createRegularPolygonPoints(radius, numSegments, state);
+  const basePoints = createRegularPolygonPoints(radius, numSegments, state);
   
-  // Apply fractal iterations
-  const iterations = Math.floor(fractalValue);
+  console.log(`[FRACTAL] Starting with ${basePoints.length} base points from regular polygon`);
+  console.log(`[FRACTAL] Fractal value: ${fractalValue}`);
   
-  // For each iteration, apply the fractal transformation
-  for (let i = 0; i < iterations; i++) {
-    points = applyFractalIteration(points, fractalValue - Math.floor(fractalValue));
+  // If fractal value is 1 or less, just return the base polygon
+  if (fractalValue <= 1) {
+    return basePoints;
   }
   
-  return points;
-}
-
-/**
- * Apply a fractal iteration to the points
- * @param {Array<THREE.Vector2>} points Input points
- * @param {number} fractalFactor Fractional part of fractal value for scaling
- * @returns {Array<THREE.Vector2>} New points after fractal iteration
- */
-function applyFractalIteration(points, fractalFactor) {
+  // Number of divisions per segment (rounded to nearest integer)
+  const divisions = Math.max(2, Math.round(fractalValue));
+  console.log(`[FRACTAL] Dividing each segment into ${divisions} parts (${divisions-1} new points per segment)`);
+  
   const newPoints = [];
-  const factor = 0.3 + fractalFactor * 0.4; // Scale between 0.3 and 0.7
   
-  // Add original vertices
-  for (let i = 0; i < points.length; i++) {
-    newPoints.push(points[i]);
+  // For each pair of original points, create divisions-1 new points between them
+  for (let i = 0; i < basePoints.length; i++) {
+    const currentPoint = basePoints[i];
+    const nextPoint = basePoints[(i + 1) % basePoints.length];
     
-    // Add a new point between this vertex and the next
-    const nextIndex = (i + 1) % points.length;
-    const midX = points[i].x + (points[nextIndex].x - points[i].x) * factor;
-    const midY = points[i].y + (points[nextIndex].y - points[i].y) * factor;
+    // Add the current original point
+    newPoints.push(currentPoint);
     
-    newPoints.push(new THREE.Vector2(midX, midY));
+    // Add divisions-1 new points between current and next
+    for (let div = 1; div < divisions; div++) {
+      const factor = div / divisions;
+      const midX = currentPoint.x + (nextPoint.x - currentPoint.x) * factor;
+      const midY = currentPoint.y + (nextPoint.y - currentPoint.y) * factor;
+      
+      newPoints.push(new THREE.Vector2(midX, midY));
+    }
   }
   
+  console.log(`[FRACTAL] Final point count: ${newPoints.length} (${basePoints.length} original + ${newPoints.length - basePoints.length} new)`);
   return newPoints;
 }
 

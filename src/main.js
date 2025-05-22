@@ -725,72 +725,6 @@ function initializeApplication() {
     console.log('----------------------------------');
   });
   
-  // Add a force redraw button
-  const forceRedrawButton = document.createElement('button');
-  forceRedrawButton.textContent = 'FORCE REDRAW ALL';
-  forceRedrawButton.style.position = 'absolute';
-  forceRedrawButton.style.bottom = '250px';
-  forceRedrawButton.style.left = '10px';
-  forceRedrawButton.style.zIndex = '1000';
-  forceRedrawButton.style.padding = '10px';
-  forceRedrawButton.style.backgroundColor = '#00f';
-  forceRedrawButton.style.color = '#fff';
-  forceRedrawButton.style.border = 'none';
-  forceRedrawButton.style.borderRadius = '5px';
-  forceRedrawButton.style.cursor = 'pointer';
-
-  forceRedrawButton.addEventListener('click', () => {
-    console.log('---------- FORCING REDRAW ----------');
-    
-    // Make sure scene, layer manager, and renderer exist
-    if (!scene || !scene._layerManager || !renderer) {
-      console.error('Missing required components for redraw');
-      return;
-    }
-    
-    // Get all layers
-    const layers = scene._layerManager.layers;
-    console.log(`Found ${layers.length} layers to redraw`);
-    
-    // For each layer
-    layers.forEach(layer => {
-      // Force visibility
-      layer.visible = true;
-      if (layer.group) {
-        layer.group.visible = true;
-      }
-      
-      // Force material to be visible
-      if (layer.material) {
-        layer.material.transparent = false;
-        layer.material.opacity = 1.0;
-        layer.material.depthTest = false;
-        layer.material.depthWrite = false;
-        layer.material.needsUpdate = true;
-      }
-      
-      // Force state updates
-      layer.state.radius = Math.max(100, layer.state.radius);
-      layer.state.segments = Math.max(3, layer.state.segments);
-      layer.state.copies = Math.max(3, layer.state.copies);
-      
-      // Force all parameter changes to true
-      Object.keys(layer.state.parameterChanges).forEach(key => {
-        layer.state.parameterChanges[key] = true;
-      });
-      
-      // Recreate geometry
-      layer.recreateGeometry();
-      
-      console.log(`Forced redraw for layer ${layer.id}`);
-    });
-    
-    // Force a render
-    renderer.clear();
-    renderer.render(scene, camera);
-    console.log('Redraw complete');
-  });
-  
   // Get the active layer's state
   const state = activeLayer.state;
   
@@ -943,7 +877,6 @@ function initializeApplication() {
       document.body.appendChild(recreateAllButton);
       document.body.appendChild(fixLayerColorsButton);
       document.body.appendChild(debugSceneButton);
-      document.body.appendChild(forceRedrawButton);
       
     })
     .catch(error => {

@@ -168,6 +168,9 @@ export function createAppState() {
     fractalValue: 1, // Default to 1 (no subdivision)
     useFractal: false, // Default to off
     
+    // Shape type (regular, fractal, star, euclidean)
+    shapeType: 'regular', // Default to regular polygon
+    
     // SHAPE MOD Euclidean rhythm parameters
     euclidValue: 3, // Default value 3
     useEuclid: false, // Default to off
@@ -896,6 +899,15 @@ export function createAppState() {
         this.parameterChanges.useFractal = true;
         this.needsIntersectionUpdate = true;
         
+        // Update shape type when fractal is toggled
+        if (newValue && this.shapeType === 'regular') {
+          this.shapeType = 'fractal';
+          console.log("Setting shape type to fractal");
+        } else if (!newValue && this.shapeType === 'fractal') {
+          this.shapeType = 'regular';
+          console.log("Setting shape type back to regular");
+        }
+        
         // Force recreation of base geometry when available
         if (this.baseGeo) {
           console.log("Forcing geometry update due to fractal toggle");
@@ -941,12 +953,20 @@ export function createAppState() {
         this.parameterChanges.useEuclid = true;
         this.needsIntersectionUpdate = true;
         
+        // Update shape type when Euclidean is toggled
+        if (newValue && this.shapeType === 'regular') {
+          this.shapeType = 'euclidean';
+          console.log("Setting shape type to euclidean");
+        } else if (!newValue && this.shapeType === 'euclidean') {
+          this.shapeType = 'regular';
+          console.log("Setting shape type back to regular");
+        }
+        
         // Force recreation of base geometry when available
         if (this.baseGeo) {
           console.log("Forcing geometry update due to Euclidean toggle");
           
-          // We need to import this dynamically - handled by the main.js overrides
-          // Just set a flag to signal that geometry needs recreation
+          // Set flags to signal that geometry needs recreation
           this.segmentsChanged = true;
           this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
         }
@@ -985,6 +1005,15 @@ export function createAppState() {
         this.useStars = newValue;
         this.parameterChanges.useStars = true;
         this.needsIntersectionUpdate = true;
+        
+        // Update shape type when star is toggled
+        if (newValue && this.shapeType === 'regular') {
+          this.shapeType = 'star';
+          console.log("Setting shape type to star");
+        } else if (!newValue && this.shapeType === 'star') {
+          this.shapeType = 'regular';
+          console.log("Setting shape type back to regular");
+        }
         
         // Force recreation of base geometry when available
         if (this.baseGeo) {
@@ -1062,5 +1091,43 @@ export function createAppState() {
       }
       return a;
     },
+    
+    /**
+     * Set shape type
+     * @param {string} type Shape type ('regular', 'fractal', 'star', 'euclidean')
+     */
+    setShapeType(type) {
+      const validTypes = ['regular', 'fractal', 'star', 'euclidean'];
+      if (validTypes.includes(type) && this.shapeType !== type) {
+        this.shapeType = type;
+        console.log(`Shape type set to ${type}`);
+        
+        // Update corresponding feature flags
+        if (type === 'fractal') {
+          this.useFractal = true;
+          this.useStars = false;
+          this.useEuclid = false;
+        } else if (type === 'star') {
+          this.useFractal = false;
+          this.useStars = true;
+          this.useEuclid = false;
+        } else if (type === 'euclidean') {
+          this.useFractal = false;
+          this.useStars = false;
+          this.useEuclid = true;
+        } else {
+          this.useFractal = false;
+          this.useStars = false;
+          this.useEuclid = false;
+        }
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo) {
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+          this.needsIntersectionUpdate = true;
+        }
+      }
+    }
   };
 }

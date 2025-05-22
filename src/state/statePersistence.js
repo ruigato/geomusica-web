@@ -23,6 +23,7 @@ export function saveState(state) {
       segments: state.segments,
       stepScale: state.stepScale,
       angle: state.angle,
+      shapeType: state.shapeType,
       
       // Modulus parameters
       modulusValue: state.modulusValue,
@@ -141,6 +142,7 @@ export function getSerializableState(state) {
     segments: state.segments,
     stepScale: state.stepScale,
     angle: state.angle,
+    shapeType: state.shapeType,
     
     // Modulus parameters
     modulusValue: state.modulusValue,
@@ -377,6 +379,15 @@ export function applyLoadedState(state, loadedState) {
         state.setUseEuclid(loadedState.useEuclid);
       } else {
         state.useEuclid = loadedState.useEuclid;
+      }
+    }
+    
+    // Apply shape type if specified
+    if (loadedState.shapeType !== undefined) {
+      if (typeof state.setShapeType === 'function') {
+        state.setShapeType(loadedState.shapeType);
+      } else {
+        state.shapeType = loadedState.shapeType;
       }
     }
     
@@ -677,6 +688,7 @@ export function exportStateToFile(state) {
       segments: state.segments,
       stepScale: state.stepScale,
       angle: state.angle,
+      shapeType: state.shapeType,
       modulusValue: state.modulusValue,
       useModulus: state.useModulus,
       
