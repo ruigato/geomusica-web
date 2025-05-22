@@ -1189,3 +1189,56 @@ if (isDOMLoaded()) {
 } else {
   document.addEventListener('DOMContentLoaded', loadFontAndInitApp);
 }
+
+// Make the updateUIFromState function available globally
+window.updateUIFromState = function(state) {
+  if (!uiReferences) {
+    console.error('Cannot update UI: uiReferences not initialized');
+    return false;
+  }
+
+  // Import updateUIFromState function if needed
+  if (!window._updateUIFromStateFunction) {
+    try {
+      // Try to dynamically import the function
+      import('./state/statePersistence.js')
+        .then(module => {
+          window._updateUIFromStateFunction = module.updateUIFromState;
+          window._updateUIFromStateFunction(state, uiReferences);
+        })
+        .catch(err => {
+          console.error('Failed to import updateUIFromState:', err);
+        });
+    } catch (error) {
+      console.error('Error importing updateUIFromState:', error);
+      return false;
+    }
+    return true;
+  }
+  
+  // Use the cached function if available
+  try {
+    return window._updateUIFromStateFunction(state, uiReferences);
+  } catch (error) {
+    console.error('Error calling updateUIFromState:', error);
+    return false;
+  }
+};
+
+// Add a function to update UI based on active layer ID
+window.updateUIForActiveLayer = function(layerId) {
+  if (!layerManager) {
+    console.error('Cannot update UI for active layer: layerManager not initialized');
+    return false;
+  }
+  
+  // Get the active layer state
+  const layerState = layerManager.layers[layerId]?.state;
+  if (!layerState) {
+    console.error(`Cannot update UI: No state found for layer ${layerId}`);
+    return false;
+  }
+  
+  // Update UI with the active layer state
+  return window.updateUIFromState(layerState);
+};

@@ -1223,6 +1223,41 @@ export function setupUI(state) {
   // Initial update
   updateEuclidInfo();
 
+  // Add event listeners for layer change events
+  window.addEventListener('layerChanged', (event) => {
+    const { layerId, state } = event.detail;
+    console.log(`UI received layerChanged event for layer ${layerId}`);
+    updateUIFromState(state, {
+      radiusRange, radiusNumber, radiusValue,
+      copiesRange, copiesNumber, copiesValue,
+      numberRange, numberNumber, numberValue,
+      stepScaleRange, stepScaleNumber, stepScaleValue,
+      angleRange, angleNumber, angleValue,
+      useModulusCheckbox, useLerpCheckbox,
+      useTimeSubdivisionCheckbox, useEuclidCheckbox,
+      useFractalCheckbox, useStarsCheckbox,
+      useCutsCheckbox, useAltScaleCheckbox,
+      useIntersectionsCheckbox
+    });
+  });
+
+  window.addEventListener('layerActivated', (event) => {
+    const { layerId, state } = event.detail;
+    console.log(`UI received layerActivated event for layer ${layerId}`);
+    updateUIFromState(state, {
+      radiusRange, radiusNumber, radiusValue,
+      copiesRange, copiesNumber, copiesValue,
+      numberRange, numberNumber, numberValue,
+      stepScaleRange, stepScaleNumber, stepScaleValue,
+      angleRange, angleNumber, angleValue,
+      useModulusCheckbox, useLerpCheckbox,
+      useTimeSubdivisionCheckbox, useEuclidCheckbox,
+      useFractalCheckbox, useStarsCheckbox,
+      useCutsCheckbox, useAltScaleCheckbox,
+      useIntersectionsCheckbox
+    });
+  });
+
   return {
     bpmRange, bpmNumber, bpmValue,
     radiusRange, radiusNumber, radiusValue,

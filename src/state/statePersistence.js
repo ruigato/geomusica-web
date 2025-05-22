@@ -631,7 +631,7 @@ export function importStateFromFile(file, state) {
  * @param {Object} uiElements - References to UI elements
  */
 export function updateUIFromState(state, uiElements) {
-  if (!state || !uiElements) return;
+  if (!state || !uiElements) return false;
   
   try {
     // Update BPM controls

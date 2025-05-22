@@ -238,33 +238,112 @@ export class Layer {
       });
     }
     
+    // Store original methods if they haven't been stored already
+    if (!this.state._originalSetRadius) {
+      this.state._originalSetRadius = this.state.setRadius;
+    }
+    
+    if (!this.state._originalSetSegments) {
+      this.state._originalSetSegments = this.state.setSegments;
+    }
+    
+    if (!this.state._originalSetCopies) {
+      this.state._originalSetCopies = this.state.setCopies;
+    }
+    
+    if (!this.state._originalHasParameterChanged) {
+      this.state._originalHasParameterChanged = this.state.hasParameterChanged;
+    }
+    
     // Hook into state change methods to add debug logging for this layer
-    const originalSetRadius = this.state.setRadius;
     this.state.setRadius = (value) => {
       if (DEBUG_LOGGING) {
         console.log(`[LAYER ${this.id}] Setting radius to ${value}`);
       }
-      return originalSetRadius.call(this.state, value);
+      return this.state._originalSetRadius.call(this.state, value);
     };
     
-    const originalSetSegments = this.state.setSegments;
     this.state.setSegments = (value) => {
       if (DEBUG_LOGGING) {
         console.log(`[LAYER ${this.id}] Setting segments to ${value}`);
       }
-      return originalSetSegments.call(this.state, value);
+      return this.state._originalSetSegments.call(this.state, value);
     };
     
-    const originalSetCopies = this.state.setCopies;
     this.state.setCopies = (value) => {
       if (DEBUG_LOGGING) {
         console.log(`[LAYER ${this.id}] Setting copies to ${value}`);
       }
-      return originalSetCopies.call(this.state, value);
+      return this.state._originalSetCopies.call(this.state, value);
     };
+    
+    // Mark all parameters as changed to force UI updates
+    if (this.state.parameterChanges) {
+      Object.keys(this.state.parameterChanges).forEach(key => {
+        this.state.parameterChanges[key] = true;
+      });
+      
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Marked all parameters as changed during activation`);
+      }
+    }
+    
+    // Update window._appState to point to this layer's state
+    if (window._appState !== this.state) {
+      window._appState = this.state;
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Updated window._appState reference to this layer's state`);
+      }
+    }
     
     // Ensure this layer has valid geometry for trigger detection when activated
     this.ensureValidGeometry();
+    
+    // Trigger UI updates for this layer
+    this.forceUIUpdate();
+  }
+  
+  /**
+   * Force UI updates for this layer using all available methods
+   */
+  forceUIUpdate() {
+    // Try using the global updateUIFromState function
+    if (window.updateUIFromState && typeof window.updateUIFromState === 'function') {
+      try {
+        window.updateUIFromState(this.state);
+        if (DEBUG_LOGGING) {
+          console.log(`[LAYER ${this.id}] Called updateUIFromState to update UI`);
+        }
+      } catch (error) {
+        console.error(`[LAYER ${this.id}] Error updating UI from state:`, error);
+      }
+    }
+    
+    // Try using the global updateUIForActiveLayer function
+    if (window.updateUIForActiveLayer && typeof window.updateUIForActiveLayer === 'function') {
+      try {
+        window.updateUIForActiveLayer(this.id);
+        if (DEBUG_LOGGING) {
+          console.log(`[LAYER ${this.id}] Called updateUIForActiveLayer to update UI`);
+        }
+      } catch (error) {
+        console.error(`[LAYER ${this.id}] Error updating UI for active layer:`, error);
+      }
+    }
+    
+    // Try dispatching a custom event that UI components might listen for
+    try {
+      const event = new CustomEvent('layerActivated', { 
+        detail: { layerId: this.id, state: this.state }
+      });
+      window.dispatchEvent(event);
+      
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Dispatched layerActivated event`);
+      }
+    } catch (error) {
+      console.error(`[LAYER ${this.id}] Error dispatching layer activated event:`, error);
+    }
   }
   
   /**

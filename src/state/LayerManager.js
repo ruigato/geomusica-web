@@ -198,26 +198,6 @@ export class LayerManager {
           segments: this.layers[layerId].state.segments,
           copies: this.layers[layerId].state.copies
         });
-        
-        // Log the parameter changes flags for both the previous and new layer
-        const previousLayer = this.layers[this.activeLayerId];
-        const newLayer = this.layers[layerId];
-        
-        if (previousLayer && previousLayer.state.parameterChanges) {
-          console.log(`[LAYER MANAGER] Previous layer ${this.activeLayerId} parameter change flags:`, 
-            Object.entries(previousLayer.state.parameterChanges)
-              .filter(([_, val]) => val)
-              .map(([key, _]) => key)
-              .join(", ") || "none");
-        }
-        
-        if (newLayer && newLayer.state.parameterChanges) {
-          console.log(`[LAYER MANAGER] New layer ${layerId} parameter change flags:`, 
-            Object.entries(newLayer.state.parameterChanges)
-              .filter(([_, val]) => val)
-              .map(([key, _]) => key)
-              .join(", ") || "none");
-        }
       }
     }
     
@@ -229,14 +209,6 @@ export class LayerManager {
       previousLayer.deactivate();
       if (DEBUG_LOGGING) {
         console.log(`[LAYER MANAGER] Deactivated layer ${previousLayerId}`);
-      }
-      
-      // Explicitly reset parameter changes for the previous layer
-      if (typeof previousLayer.state.resetParameterChanges === 'function') {
-        previousLayer.state.resetParameterChanges();
-        if (DEBUG_LOGGING) {
-          console.log(`[LAYER MANAGER] Reset parameter changes for previous layer ${previousLayerId}`);
-        }
       }
     }
     
@@ -251,21 +223,78 @@ export class LayerManager {
       });
     }
     
-    // Force an immediate UI update by directly updating the global state reference
+    // IMPORTANT: Sync window._appState with the active layer's state
     if (window._appState) {
-      const previousAppStateId = window._appState.layerId !== undefined ? window._appState.layerId : 'unknown';
+      // Store a reference to the active layer's state in window._appState
       window._appState = this.layers[layerId].state;
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER MANAGER] Updated global _appState reference from layer ${previousAppStateId} to layer ${layerId}`);
+        console.log(`[LAYER MANAGER] Synced window._appState with active layer ${layerId}`);
+      }
+    }
+
+    // Force UI update with the new layer's parameters
+    const newLayerState = this.layers[layerId].state;
+    
+    // Force parameter changes to trigger UI updates
+    if (newLayerState && newLayerState.parameterChanges) {
+      // Mark all parameter changes to force UI updates
+      Object.keys(newLayerState.parameterChanges).forEach(key => {
+        newLayerState.parameterChanges[key] = true;
+      });
+      
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER MANAGER] Marked all parameters as changed for layer ${layerId} to force UI update`);
       }
     }
     
-    // Explicitly reset parameter changes for the new layer
-    if (typeof this.layers[layerId].state.resetParameterChanges === 'function') {
-      this.layers[layerId].state.resetParameterChanges();
-      if (DEBUG_LOGGING) {
-        console.log(`[LAYER MANAGER] Reset parameter changes for new active layer ${layerId}`);
+    // Try direct UI update approaches
+    this.forceUIUpdate(layerId, newLayerState);
+    
+    return this.layers[layerId];
+  }
+  
+  /**
+   * Force UI update when changing layers using multiple approaches
+   * @param {number} layerId ID of the layer
+   * @param {Object} layerState The layer's state object
+   * @private
+   */
+  forceUIUpdate(layerId, layerState) {
+    // First try using global UI update function
+    if (window.updateUIFromState && typeof window.updateUIFromState === 'function') {
+      try {
+        window.updateUIFromState(layerState);
+        if (DEBUG_LOGGING) {
+          console.log(`[LAYER MANAGER] Called updateUIFromState for layer ${layerId}`);
+        }
+      } catch (error) {
+        console.error(`[LAYER MANAGER] Error updating UI from state:`, error);
       }
+    }
+    
+    // Also try layer-specific UI update function
+    if (window.updateUIForActiveLayer && typeof window.updateUIForActiveLayer === 'function') {
+      try {
+        window.updateUIForActiveLayer(layerId);
+        if (DEBUG_LOGGING) {
+          console.log(`[LAYER MANAGER] Called updateUIForActiveLayer for layer ${layerId}`);
+        }
+      } catch (error) {
+        console.error(`[LAYER MANAGER] Error updating UI for active layer:`, error);
+      }
+    }
+    
+    // Try to dispatch custom event that UI might be listening for
+    try {
+      const event = new CustomEvent('layerChanged', { 
+        detail: { layerId, state: layerState }
+      });
+      window.dispatchEvent(event);
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER MANAGER] Dispatched layerChanged event for layer ${layerId}`);
+      }
+    } catch (error) {
+      console.error(`[LAYER MANAGER] Error dispatching layer change event:`, error);
     }
   }
   
@@ -372,12 +401,20 @@ export class LayerManager {
     if (activeLayerId !== undefined && this.activeLayerId !== activeLayerId) {
       console.warn(`[LAYER MANAGER] Active layer mismatch! LayerManager: ${this.activeLayerId}, Animation: ${activeLayerId}`);
       // Force sync to the one from animation params
-      this.activeLayerId = activeLayerId;
+      this.setActiveLayer(activeLayerId);
     }
 
     // Add frame counter to control logging frequency
     this.frameCounter = (this.frameCounter || 0) + 1;
     const shouldLog = DEBUG_LOGGING && (this.frameCounter % 900 === 0);
+
+    // Check if window._appState is pointing to the correct layer state
+    // This handles cases where _appState might have been reassigned elsewhere
+    const activeLayer = this.getActiveLayer();
+    if (activeLayer && window._appState !== activeLayer.state) {
+      console.warn(`[LAYER MANAGER] window._appState is not pointing to active layer state! Fixing...`);
+      window._appState = activeLayer.state;
+    }
 
     // Add camera update based on layer geometry
     this.updateCameraForLayerBounds(scene, shouldLog);
