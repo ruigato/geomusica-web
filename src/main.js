@@ -334,6 +334,24 @@ function initializeApplication() {
   // Initialize the layer manager with the scene
   layerManager = new LayerManager(scene);
   
+  // Ensure the scene has all needed components
+  // Create a direct axis line if it's missing - CRITICAL FIX
+  const axisLine = scene.children.find(child => 
+    child instanceof THREE.Line && 
+    child.geometry && 
+    child.geometry.getAttribute('position').count === 2);
+  
+  if (!axisLine) {
+    console.log("Axis line not found, creating it directly");
+    const axisGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 2048, 0),
+    ]);
+    const axisMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+    const axis = new THREE.Line(axisGeo, axisMat);
+    scene.add(axis);
+  }
+  
   // Create an initial layer
   layerManager.createLayer();
   

@@ -62,6 +62,14 @@ export function animate(params) {
     triggerAudioCallback
   } = params;
 
+  // Ensure renderer has the correct settings
+  renderer.setClearColor(0x000000, 0); // Clear with black background, fully transparent
+  renderer.autoClear = true;           // Clear before each render
+  renderer.sortObjects = true;         // Sort objects for proper transparency
+  
+  // Ensure proper depth testing and blending
+  renderer.setPixelRatio(window.devicePixelRatio);
+  
   // Get the layer manager if it exists
   const layerManager = window._layers;
 
@@ -141,6 +149,19 @@ export function animate(params) {
         state.updateCameraLerp(dt);
         cam.position.z = state.cameraDistance;
       }
+      
+      // Update DOM label positions for the UI
+      updateLabelPositions(cam, renderer);
+      
+      // Debug info
+      console.log(`Rendering scene with ${scene.children.length} children, layer container has ${layerManager.layerContainer.children.length} layers`);
+      
+      // Make sure scene is visible
+      scene.visible = true;
+      layerManager.layerContainer.visible = true;
+      
+      // IMPORTANT: Render the scene - with proper settings
+      renderer.render(scene, cam);
       
       // End performance measurement
       stats.end();

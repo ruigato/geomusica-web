@@ -21,7 +21,16 @@ export class LayerManager {
     // Create a container for all layers
     this.layerContainer = new THREE.Group();
     this.layerContainer.name = 'layers';
+    
+    // IMPORTANT: Make sure the layerContainer is visible
+    this.layerContainer.visible = true;
+    
+    // Add the container to the scene
     this.scene.add(this.layerContainer);
+    
+    // Ensure the container is added to the scene and visible
+    console.log("Layer container created with visible =", this.layerContainer.visible);
+    console.log("Layer container added to scene, scene child count =", this.scene.children.length);
   }
   
   /**
@@ -33,8 +42,17 @@ export class LayerManager {
     const id = this.layers.length;
     const layer = new Layer(id, options);
     
+    // Set initial state values to ensure there's something to render
+    // IMPORTANT: Default to having at least 1 copy to make the layer visible
+    if (layer.state.copies === 0) {
+      layer.state.copies = 3; // Default to 3 copies so something is visible
+    }
+    
     // Add the layer's group to the container
     this.layerContainer.add(layer.group);
+    
+    // Log for debugging
+    console.log(`Created layer ${id}, added to container. Container has ${this.layerContainer.children.length} children`);
     
     // Add to layer collection
     this.layers.push(layer);
@@ -57,6 +75,11 @@ export class LayerManager {
   initializeLayerGeometry(layer) {
     const state = layer.state;
     
+    // Ensure we have some reasonable defaults
+    state.radius = state.radius || 100;
+    state.segments = state.segments || 3;
+    state.copies = state.copies || 3;
+    
     // Create geometry if it doesn't exist
     if (!layer.baseGeo) {
       layer.baseGeo = createPolygonGeometry(
@@ -64,6 +87,8 @@ export class LayerManager {
         state.segments,
         state
       );
+      
+      console.log(`Created geometry for layer ${layer.id} with ${state.segments} segments and ${state.copies} copies`);
     }
     
     // Initialize the group with the geometry
@@ -79,6 +104,8 @@ export class LayerManager {
       false,
       false
     );
+    
+    console.log(`Initialized group for layer ${layer.id}, group now has ${layer.group.children.length} children`);
   }
   
   /**

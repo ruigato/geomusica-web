@@ -31,6 +31,16 @@ export class Layer {
     
     // Initialize layer with default settings
     this.initialize(options);
+    
+    // Ensure we have some initial state values that will render something
+    this.state.copies = this.state.copies || 3;
+    this.state.segments = this.state.segments || 3;
+    this.state.radius = this.state.radius || 100;
+    
+    // Force parameter changes to ensure initial render
+    this.state.parameterChanges.copies = true;
+    this.state.parameterChanges.segments = true;
+    this.state.parameterChanges.radius = true;
   }
   
   /**
