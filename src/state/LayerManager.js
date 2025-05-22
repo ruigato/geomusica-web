@@ -483,21 +483,35 @@ export class LayerManager {
         }
       }
       
-      // IMPORTANT: Apply the rotation directly to the entire layer group
-      // Convert angle from degrees to radians
-      const angleInRadians = (angle * Math.PI) / 180;
-      layer.group.rotation.z = angleInRadians;
+      // IMPORTANT: Update the layer's angle with time subdivision applied
+      // This is the fix for time subdivision not working
+      if (typeof layer.updateAngle === 'function') {
+        // Current time in seconds (convert from ms)
+        const currentTimeInSeconds = tNow / 1000;
+        layer.updateAngle(currentTimeInSeconds);
+      }
       
-      // Detect triggers if this layer has copies - MOVED after rotation is applied
+      // IMPORTANT: Apply the rotation using the layer's calculated angle (which includes time subdivision)
+      // instead of directly using the global angle
+      if (layer.group) {
+        // If the layer has a calculated angle (from updateAngle), use it
+        // Otherwise fall back to the global angle
+        const rotationAngle = (layer.currentAngle !== undefined) ? 
+          layer.currentAngle : // This value already includes time subdivision
+          ((angle * Math.PI) / 180); // Convert from degrees to radians
+          
+        layer.group.rotation.z = rotationAngle;
+        
+        // Occasionally log rotation info for debugging
+        if (DEBUG_LOGGING && Math.random() < 0.001) {
+          const hasTimeSubdivision = state.useTimeSubdivision && state.timeSubdivisionValue !== 1;
+          console.log(`[LAYER ${layerId}] Rotation: ${(rotationAngle * 180 / Math.PI).toFixed(1)}°, ` + 
+                      `Time subdivision: ${hasTimeSubdivision ? state.timeSubdivisionValue + 'x' : 'disabled'}`);
+        }
+      }
+      
+      // Detect triggers if this layer has copies
       if (state.copies > 0) {
-        // Update angle information for layer
-        // IMPORTANT: Convert the angles from degrees to radians before passing to detectLayerTriggers
-        const lastAngleInRadians = (lastAngle * Math.PI) / 180;
-        const angleInRadians = (angle * Math.PI) / 180;
-        
-        layer.previousAngle = lastAngleInRadians;
-        layer.currentAngle = angleInRadians;
-        
         // Use direct layer trigger detection with the imported function
         detectLayerTriggers(
           layer,

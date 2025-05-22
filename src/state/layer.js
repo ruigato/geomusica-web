@@ -595,8 +595,7 @@ export class Layer {
   
   /**
    * Update the layer's angle for animation and marker detection.
-   * This method ONLY calculates and tracks angles but DOES NOT apply rotation.
-   * The actual rotation is applied by LayerManager.updateLayers to avoid double-application.
+   * This method calculates and tracks angles with time subdivision applied if enabled.
    * 
    * @param {number} currentTime Current time in seconds
    */
@@ -630,12 +629,22 @@ export class Layer {
       // Apply time subdivision multiplier to the delta if enabled
       if (this.state.useTimeSubdivision && this.state.timeSubdivisionValue !== 1) {
         const multiplier = this.state.timeSubdivisionValue;
+        
+        // Store original delta for logging
+        const originalDelta = deltaAngle;
+        
+        // Apply the time subdivision multiplier
         deltaAngle *= multiplier;
         
-        // Log the effect occasionally, only if debug logging is enabled
+        // Enhanced logging for debugging time subdivision
         if (DEBUG_LOGGING && Math.random() < 0.003) {
-          console.log(`[LAYER ${this.id}] Applied time subdivision: multiplier=${multiplier}, deltaAngle=${deltaAngle.toFixed(2)}°`);
+          console.log(`[LAYER ${this.id}] Time subdivision: ${multiplier}x speed`);
+          console.log(`[LAYER ${this.id}] Delta angle: ${originalDelta.toFixed(2)}° → ${deltaAngle.toFixed(2)}° (${multiplier}x)`);
+          console.log(`[LAYER ${this.id}] Current accumulated angle: ${this.accumulatedAngle.toFixed(2)}°`);
         }
+      } else if (DEBUG_LOGGING && Math.random() < 0.001) {
+        // Log when time subdivision is disabled occasionally
+        console.log(`[LAYER ${this.id}] Time subdivision disabled, normal speed (1x)`);
       }
       
       // Accumulate the angle continuously
@@ -652,7 +661,6 @@ export class Layer {
       // LayerManager.updateLayers will handle applying rotation to the group.
     } else {
       // Fallback calculation if no global state is available
-      // This shouldn't happen in normal operation
       if (DEBUG_LOGGING) {
         console.warn(`[LAYER ${this.id}] No global state available for angle update`);
       }
@@ -662,10 +670,17 @@ export class Layer {
       const deltaTime = currentTime - lastUpdateTime;
       const rotationSpeed = Math.PI / 4; // 45 degrees per second
       
-      this.currentAngle = (this.currentAngle || 0) + rotationSpeed * deltaTime;
-      
-      // IMPORTANT: DO NOT apply rotation here!
-      // LayerManager.updateLayers will handle applying rotation to the group.
+      // Check if time subdivision should be applied to this fallback
+      if (this.state && this.state.useTimeSubdivision && this.state.timeSubdivisionValue !== 1) {
+        const multiplier = this.state.timeSubdivisionValue;
+        this.currentAngle = (this.currentAngle || 0) + rotationSpeed * deltaTime * multiplier;
+        
+        if (DEBUG_LOGGING && Math.random() < 0.003) {
+          console.log(`[LAYER ${this.id}] Applied time subdivision in fallback: ${multiplier}x`);
+        }
+      } else {
+        this.currentAngle = (this.currentAngle || 0) + rotationSpeed * deltaTime;
+      }
     }
     
     // Store the time for future delta calculations
