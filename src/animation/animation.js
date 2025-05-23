@@ -4,7 +4,7 @@ import { getCurrentTime } from '../time/time.js';
 import { processPendingTriggers, clearLayerMarkers } from '../triggers/triggers.js';
 import { ANIMATION_STATES, MAX_VELOCITY } from '../config/constants.js';
 import { detectIntersections, applyVelocityToMarkers } from '../geometry/intersections.js';
-import { updateLabelPositions } from '../ui/domLabels.js';
+import { updateLabelPositions, updateAxisLabels } from '../ui/domLabels.js';
 
 // Frame counter and timing stats
 let frameCount = 0;
@@ -30,6 +30,24 @@ export function animate(props) {
     globalState,
     stats 
   } = props;
+  
+  // IMPORTANT: Set camera and renderer in scene userData at the very beginning
+  // This ensures they're available throughout the entire frame
+  if (scene && cam && renderer) {
+    scene.userData.camera = cam;
+    scene.userData.renderer = renderer;
+    
+    // Also ensure each layer has access to camera and renderer
+    if (scene._layerManager && scene._layerManager.layers) {
+      scene._layerManager.layers.forEach(layer => {
+        // Make sure the layer's group has references to camera and renderer
+        if (layer && layer.group) {
+          layer.group.userData.camera = cam;
+          layer.group.userData.renderer = renderer;
+        }
+      });
+    }
+  }
   
   // Use requestAnimationFrame to schedule the next frame
   requestAnimationFrame(() => animate(props));
@@ -209,6 +227,11 @@ export function animate(props) {
     if (typeof updateLabelPositions === 'function') {
       updateLabelPositions(activeLayer, cam, renderer);
     }
+    
+    // Update and fade out axis labels
+    if (typeof updateAxisLabels === 'function') {
+      updateAxisLabels();
+    }
   }
   
   // Enhanced layer manager update with high precision timing
@@ -222,7 +245,8 @@ export function animate(props) {
       lastAngle: globalState?.previousAngle || 0,
       triggerAudioCallback,
       activeLayerId: scene._layerManager.activeLayerId,
-      camera: cam,
+      camera: cam,              // Pass camera reference
+      renderer: renderer,       // Pass renderer reference
       // Enhanced timing information
       frameTime: timeDelta,
       targetFPS: TARGET_FPS,

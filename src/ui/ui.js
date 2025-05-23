@@ -345,7 +345,12 @@ export function setupUI(state) {
   }
   
   // Initialize checkbox states from app state with null checks
-  if (showAxisFreqLabelsCheckbox) showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;
+  if (showAxisFreqLabelsCheckbox) {
+    // Get the initial value from the active layer's state
+    const activeState = typeof window.getActiveState === 'function' ? 
+      window.getActiveState() : state;
+    showAxisFreqLabelsCheckbox.checked = activeState.showAxisFreqLabels !== false;
+  }
   if (showPointsFreqLabelsCheckbox) showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
   if (useAltScaleCheckbox) useAltScaleCheckbox.checked = state.useAltScale;
   if (useTimeSubdivisionCheckbox) useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
@@ -404,7 +409,11 @@ export function setupUI(state) {
   // Setup event listeners for new checkboxes with null checks
   if (showAxisFreqLabelsCheckbox) {
     showAxisFreqLabelsCheckbox.addEventListener('change', e => {
-      state.setShowAxisFreqLabels(e.target.checked);
+      // Get the current active layer state
+      const activeState = typeof window.getActiveState === 'function' ? 
+        window.getActiveState() : state;
+      
+      activeState.setShowAxisFreqLabels(e.target.checked);
     });
   }
 

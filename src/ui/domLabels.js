@@ -131,7 +131,9 @@ function getAxisLabel() {
   label.style.padding = '2px 4px';
   label.style.borderRadius = '2px';
   label.style.pointerEvents = 'none';
-  label.style.transform = 'translate(-50%, -100%)'; // Position above point
+  label.style.transform = 'translate(-50%, -100%)'; // Ensure label is centered horizontally above the point
+  label.style.transformOrigin = 'bottom center'; // Set transform origin for better positioning
+  label.style.whiteSpace = 'nowrap'; // Prevent text wrapping for better readability
   axisLabelContainer.appendChild(label);
   
   return label;
@@ -200,10 +202,11 @@ export function createOrUpdateLabel(id, worldPos, text, camera, renderer) {
  * @param {string} text Text content of the label
  * @param {THREE.Camera} camera Camera for positioning
  * @param {THREE.WebGLRenderer} renderer Renderer for positioning
- * @param {number} lifespan Lifespan in frames
+ * @param {number} lifespan Lifespan in seconds (default: 1 second)
+ * @param {THREE.Color|string} color Color for the label background (optional)
  * @returns {Object} Label object with ID and DOM element
  */
-export function createAxisLabel(id, worldPos, text, camera, renderer, lifespan = 30) {
+export function createAxisLabel(id, worldPos, text, camera, renderer, lifespan = 1.0, color = null) {
   if (!axisLabelContainer) initLabelContainers();
   
   const label = getAxisLabel();
@@ -220,13 +223,31 @@ export function createAxisLabel(id, worldPos, text, camera, renderer, lifespan =
   label.dataset.worldY = worldPos.y;
   label.dataset.worldZ = worldPos.z || 0;
   
-  // Set life tracking
-  label.dataset.life = lifespan;
+  // Store creation time and lifespan for time-based fadeout
+  label.dataset.createdAt = Date.now();
+  label.dataset.lifespan = lifespan * 1000; // Store in ms
   
-  // Position and set text
+  // Position and set text - center the label over the point
+  // The transform in CSS is already set to translate(-50%, -100%) to position above the point
   label.style.left = `${screenPos.x}px`;
-  label.style.top = `${screenPos.y - 25}px`;
+  label.style.top = `${screenPos.y - 10}px`; // Add a small offset to position above the point
   label.textContent = text;
+  
+  // Apply custom color if provided
+  if (color) {
+    // Handle both string colors and THREE.Color objects
+    let colorString;
+    if (typeof color === 'string') {
+      colorString = color;
+    } else if (color.isColor) {
+      // Convert THREE.Color to rgba string with 0.7 opacity
+      colorString = `rgba(${Math.floor(color.r * 255)}, ${Math.floor(color.g * 255)}, ${Math.floor(color.b * 255)}, 0.7)`;
+    }
+    
+    if (colorString) {
+      label.style.backgroundColor = colorString;
+    }
+  }
   
   return { id: 'axis-' + id, domElement: label };
 }
@@ -348,22 +369,34 @@ export function updateRotatingLabels(group, camera, renderer) {
 }
 
 /**
- * Update temporary axis labels - fade and remove
+ * Update temporary axis labels - fade and remove based on time
  */
 export function updateAxisLabels() {
   if (!axisLabelContainer) return;
   
+  if (activeAxisLabels.size === 0) return;
+  
+  // Current time for fade calculations
+  const now = Date.now();
+  
   activeAxisLabels.forEach((label, id) => {
-    if (!label.dataset.life) return;
+    if (!label.dataset.createdAt || !label.dataset.lifespan) return;
     
-    let life = parseInt(label.dataset.life) - 1;
-    label.dataset.life = life;
+    // Get creation time and lifespan
+    const creationTime = parseInt(label.dataset.createdAt);
+    const lifespan = parseInt(label.dataset.lifespan);
+    
+    // Calculate elapsed time in ms
+    const elapsed = now - creationTime;
+    
+    // Calculate opacity based on time (linear fade)
+    const opacity = Math.max(0, 1 - (elapsed / lifespan));
     
     // Update opacity
-    label.style.opacity = life / 30;
+    label.style.opacity = opacity;
     
     // Remove if expired
-    if (life <= 0) {
+    if (elapsed >= lifespan) {
       removeAxisLabel(id);
     }
   });
@@ -394,24 +427,44 @@ export function clearLabels() {
  * @returns {Object} Screen position {x, y}
  */
 function worldToScreen(worldPos, camera, renderer) {
+  // Input validation
+  if (!worldPos || !camera || !renderer) {
+    console.error("[LABELS] Missing required parameters for worldToScreen:", 
+      { hasWorldPos: !!worldPos, hasCamera: !!camera, hasRenderer: !!renderer });
+    // Return a fallback position in the center
+    return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  }
+
   // Clone position to avoid modifying the original
   const pos = worldPos.clone ? worldPos.clone() : new THREE.Vector3(worldPos.x, worldPos.y, worldPos.z || 0);
   
-  // Project world position to camera
-  pos.project(camera);
-  
-  // Get canvas bounds
-  const canvas = renderer.domElement;
-  const rect = canvas.getBoundingClientRect();
-  
-  // Convert from NDC to CSS pixels
-  const widthHalf = canvas.width / 2;
-  const heightHalf = canvas.height / 2;
-  
-  return {
-    x: (pos.x * widthHalf) + widthHalf + rect.left,
-    y: -(pos.y * heightHalf) + heightHalf + rect.top
-  };
+  try {  
+    // Project world position to camera
+    pos.project(camera);
+    
+    // Handle positions that end up way off screen (can cause positioning issues)
+    // Clamp to reasonable bounds
+    pos.x = Math.max(-1.5, Math.min(1.5, pos.x)); 
+    pos.y = Math.max(-1.5, Math.min(1.5, pos.y));
+    
+    // Get canvas bounds and size
+    const canvas = renderer.domElement;
+    const rect = canvas.getBoundingClientRect();
+    
+    // Convert normalized device coordinates (-1 to +1) to pixel coordinates
+    // Taking into account the actual rendered size, not just the container size
+    const widthHalf = rect.width / 2; // Use actual rendered width
+    const heightHalf = rect.height / 2; // Use actual rendered height
+    
+    return {
+      x: (pos.x * widthHalf) + widthHalf + rect.left,
+      y: -(pos.y * heightHalf) + heightHalf + rect.top
+    };
+  } catch (error) {
+    console.error("[LABELS] Error projecting position:", error);
+    // Return a fallback position in the center
+    return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  }
 }
 
 /**

@@ -4,6 +4,9 @@ import { Csound } from '@csound/browser';
 import { quantizeToEqualTemperament, getNoteName } from './frequencyUtils.js';
 import { DEFAULT_VALUES, PARAMETER_RANGES } from '../config/constants.js';
 
+// Debug flag to control audio logging
+const DEBUG_AUDIO = false;
+
 // Core audio system variables
 let csoundInstance = null;
 let audioContext = null;
@@ -147,7 +150,9 @@ class AudioParameterManager {
         await csoundInstance.setControlChannel("masterVolume", params.volume);
       }
 
-      console.log('[AUDIO] Applied pending parameters:', params);
+      if (DEBUG_AUDIO) {
+        console.log('[AUDIO] Applied pending parameters:', params);
+      }
       this.pendingParams = null;
       return true;
     } catch (error) {
@@ -351,7 +356,9 @@ export async function setupAudio() {
           await csoundInstance.setControlChannel("brightness", DEFAULT_VALUES.BRIGHTNESS);
           await csoundInstance.setControlChannel("masterVolume", DEFAULT_VALUES.VOLUME);
           
-          console.log("[AUDIO] Csound initialized and started successfully");
+          if (DEBUG_AUDIO) {
+            console.log("[AUDIO] Csound initialized and started successfully");
+          }
         } catch (error) {
           console.error("[AUDIO] Error during immediate Csound initialization:", error);
           // Fall back to click-based initialization
@@ -368,7 +375,10 @@ export async function setupAudio() {
       try {
         if (audioContext.state === 'suspended') {
           await audioContext.resume();
-          console.log("[AUDIO] Audio context resumed on user interaction");
+          if (DEBUG_AUDIO) {
+            console.log("[AUDIO] Audio context resumed on user interaction");
+          }
+          audioContextActivated = true;
         }
         
         if (!csoundStarted) {
@@ -388,11 +398,12 @@ export async function setupAudio() {
             await csoundInstance.setControlChannel("brightness", DEFAULT_VALUES.BRIGHTNESS);
             await csoundInstance.setControlChannel("masterVolume", DEFAULT_VALUES.VOLUME);
             
-            // Check if we have any pending parameters to apply
+            // Apply any pending parameters
             if (parameterManager.hasPendingParams()) {
-              parameterManager.applyPendingParams().then(() => {
+              await parameterManager.applyPendingParams();
+              if (DEBUG_AUDIO) {
                 console.log("Applied pending synth parameters after initialization");
-              });
+              }
             }
             
             // Play a test note
@@ -527,8 +538,10 @@ export async function triggerAudio(note) {
         await csoundInstance.setControlChannel("brightness", currentBrightness);
       }, validatedNote.duration * 1000);
       
-      // Log for debugging
-      console.log(`[STAR CUTS] Triggered star cut audio at ${validatedNote.frequency.toFixed(1)}Hz with copy index ${note.copyIndex || 'unknown'}`);
+      // Special logging for star cuts
+      if (DEBUG_AUDIO) {
+        console.log(`[STAR CUTS] Triggered star cut audio at ${validatedNote.frequency.toFixed(1)}Hz with copy index ${note.copyIndex || 'unknown'}`);
+      }
     } else {
       // Play a regular note
       playNote(validatedNote);
@@ -570,13 +583,18 @@ export async function setBrightness(brightness) {
 
 // Start Csound time updates - now just a stub
 export function startCsoundTimeUpdates() {
-  console.log("[TIMING] Csound timing disabled, using browser performance timing");
-  return true;
+  // This function has been deprecated and is kept for backward compatibility
+  if (DEBUG_AUDIO) {
+    console.log("[TIMING] Csound timing disabled, using browser performance timing");
+  }
 }
 
 // Stop Csound time updates - now just a stub
 export function stopCsoundTimeUpdates() {
-  console.log("[TIMING] No Csound time updates to stop");
+  // This function has been deprecated and is kept for backward compatibility
+  if (DEBUG_AUDIO) {
+    console.log("[TIMING] No Csound time updates to stop");
+  }
 }
 
 // Clean up audio system
@@ -653,6 +671,8 @@ export const Tone = {
  * @returns {Promise<boolean>} Always resolves to true
  */
 export async function startCsoundTimer() {
-  console.log("[TIMING] Csound timing disabled, using browser performance timing");
+  if (DEBUG_AUDIO) {
+    console.log("[TIMING] Csound timing disabled, using browser performance timing");
+  }
   return true;
 }

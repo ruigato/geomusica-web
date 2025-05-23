@@ -16,7 +16,7 @@ import { createNote } from '../notes/notes.js';
 const DEBUG_LOGGING = false;
 
 // Debug flag for star cuts (intersection points)
-const DEBUG_STAR_CUTS = true;
+const DEBUG_STAR_CUTS = false;
 
 // Map to track triggered points and prevent re-triggering
 const recentTriggers = new Map();
@@ -450,28 +450,59 @@ function createMarker(angle, worldX, worldY, scene, note, camera = null, rendere
   
   // Create text label if frequency is provided and axis labels are enabled
   let textLabel = null;
-  if (frequency !== null && scene.userData.state && scene.userData.state.showAxisFreqLabels && camera && renderer) {
-    // Format frequency with appropriate display
-    let displayText;
-    
-    // If equal temperament is enabled, show both the original frequency and the note name
-    if (scene.userData.state.useEqualTemperament && note.noteName) {
-      // Add a "Q" prefix for quantized triggers for visual feedback
-      const qPrefix = isQuantized ? "Q " : "";
-      displayText = `${qPrefix}${frequency.toFixed(1)}Hz (${note.noteName}) ${duration.toFixed(2)}s`;
-    } else {
-      // Just show frequency in free temperament mode
-      // Add a "Q" prefix for quantized triggers
-      const qPrefix = isQuantized ? "Q " : "";
-      displayText = `${qPrefix}${frequency.toFixed(2)}Hz ${duration.toFixed(2)}s`;
+  if (frequency !== null && layer && layer.state && layer.state.showAxisFreqLabels !== false) {
+    // Make sure we have camera and renderer for creating labels
+    if (!camera || !renderer) {
+      // Try to get them from scene if available
+      if (scene) {
+        // Try to get from scene userData
+        camera = scene.userData?.camera;
+        renderer = scene.userData?.renderer;
+        
+        // Try layer's group if not in scene
+        if ((!camera || !renderer) && layer.group) {
+          camera = layer.group.userData?.camera;
+          renderer = layer.group.userData?.renderer;
+        }
+        
+        // Use layer's helper method if available
+        if ((!camera || !renderer) && typeof layer.ensureCameraAndRenderer === 'function') {
+          const result = layer.ensureCameraAndRenderer();
+          camera = result.camera;
+          renderer = result.renderer;
+        }
+      }
     }
     
-    // Create a unique ID for this temporary label
-    const labelId = `axis-${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Create axis crossing label - use world coordinates directly
-    const worldPosition = new THREE.Vector3(worldX, worldY, 5);
-    textLabel = createAxisLabel(labelId, worldPosition, displayText, camera, renderer);
+    // If we have camera and renderer, create label
+    if (camera && renderer) {
+      // Format frequency with appropriate display
+      let displayText;
+      
+      // If equal temperament is enabled, show both the original frequency and the note name
+      if (layer.state.useEqualTemperament && note.noteName) {
+        // Add a "Q" prefix for quantized triggers for visual feedback
+        const qPrefix = isQuantized ? "Q " : "";
+        displayText = `${qPrefix}${frequency.toFixed(1)}Hz (${note.noteName}) ${duration.toFixed(2)}s`;
+      } else {
+        // Just show frequency in free temperament mode
+        // Add a "Q" prefix for quantized triggers
+        const qPrefix = isQuantized ? "Q " : "";
+        displayText = `${qPrefix}${frequency.toFixed(2)}Hz ${duration.toFixed(2)}s`;
+      }
+      
+      // Create a unique ID for this temporary label
+      const labelId = `axis-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Create axis crossing label - use world coordinates directly
+      const worldPosition = new THREE.Vector3(worldX, worldY, 5);
+      
+      // Use the layer's color for the label if available
+      const labelColor = layer && layer.color ? layer.color : null;
+      
+      // Create the axis label - use 1 second lifespan
+      textLabel = createAxisLabel(labelId, worldPosition, displayText, camera, renderer, 1.0, labelColor);
+    }
   }
   
   // Add to markers array with life value and animation state
@@ -613,12 +644,33 @@ function detectIntersectionTriggers(
   // Get layer data
   const state = layer.state;
   const scene = layer.group?.parent;
-  const camera = scene?.userData?.camera;
-  const renderer = scene?.userData?.renderer;
   
   // Skip if no scene or state
   if (!scene || !state) {
     return false;
+  }
+  
+  // Get camera and renderer from multiple possible sources
+  let camera = scene?.userData?.camera;
+  let renderer = scene?.userData?.renderer;
+  
+  // Try to get camera and renderer from layer's group if not found in scene
+  if (!camera || !renderer) {
+    camera = layer.group?.userData?.camera;
+    renderer = layer.group?.userData?.renderer;
+    
+    // Try layer's ensureCameraAndRenderer method as a last resort
+    if ((!camera || !renderer) && typeof layer.ensureCameraAndRenderer === 'function') {
+      const result = layer.ensureCameraAndRenderer();
+      camera = result.camera;
+      renderer = result.renderer;
+      
+      // Cache the results if they were found
+      if (camera && renderer) {
+        scene.userData.camera = camera;
+        scene.userData.renderer = renderer;
+      }
+    }
   }
   
   // Determine if these are star cut intersections
@@ -888,9 +940,28 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
     return false;
   }
   
-  // Get camera and renderer from scene's userData
-  const camera = scene?.userData?.camera;
-  const renderer = scene?.userData?.renderer;
+  // Get camera and renderer from multiple possible sources
+  let camera = scene?.userData?.camera;
+  let renderer = scene?.userData?.renderer;
+  
+  // Try to get camera and renderer from layer's group if not found in scene
+  if (!camera || !renderer) {
+    camera = layer.group?.userData?.camera;
+    renderer = layer.group?.userData?.renderer;
+    
+    // Try layer's ensureCameraAndRenderer method as a last resort
+    if ((!camera || !renderer) && typeof layer.ensureCameraAndRenderer === 'function') {
+      const result = layer.ensureCameraAndRenderer();
+      camera = result.camera;
+      renderer = result.renderer;
+      
+      // Cache the results if they were found
+      if (camera && renderer) {
+        scene.userData.camera = camera;
+        scene.userData.renderer = renderer;
+      }
+    }
+  }
   
   // FIXED: Check if geometry was recently recreated to prevent false triggers
   // Allow a brief grace period after geometry recreation to let vertex positions stabilize

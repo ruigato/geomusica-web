@@ -457,8 +457,27 @@ export class LayerManager {
       angle, 
       lastAngle, 
       triggerAudioCallback,
-      activeLayerId // This is now passed from animation.js
+      activeLayerId, // This is now passed from animation.js
+      camera,        // Add camera from animation params
+      renderer       // Add renderer from animation params
     } = animationParams;
+
+    // Ensure all layers have camera and renderer access
+    if (camera && renderer) {
+      // Store in scene userData
+      if (scene) {
+        scene.userData.camera = camera;
+        scene.userData.renderer = renderer;
+      }
+      
+      // Store in each layer and its group
+      for (const layer of this.layers) {
+        if (layer && layer.group) {
+          layer.group.userData.camera = camera;
+          layer.group.userData.renderer = renderer;
+        }
+      }
+    }
 
     // Ensure we're working with the correct active layer
     if (activeLayerId !== undefined && this.activeLayerId !== activeLayerId) {
@@ -899,5 +918,28 @@ export class LayerManager {
     }
     
     return layer;
+  }
+
+  /**
+   * Ensure all layers have access to camera and renderer
+   * @param {THREE.Camera} camera Camera instance
+   * @param {THREE.WebGLRenderer} renderer Renderer instance
+   */
+  ensureCameraAndRendererForLayers(camera, renderer) {
+    if (!camera || !renderer) return;
+    
+    // Store in scene userData
+    if (this.scene) {
+      this.scene.userData.camera = camera;
+      this.scene.userData.renderer = renderer;
+    }
+    
+    // Store in each layer and its group
+    for (const layer of this.layers) {
+      if (layer && layer.group) {
+        layer.group.userData.camera = camera;
+        layer.group.userData.renderer = renderer;
+      }
+    }
   }
 } 

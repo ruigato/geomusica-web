@@ -63,6 +63,9 @@ export class Layer {
     this.state.radius = this.state.radius || 100;
     this.state.stepScale = this.state.stepScale || 1.05;
     
+    // Initialize axis frequency labels setting to true by default
+    this.state.showAxisFreqLabels = this.state.showAxisFreqLabels !== undefined ? this.state.showAxisFreqLabels : true;
+    
     // Force parameter changes to ensure initial render
     this.state.parameterChanges.copies = true;
     this.state.parameterChanges.segments = true;
@@ -796,5 +799,51 @@ export class Layer {
     
     // Store the time for future delta calculations
     this.lastUpdateTime = currentTime;
+  }
+
+  /**
+   * Make sure camera and renderer are attached to this layer
+   * @returns {Object} Object with camera and renderer
+   */
+  ensureCameraAndRenderer() {
+    const scene = this.group?.parent;
+    
+    if (!scene) {
+      console.warn(`[LAYER ${this.id}] Cannot find parent scene for renderer and camera access`);
+      return { camera: null, renderer: null };
+    }
+    
+    // Try to get camera and renderer from scene userData (set in main.js)
+    if (!scene.userData.camera || !scene.userData.renderer) {
+      console.warn(`[LAYER ${this.id}] Scene is missing camera or renderer in userData`);
+      return { camera: null, renderer: null };
+    }
+    
+    return {
+      camera: scene.userData.camera,
+      renderer: scene.userData.renderer
+    };
+  }
+
+  /**
+   * Update the layer with animation parameters
+   * @param {number} currentTime Current time in seconds
+   * @param {number} deltaTime Time elapsed since last frame in seconds
+   */
+  update(currentTime, deltaTime) {
+    // Update rotation angle based on time
+    this.updateAngle(currentTime);
+    
+    // Update any other time-dependent properties
+    
+    // Make sure camera and renderer are accessible through scene
+    const scene = this.group?.parent;
+    if (scene && !scene.userData.camera && !scene.userData.renderer) {
+      const { camera, renderer } = this.ensureCameraAndRenderer();
+      if (camera && renderer) {
+        scene.userData.camera = camera;
+        scene.userData.renderer = renderer;
+      }
+    }
   }
 } 

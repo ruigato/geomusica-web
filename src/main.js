@@ -544,8 +544,14 @@ function initializeApplication() {
   scene.userData.renderer = renderer;
   scene.userData.globalState = globalState;
   
+  // Also add these as direct properties (needed for some older code paths)
+  scene.mainCamera = camera;
+  scene.mainRenderer = renderer;
+  
   console.log("Camera position:", camera.position);
   console.log("Camera field of view:", camera.fov);
+  console.log("Scene userData camera set:", !!scene.userData.camera);
+  console.log("Scene userData renderer set:", !!scene.userData.renderer);
   
   // Add a simple ambient light to improve visibility
   const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
