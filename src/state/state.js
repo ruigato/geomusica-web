@@ -20,6 +20,9 @@ export function generateSequence(n) {
   return sequence;
 }
 
+// Create a debug flag for star cuts
+const DEBUG_STAR_CUTS = true;
+
 /**
  * Create initial application state
  * @returns {Object} Application state object
@@ -1045,16 +1048,16 @@ export function createAppState() {
       if (this.starSkip !== newValue) {
         this.starSkip = newValue;
         this.parameterChanges.starSkip = true;
-        this.needsIntersectionUpdate = true;
         
-        // Force recreation of base geometry when available
-        if (this.baseGeo && this.useStars) {
-          console.log("Forcing geometry update due to star skip value change");
-          
-          // Set flags to signal that geometry needs recreation
-          this.segmentsChanged = true;
-          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        // Force intersection update when changing starSkip with stars and cuts enabled
+        if (this.useStars && this.useCuts && newValue > 1) {
+          if (DEBUG_STAR_CUTS) {
+            console.log(`[STAR CUTS] Forcing intersection update after changing starSkip to ${newValue}`);
+          }
+          this.needsIntersectionUpdate = true;
         }
+        
+        console.log(`Star skip set to ${newValue}`);
       }
     },
     
@@ -1067,25 +1070,28 @@ export function createAppState() {
       if (this.useStars !== newValue) {
         this.useStars = newValue;
         this.parameterChanges.useStars = true;
-        this.needsIntersectionUpdate = true;
         
-        // Update shape type when star is toggled
-        if (newValue && this.shapeType === 'regular') {
+        // Update shapeType to 'star' when enabling stars
+        if (newValue) {
           this.shapeType = 'star';
-          console.log("Setting shape type to star");
-        } else if (!newValue && this.shapeType === 'star') {
+        } else if (this.shapeType === 'star') {
+          // Revert to regular polygon when disabling stars
           this.shapeType = 'regular';
-          console.log("Setting shape type back to regular");
         }
         
-        // Force recreation of base geometry when available
-        if (this.baseGeo) {
-          console.log("Forcing geometry update due to star toggle");
-          
-          // Set flags to signal that geometry needs recreation
-          this.segmentsChanged = true;
-          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        // Force intersection update when toggling stars with cuts enabled
+        if (this.useCuts && this.starSkip > 1) {
+          if (DEBUG_STAR_CUTS) {
+            console.log(`[STAR CUTS] Forcing intersection update after changing useStars`);
+          }
+          this.needsIntersectionUpdate = true;
         }
+        
+        // Always force geometry recreation when toggling stars feature
+        this.segmentsChanged = true;
+        this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        
+        console.log(`Stars ${newValue ? 'enabled' : 'disabled'}, shapeType=${this.shapeType}`);
       }
     },
     
@@ -1097,9 +1103,21 @@ export function createAppState() {
       const newValue = Boolean(value);
       if (this.useCuts !== newValue) {
         this.useCuts = newValue;
-        this.lastUseCuts = newValue;
         this.parameterChanges.useCuts = true;
-        this.needsIntersectionUpdate = true;
+        
+        // Force intersection update when toggling cuts with stars enabled
+        if (this.useStars && this.starSkip > 1) {
+          if (DEBUG_STAR_CUTS) {
+            console.log(`[STAR CUTS] Forcing intersection update after changing useCuts`);
+          }
+          this.needsIntersectionUpdate = true;
+          
+          // Force geometry recreation when toggling cuts with stars enabled
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        }
+        
+        console.log(`Cuts ${newValue ? 'enabled' : 'disabled'}`);
       }
     },
     

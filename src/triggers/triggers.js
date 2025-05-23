@@ -15,6 +15,9 @@ import { createNote } from '../notes/notes.js';
 // Debug flag to control logging
 const DEBUG_LOGGING = false;
 
+// Debug flag for star cuts (intersection points)
+const DEBUG_STAR_CUTS = true;
+
 // Map to track triggered points and prevent re-triggering
 const recentTriggers = new Map();
 
@@ -544,9 +547,303 @@ function checkEnhancedAxisCrossing(prevX, prevY, currX, currY) {
 }
 
 /**
- * Detect triggers for a specific layer
- * @param {Object} layer Layer to process triggers for
- * @param {number} tNow Current time for trigger timing
+ * Detect triggers for intersection points (including star cuts)
+ * This function processes the intersection markers in each copy group
+ * @param {Object} copyGroup - The copy group containing intersection markers
+ * @param {Object} layer - The layer object
+ * @param {number} copyIndex - The index of the current copy
+ * @param {number} angle - Current rotation angle
+ * @param {number} lastAngle - Previous rotation angle
+ * @param {number} tNow - Current time
+ * @param {Function} audioCallback - Callback function for triggered audio
+ * @param {Set} triggeredNow - Set of already triggered points
+ * @param {Array} triggeredPoints - Array of triggered point positions
+ * @param {THREE.Matrix4} inverseRotationMatrix - Matrix to remove rotation
+ * @param {THREE.Matrix4} rotationMatrix - Matrix to apply rotation
+ * @param {boolean} isLerping - Whether values are currently being lerped
+ * @param {number} LERPING_TRIGGER_COOLDOWN - Cooldown time for triggers during lerping
+ * @returns {boolean} True if any triggers were detected
+ */
+function detectIntersectionTriggers(
+  copyGroup, layer, copyIndex, angle, lastAngle, tNow, audioCallback, 
+  triggeredNow, triggeredPoints, inverseRotationMatrix, rotationMatrix, 
+  isLerping, LERPING_TRIGGER_COOLDOWN
+) {
+  // Debug when this function is called
+  if (DEBUG_STAR_CUTS) {
+    console.log(`[STAR CUTS] detectIntersectionTriggers called for copy ${copyIndex}`);
+  }
+  
+  // Check if this copy group has intersection markers
+  if (!copyGroup || !copyGroup.userData) {
+    if (DEBUG_STAR_CUTS) {
+      console.log(`[STAR CUTS] Copy ${copyIndex} has no userData`);
+    }
+    return false;
+  }
+  
+  // Improved detection of intersection marker group
+  let intersectionGroup = null;
+  
+  // First, check the standard location
+  if (copyGroup.userData.intersectionMarkerGroup) {
+    intersectionGroup = copyGroup.userData.intersectionMarkerGroup;
+  } else {
+    // Try to find an intersection group as a direct child
+    for (let i = 0; copyGroup.children && i < copyGroup.children.length; i++) {
+      const child = copyGroup.children[i];
+      if (child.userData && child.userData.isIntersectionGroup) {
+        intersectionGroup = child;
+        break;
+      }
+    }
+  }
+  
+  if (!intersectionGroup || !intersectionGroup.children) {
+    if (DEBUG_STAR_CUTS) {
+      console.log(`[STAR CUTS] No intersection markers in copy ${copyIndex}`);
+    }
+    return false;
+  }
+  
+  if (DEBUG_STAR_CUTS) {
+    console.log(`[STAR CUTS] Found ${intersectionGroup.children.length} intersection markers in copy ${copyIndex}`);
+  }
+  
+  // Get layer data
+  const state = layer.state;
+  const scene = layer.group?.parent;
+  const camera = scene?.userData?.camera;
+  const renderer = scene?.userData?.renderer;
+  
+  // Skip if no scene or state
+  if (!scene || !state) {
+    return false;
+  }
+  
+  // Determine if these are star cut intersections
+  const isStarCuts = state.useStars && state.useCuts && state.starSkip > 1;
+  
+  if (isStarCuts && DEBUG_STAR_CUTS) {
+    console.log(`[STAR CUTS] Processing star cut intersections in copy ${copyIndex}`);
+  }
+  
+  // Create a map for vertices that have already been checked
+  if (!layer.prevIntersectionVertices) {
+    layer.prevIntersectionVertices = new Map();
+  }
+  
+  // Temp vectors for calculations
+  const worldPos = new THREE.Vector3();
+  const prevWorldPos = new THREE.Vector3();
+  
+  // Get the current world matrix of the copy group
+  const tempWorldMatrix = new THREE.Matrix4();
+  intersectionGroup.updateMatrixWorld();
+  tempWorldMatrix.copy(intersectionGroup.matrixWorld);
+  
+  // Apply the inverse rotation to get the unrotated world positions
+  tempWorldMatrix.premultiply(inverseRotationMatrix);
+  
+  // Track if any triggers occurred
+  let anyTriggers = false;
+  let triggersCount = 0;
+  
+  // Process each intersection marker (point)
+  for (let i = 0; i < intersectionGroup.children.length; i++) {
+    const marker = intersectionGroup.children[i];
+    
+    // Skip non-mesh objects
+    if (marker.type !== 'Mesh') {
+      continue;
+    }
+    
+    // Create a unique key for this intersection point
+    const key = `${layer.id}-intersection-${copyIndex}-${i}`;
+    
+    // Skip if already triggered in this frame
+    if (triggeredNow.has(key)) {
+      if (DEBUG_STAR_CUTS) {
+        console.log(`[STAR CUTS] Skipping already triggered point ${i} in copy ${copyIndex}`);
+      }
+      continue;
+    }
+    
+    try {
+      // Get current marker world position (unrotated)
+      worldPos.copy(marker.position);
+      
+      // Skip invalid positions
+      if (isNaN(worldPos.x) || isNaN(worldPos.y) || isNaN(worldPos.z)) {
+        continue;
+      }
+      
+      // Apply unrotated world matrix to get position in world space
+      worldPos.applyMatrix4(tempWorldMatrix);
+      
+      // Store original non-rotated position for frequency calculation
+      const nonRotatedPos = worldPos.clone();
+      
+      // Apply rotation manually for trigger detection
+      worldPos.applyMatrix4(rotationMatrix);
+      
+      // Get previous vertex world position
+      let hasPrevPos = false;
+      if (layer.prevIntersectionVertices.has(key)) {
+        prevWorldPos.copy(layer.prevIntersectionVertices.get(key));
+        hasPrevPos = true;
+      } else {
+        // For first frame, use current position
+        prevWorldPos.copy(worldPos);
+      }
+      
+      // Store current position for next frame (with rotation)
+      layer.prevIntersectionVertices.set(key, worldPos.clone());
+      
+      // Skip trigger detection if we don't have previous positions
+      if (!hasPrevPos) {
+        continue;
+      }
+      
+      // Check for large position changes (likely due to geometry changes)
+      const positionDistance = prevWorldPos.distanceTo(worldPos);
+      const MAX_REASONABLE_MOVEMENT = 50; // Maximum reasonable movement between frames
+      
+      if (positionDistance > MAX_REASONABLE_MOVEMENT) {
+        if (DEBUG_STAR_CUTS) {
+          console.log(`[STAR CUTS] Skipping intersection ${i} due to large position change (${positionDistance.toFixed(2)})`);
+        }
+        continue;
+      }
+      
+      // Unwrap position values
+      const currX = worldPos.x;
+      const currY = worldPos.y;
+      const prevX = prevWorldPos.x;
+      const prevY = prevWorldPos.y;
+      
+      // Enhanced crossing detection with interpolation support
+      const { hasCrossed, crossingFactor } = checkEnhancedAxisCrossing(prevX, prevY, currX, currY);
+      
+      // Skip if not triggered this frame
+      if (hasCrossed && !layer.lastTrig.has(key)) {
+        // Only apply rate limiting during lerping
+        if (isLerping) {
+          // Check if this intersection is in cooldown period
+          const now = performance.now();
+          const lastTriggerTime = layer._triggersTimestamps.get(key) || 0;
+          const timeSinceLastTrigger = now - lastTriggerTime;
+          
+          // Skip if we're still in the cooldown period
+          if (timeSinceLastTrigger < LERPING_TRIGGER_COOLDOWN) {
+            continue;
+          }
+          
+          // Update the timestamp for this intersection
+          layer._triggersTimestamps.set(key, now);
+        }
+        
+        // Check for overlap with previously triggered points
+        if (!isPointOverlapping(currX, currY, triggeredPoints)) {
+          // Add to triggered points
+          triggeredPoints.push({ x: currX, y: currY });
+          
+          // Use the non-rotated position from the transformed geometry
+          // This already has all scaling factors applied (including modulus)
+          const nonRotatedX = nonRotatedPos.x;
+          const nonRotatedY = nonRotatedPos.y;
+          
+          // Calculate frequency directly from the transformed coordinates
+          const frequency = Math.hypot(nonRotatedX, nonRotatedY);
+          
+          // Calculate more accurate timing based on crossing factor
+          const adjustedTime = tNow - (1 - crossingFactor) * (1000 / 120);
+          
+          // Create a note object for this intersection point
+          const note = createNote({
+            x: nonRotatedX,
+            y: nonRotatedY,
+            isIntersection: true,
+            isStarCut: isStarCuts, // Set isStarCut flag based on the state
+            intersectionIndex: i,
+            copyIndex: copyIndex,
+            frequency: frequency,
+          }, state);
+          
+          // Update time information
+          note.time = adjustedTime;
+          
+          // Handle quantization
+          if (state.useQuantization) {
+            // Create trigger info
+            const triggerInfo = {
+              note: {...note},
+              worldRot: angle,
+              camera,
+              renderer,
+              isQuantized: true,
+              layer
+            };
+            
+            // Handle quantization
+            const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(tNow, state, triggerInfo);
+            
+            if (shouldTrigger) {
+              // Trigger with precise time
+              const noteCopy = {...note};
+              noteCopy.time = triggerTime;
+              
+              // Trigger audio
+              audioCallback(noteCopy);
+              
+              // Create marker
+              createMarker(angle, currX, currY, scene, noteCopy, camera, renderer, isQuantized, layer);
+              
+              if (DEBUG_STAR_CUTS) {
+                console.log(`[STAR CUTS] Triggered ${isStarCuts ? 'star cut' : 'intersection'} ${i} in copy ${copyIndex}`);
+              }
+              
+              // Increment counter
+              triggersCount++;
+              anyTriggers = true;
+            }
+          } else {
+            // Regular non-quantized trigger
+            audioCallback(note);
+            
+            // Create marker
+            createMarker(angle, currX, currY, scene, note, camera, renderer, false, layer);
+            
+            if (DEBUG_STAR_CUTS) {
+              console.log(`[STAR CUTS] Triggered ${isStarCuts ? 'star cut' : 'intersection'} ${i} in copy ${copyIndex}`);
+            }
+            
+            // Increment counter
+            triggersCount++;
+            anyTriggers = true;
+          }
+          
+          // Add to triggered set
+          triggeredNow.add(key);
+        }
+      }
+    } catch (error) {
+      console.error(`Error in intersection trigger detection for layer ${layer.id}, intersection ${i}:`, error);
+    }
+  }
+  
+  // Log summary if any triggers occurred
+  if (anyTriggers && DEBUG_STAR_CUTS) {
+    console.log(`[STAR CUTS] Triggered ${triggersCount} ${isStarCuts ? 'star cuts' : 'intersections'} in copy ${copyIndex}`);
+  }
+  
+  return anyTriggers;
+}
+
+/**
+ * Detect triggers for a layer
+ * @param {Object} layer Layer to detect triggers for
+ * @param {number} tNow Current time
  * @param {Function} audioCallback Callback function for triggered audio
  * @returns {boolean} True if any triggers were detected
  */
@@ -694,6 +991,9 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
       let copyIndex = ci;
       let copyGroup = null;
       
+      // FIXED: Improved copy group finding logic
+      let foundCopyCount = 0;
+      
       // Find the copy group, skipping non-copy groups
       for (let i = 0; i < group.children.length; i++) {
         const child = group.children[i];
@@ -702,14 +1002,14 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
         if (child.type === 'Mesh' && child.geometry && child.geometry.type === 'SphereGeometry') continue;
         if (child.type === 'Line') continue;
         
-        // If we've found enough real copy groups to match our target, use this one
-        if (copyIndex === 0) {
+        // Count this as a valid copy group
+        if (foundCopyCount === ci) {
           copyGroup = child;
           break;
         }
         
-        // Otherwise, decrement our counter and continue
-        copyIndex--;
+        // Otherwise, increment our counter and continue
+        foundCopyCount++;
       }
       
       // Skip if we couldn't find a valid copy group
@@ -958,6 +1258,18 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
         } catch (error) {
           console.error(`Error in trigger detection for layer ${layer.id}, copy ${ci}, vertex ${vi}:`, error);
         }
+      }
+      
+      // After processing vertices, check for intersection triggers in this copy
+      // This will handle star cuts as well as other intersections
+      const intersectionTriggered = detectIntersectionTriggers(
+        copyGroup, layer, ci, angle, lastAngle, tNow, audioCallback,
+        triggeredNow, triggeredPoints, inverseRotationMatrix, rotationMatrix,
+        isLerping, LERPING_TRIGGER_COOLDOWN
+      );
+      
+      if (intersectionTriggered) {
+        anyTriggers = true;
       }
       
       // Detect anomalies - too many triggers at once may indicate a problem

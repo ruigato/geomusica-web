@@ -502,8 +502,37 @@ export async function triggerAudio(note) {
     // Use comprehensive validation
     const validatedNote = validateNoteParameters(note);
     
-    // Play the validated note
-    playNote(validatedNote);
+    // Check if this is a star cut intersection
+    if (note.isStarCut) {
+      // Make star cuts sound different:
+      // 1. Increase brightness for more harmonics
+      const currentBrightness = await csoundInstance.getControlChannel("brightness");
+      // Temporarily boost brightness for this note
+      await csoundInstance.setControlChannel("brightness", Math.min(2.0, currentBrightness * 1.5));
+      
+      // 2. Add a slight detune to make them sound more distinctive
+      validatedNote.frequency *= 1.02; // Slightly larger frequency shift (2% higher)
+      
+      // 3. Make them a bit louder to stand out
+      validatedNote.velocity = Math.min(1.0, validatedNote.velocity * 1.3);
+      
+      // 4. Use a slightly longer duration
+      validatedNote.duration = Math.min(2.0, validatedNote.duration * 1.2);
+      
+      // Play the modified note
+      playNote(validatedNote);
+      
+      // Reset brightness after a slight delay
+      setTimeout(async () => {
+        await csoundInstance.setControlChannel("brightness", currentBrightness);
+      }, validatedNote.duration * 1000);
+      
+      // Log for debugging
+      console.log(`[STAR CUTS] Triggered star cut audio at ${validatedNote.frequency.toFixed(1)}Hz with copy index ${note.copyIndex || 'unknown'}`);
+    } else {
+      // Play a regular note
+      playNote(validatedNote);
+    }
     
     return validatedNote;
   } catch (error) {

@@ -28,7 +28,8 @@ export function createNote(triggerData, state) {
     y = 0, 
     copyIndex, 
     vertexIndex, 
-    isIntersection = false, 
+    isIntersection = false,
+    isStarCut = false,  // New flag to identify star cut intersections
     angle = 0, 
     lastAngle = 0, 
     globalIndex 
@@ -94,6 +95,7 @@ export function createNote(triggerData, state) {
     copyIndex: copyIndex || 0,
     vertexIndex: vertexIndex || 0,
     isIntersection,
+    isStarCut,  // Add the star cut flag to the note
     coordinates: { x, y },
     time: Date.now(), // Current time in ms
     noteName,

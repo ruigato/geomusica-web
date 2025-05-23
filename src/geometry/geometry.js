@@ -8,7 +8,7 @@ import {
   INTERSECTION_POINT_COLOR,
   INTERSECTION_POINT_OPACITY
 } from '../config/constants.js';
-import { findAllIntersections } from './intersections.js';
+import { findAllIntersections, processIntersections } from './intersections.js';
 import { createOrUpdateLabel } from '../ui/domLabels.js';
 // Import the frequency utilities at the top of geometry.js
 import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils.js';
@@ -16,6 +16,9 @@ import { createNote } from '../notes/notes.js';
 
 // Debug flag to control logging
 const DEBUG_LOGGING = false;
+
+// Set to true to enable debugging for the star cuts feature
+const DEBUG_STAR_CUTS = true;
 
 // Reuse geometries for better performance
 const vertexCircleGeometry = new THREE.CircleGeometry(1, 12); // Fewer segments (12) for performance
@@ -35,18 +38,28 @@ export function createPolygonGeometry(radius, segments, state = null) {
   // Add this for debugging to track when we're creating new geometry
   const layerId = state && state.layerId !== undefined ? state.layerId : 'unknown';
   
-  if (DEBUG_LOGGING) {
-    console.log(`[GEOMETRY CREATE] Creating polygon geometry for layer ${layerId} with radius=${radius}, segments=${segments}`);
-  }
-  
   // Get the specific shape type from state if available
   const shapeType = state?.shapeType || 'regular';
+  
+  // More verbose debugging for star shapes
+  if (DEBUG_STAR_CUTS && state?.useStars) {
+    console.log(`[STAR CUTS] Creating geometry: shapeType=${shapeType}, useStars=${state.useStars}, starSkip=${state.starSkip}, useCuts=${state.useCuts}`);
+  } else if (DEBUG_LOGGING) {
+    console.log(`[GEOMETRY CREATE] Creating polygon geometry for layer ${layerId} with radius=${radius}, segments=${segments}, shapeType=${shapeType}`);
+  }
   
   // Handle different shape types
   switch (shapeType) {
     case 'star':
       // Create a star polygon
+      if (DEBUG_STAR_CUTS) {
+        console.log(`[STAR CUTS] Creating star polygon geometry with ${segments} segments and skip=${state?.starSkip || 1}`);
+      }
+      
       const starPoints = createStarPolygonPoints(radius, segments, state?.starSkip || 1, state);
+      if (DEBUG_STAR_CUTS) {
+        console.log(`[STAR CUTS] Created star polygon with ${starPoints.length} points`);
+      }
       return createGeometryFromPoints(starPoints, state);
       
     case 'fractal':
@@ -67,6 +80,15 @@ export function createPolygonGeometry(radius, segments, state = null) {
       
     case 'regular':
     default:
+      // When useStars is true but shapeType is not 'star', override to create a star
+      if (state?.useStars && state?.starSkip > 1) {
+        if (DEBUG_STAR_CUTS) {
+          console.log(`[STAR CUTS] Overriding regular shape to star based on useStars flag`);
+        }
+        const starPoints = createStarPolygonPoints(radius, segments, state.starSkip, state);
+        return createGeometryFromPoints(starPoints, state);
+      }
+      
       // Create a regular polygon
       return createRegularPolygonGeometry(radius, segments, state);
   }
@@ -391,7 +413,6 @@ let updateGroupCallCounter = 0;
 
 /**
  * Update the display group with copies of the base geometry
- * @param {THREE.Group} group Group to update
  * @param {number} copies Number of copies to create
  * @param {number} stepScale Scale factor between copies
  * @param {THREE.BufferGeometry} baseGeo Base geometry
@@ -409,6 +430,36 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     return;
   }
 
+  // Check if we're using star cuts
+  const useStarCuts = state && state.useStars && state.useCuts && state.starSkip > 1;
+  
+  if (DEBUG_STAR_CUTS && useStarCuts) {
+    console.log(`[STAR CUTS] updateGroup called with useStars=${state.useStars}, useCuts=${state.useCuts}, ` +
+                `starSkip=${state.starSkip}, copies=${copies}, justCalculatedIntersections=${justCalculatedIntersections}`);
+  }
+  
+  // Force intersection update when star cuts are enabled
+  if (useStarCuts && state) {
+    state.needsIntersectionUpdate = true;
+    // Process the intersections for star cuts
+    if (DEBUG_STAR_CUTS) {
+      console.log(`[STAR CUTS] Forcing intersection processing for star cuts`);
+    }
+    processIntersections(state, baseGeo, group);
+    justCalculatedIntersections = true;
+  }
+  
+  // Get justCalculatedIntersections from group userData if it's available and not provided
+  if (!justCalculatedIntersections && group.userData && group.userData.justCalculatedIntersections) {
+    justCalculatedIntersections = group.userData.justCalculatedIntersections;
+    // Reset the flag after reading it
+    group.userData.justCalculatedIntersections = false;
+    
+    if (DEBUG_STAR_CUTS && useStarCuts) {
+      console.log(`[STAR CUTS] Using justCalculatedIntersections from group userData`);
+    }
+  }
+  
   // FIXED: Track objects for guaranteed cleanup
   const debugObjects = [];
   const newChildren = [];
@@ -667,157 +718,144 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       
       // Add the whole copy group to the main group
       group.add(copyGroup);
+      
+      // FIXED: After creating a copy, add intersection markers to ALL copies, not just the first one
+      // Remove the i === 0 check to show star cuts on all copies
+      if (state && state.intersectionPoints && state.intersectionPoints.length > 0 &&
+          (state.useIntersections || useStarCuts) && !isLerping) {
+        
+        if (DEBUG_STAR_CUTS && useStarCuts) {
+          console.log(`[STAR CUTS] Creating intersection markers for copy ${i} with finalScale=${finalScale}, useModulus=${state.useModulus}`);
+        }
+        
+        try {
+          // Create a group to hold the intersection markers
+          const intersectionMarkerGroup = new THREE.Group();
+          
+          // Tag this group for identification during audio triggers
+          intersectionMarkerGroup.userData.isIntersectionGroup = true;
+          
+          // Add visual representation for each intersection point
+          for (let j = 0; j < state.intersectionPoints.length; j++) {
+            const point = state.intersectionPoints[j];
+            
+            // IMPORTANT: Apply the same modulus scaling to intersection points
+            // This ensures star cuts scale with the polygon when modulus is used
+            let scaledX = point.x * finalScale;
+            let scaledY = point.y * finalScale;
+            
+            // Create trigger data for this intersection point
+            const triggerData = {
+              x: scaledX,
+              y: scaledY,
+              isIntersection: true,
+              intersectionIndex: j,
+              globalIndex: globalVertexIndex
+            };
+            
+            // Increment the global vertex index
+            globalVertexIndex++;
+            
+            // Create a note object to get duration and velocity parameters
+            const note = createNote(triggerData, state);
+            
+            // Calculate size factors for this intersection marker
+            const basePointSize = INTERSECTION_POINT_SIZE;
+            const durationScaleFactor = 0.5 + note.duration;
+            
+            // Size that remains visually consistent at different camera distances
+            // Adjust the multiplier (0.3) to make points larger or smaller overall
+            const sizeScaleFactor = (cameraDistance / 1000) * basePointSize * durationScaleFactor * 0.3;
+            
+            // Create material for intersection point
+            const intersectionMaterial = new THREE.MeshBasicMaterial({
+              // Use the layer's color with higher brightness for intersections
+              color: mat && mat.color ? mat.color.clone().multiplyScalar(1.2) : INTERSECTION_POINT_COLOR,
+              transparent: true,
+              opacity: note.velocity,
+              depthTest: false,
+              side: THREE.DoubleSide
+            });
+            
+            // FIXED: Track created materials for proper disposal
+            materialsToDispose.push(intersectionMaterial);
+            
+            // Create a mesh for the intersection point using shared geometry
+            const pointMesh = new THREE.Mesh(vertexCircleGeometry, intersectionMaterial);
+            
+            pointMesh.scale.set(sizeScaleFactor, sizeScaleFactor, 1);
+            // IMPORTANT: Use scaled coordinates for intersection points
+            pointMesh.position.set(scaledX, scaledY, 0);
+            
+            // Set renderOrder higher to ensure it renders on top
+            pointMesh.renderOrder = 1;
+            
+            // Add to the intersection marker group
+            intersectionMarkerGroup.add(pointMesh);
+            
+            // Add persistent frequency label for intersection point if enabled
+            if (shouldCreatePointLabels && camera && renderer) {
+              try {
+                // Calculate frequency for this intersection point
+                const freq = Math.hypot(scaledX, scaledY);
+                
+                // Format display text
+                let labelText;
+                if (state.useEqualTemperament && note.noteName) {
+                  labelText = `${freq.toFixed(1)}Hz (${note.noteName}) ${note.duration.toFixed(2)}s`;
+                } else {
+                  labelText = `${freq.toFixed(2)}Hz ${note.duration.toFixed(2)}s`;
+                }
+                
+                // Create a text label for this intersection point
+                const textLabel = createTextLabel(
+                  labelText, 
+                  new THREE.Vector3(scaledX, scaledY, 0), 
+                  intersectionMarkerGroup, // Parent is not really used for DOM labels
+                  false, // Not an axis label
+                  camera,
+                  renderer
+                );
+                
+                // Update the label immediately
+                textLabel.update(camera, renderer);
+                
+                // Store reference for cleanup
+                const labelInfo = {
+                  label: textLabel,
+                  isIntersection: true,
+                  position: new THREE.Vector3(scaledX, scaledY, 0)
+                };
+                
+                state.pointFreqLabels.push(labelInfo);
+                pointFreqLabelsCreated.push(labelInfo);
+              } catch (labelError) {
+                console.warn(`Failed to create intersection point label for point ${j}:`, labelError);
+                // Continue processing other intersection points
+              }
+            }
+          }
+          
+          // Add the whole marker group to the copy group to apply proper rotation
+          copyGroup.add(intersectionMarkerGroup);
+          
+          // Store reference to the intersection marker group
+          copyGroup.userData.intersectionMarkerGroup = intersectionMarkerGroup;
+          
+          if (DEBUG_STAR_CUTS && useStarCuts) {
+            console.log(`[STAR CUTS] Added ${state.intersectionPoints.length} scaled intersection markers to copy ${i}`);
+            console.log(`[STAR CUTS] Marker group has ${intersectionMarkerGroup.children.length} children`);
+          }
+        } catch (intersectionError) {
+          console.error("Error creating intersection markers:", intersectionError);
+          // Continue execution even if intersection markers fail
+        }
+      }
     }
     
     // After all copies are created, restore debug objects
     for (const debugObj of debugObjects) {
       group.add(debugObj);
-    }
-    
-    // Finally, add the intersection point markers to the group (so they rotate with everything)
-    // Only create/update markers if:
-    // 1. We're using intersections OR (using stars AND using cuts) AND
-    // 2. We have intersection points AND
-    // 3. We're not currently lerping AND
-    // 4. We have at least 1 copy AND
-    // 5. Either we just calculated new intersections OR we don't have markers yet
-    const needToCreateMarkers = state && 
-                               (state.useIntersections || (state.useStars && state.useCuts)) && 
-                               (copies > 1 || (state.useStars && state.useCuts)) && // Only if we have enough copies or using star cuts
-                               state.intersectionPoints && 
-                               state.intersectionPoints.length > 0 && 
-                               copies > 0 && // Don't create markers if copies = 0
-                               !isLerping &&
-                               (justCalculatedIntersections || !group.userData.intersectionMarkerGroup);
-                               
-    if (needToCreateMarkers) {
-      try {
-        // Clean up any existing marker group on this group
-        if (group.userData && group.userData.intersectionMarkerGroup) {
-          group.remove(group.userData.intersectionMarkerGroup);
-          group.userData.intersectionMarkerGroup.traverse(child => {
-            if (child.geometry) geometriesToDispose.push(child.geometry);
-            if (child.material) {
-              if (Array.isArray(child.material)) {
-                materialsToDispose.push(...child.material);
-              } else {
-                materialsToDispose.push(child.material);
-              }
-            }
-          });
-          group.userData.intersectionMarkerGroup = null;
-        }
-        
-        // Create a group to hold the intersection markers
-        const intersectionMarkerGroup = new THREE.Group();
-        
-        // Tag this group for identification during audio triggers
-        intersectionMarkerGroup.userData.isIntersectionGroup = true;
-        
-        // Add visual representation for each intersection point
-        for (let i = 0; i < state.intersectionPoints.length; i++) {
-          const point = state.intersectionPoints[i];
-          
-          // Create trigger data for this intersection point
-          const triggerData = {
-            x: point.x,
-            y: point.y,
-            isIntersection: true,
-            intersectionIndex: i,
-            globalIndex: globalVertexIndex
-          };
-          
-          // Increment the global vertex index
-          globalVertexIndex++;
-          
-          // Create a note object to get duration and velocity parameters
-          const note = createNote(triggerData, state);
-          
-          // Calculate size factors for this intersection marker
-          const basePointSize = INTERSECTION_POINT_SIZE;
-          const durationScaleFactor = 0.5 + note.duration;
-          
-          // Size that remains visually consistent at different camera distances
-          // Adjust the multiplier (0.3) to make points larger or smaller overall
-          const sizeScaleFactor = (cameraDistance / 1000) * basePointSize * durationScaleFactor * 0.3;
-          
-          // Create material for intersection point
-          const intersectionMaterial = new THREE.MeshBasicMaterial({
-            // Use the layer's color with higher brightness for intersections
-            color: mat && mat.color ? mat.color.clone().multiplyScalar(1.2) : INTERSECTION_POINT_COLOR,
-            transparent: true,
-            opacity: note.velocity,
-            depthTest: false,
-            side: THREE.DoubleSide
-          });
-          
-          // FIXED: Track created materials for proper disposal
-          materialsToDispose.push(intersectionMaterial);
-          
-          // Create a mesh for the intersection point using shared geometry
-          const pointMesh = new THREE.Mesh(vertexCircleGeometry, intersectionMaterial);
-          
-          pointMesh.scale.set(sizeScaleFactor, sizeScaleFactor, 1);
-          pointMesh.position.copy(point);
-          
-          // Set renderOrder higher to ensure it renders on top
-          pointMesh.renderOrder = 1;
-          
-          // Add to the intersection marker group
-          intersectionMarkerGroup.add(pointMesh);
-          
-          // Add persistent frequency label for intersection point if enabled
-          if (shouldCreatePointLabels && camera && renderer) {
-            try {
-              // Calculate frequency for this intersection point
-              const freq = Math.hypot(point.x, point.y);
-              
-              // Format display text
-              let labelText;
-              if (state.useEqualTemperament && note.noteName) {
-                labelText = `${freq.toFixed(1)}Hz (${note.noteName}) ${note.duration.toFixed(2)}s`;
-              } else {
-                labelText = `${freq.toFixed(2)}Hz ${note.duration.toFixed(2)}s`;
-              }
-              
-              // Create a text label for this intersection point
-              const textLabel = createTextLabel(
-                labelText, 
-                point, 
-                intersectionMarkerGroup, // Parent is not really used for DOM labels
-                false, // Not an axis label
-                camera,
-                renderer
-              );
-              
-              // Update the label immediately
-              textLabel.update(camera, renderer);
-              
-              // Store reference for cleanup
-              const labelInfo = {
-                label: textLabel,
-                isIntersection: true,
-                position: point.clone()
-              };
-              
-              state.pointFreqLabels.push(labelInfo);
-              pointFreqLabelsCreated.push(labelInfo);
-            } catch (labelError) {
-              console.warn(`Failed to create intersection point label for point ${i}:`, labelError);
-              // Continue processing other intersection points
-            }
-          }
-        }
-        
-        // Add the whole marker group to the main group
-        group.add(intersectionMarkerGroup);
-        
-        // Store reference to the intersection marker group
-        group.userData.intersectionMarkerGroup = intersectionMarkerGroup;
-      } catch (intersectionError) {
-        console.error("Error creating intersection markers:", intersectionError);
-        // Continue execution even if intersection markers fail
-      }
     }
     
   } catch (error) {
@@ -1051,61 +1089,110 @@ function createStarPolygonPoints(radius, numSegments, skip, state = null) {
   // If skip is invalid, fall back to 1 (regular polygon)
   skip = skip || 1;
   
-  // If useCuts is enabled, create star with cuts to the center
-  if (state && state.useCuts) {
-    // Create a star polygon with cuts
-    for (let i = 0; i < numSegments; i++) {
-      // Outer point
-      const outerAngle = i * angleStep;
-      const outerX = Math.cos(outerAngle) * radius;
-      const outerY = Math.sin(outerAngle) * radius;
-      points.push(new THREE.Vector2(outerX, outerY));
-      
-      // Inner point (at center)
-      points.push(new THREE.Vector2(0, 0));
+  // Calculate GCD to determine if this is a proper star
+  const gcd = (a, b) => b ? gcd(b, a % b) : a;
+  const gcdValue = gcd(numSegments, skip);
+  
+  // When creating a star with cuts, force intersection update
+  if (state && state.useStars && state.useCuts && skip > 1) {
+    if (DEBUG_STAR_CUTS) {
+      console.log(`[STAR CUTS] Forcing needsIntersectionUpdate for star with cuts: segments=${numSegments}, skip=${skip}`);
     }
-  } else {
-    // Standard star polygon using skip value
-    // Calculate GCD to determine if this is a proper star
-    const gcd = (a, b) => b ? gcd(b, a % b) : a;
-    const gcdValue = gcd(numSegments, skip);
+    // Force intersection recalculation
+    state.needsIntersectionUpdate = true;
+  }
+  
+  if (DEBUG_STAR_CUTS && state && state.useStars) {
+    console.log(`[STAR CUTS] Creating star points: segments=${numSegments}, skip=${skip}, gcd=${gcdValue}, useCuts=${state?.useCuts}`);
+  }
+  
+  // Create a stellated figure when useStars is true and skip > 1
+  const createStellateFigure = state?.useStars && skip > 1;
+  
+  if (createStellateFigure) {
+    if (DEBUG_STAR_CUTS) {
+      console.log(`[STAR CUTS] Creating stellated figure with segments=${numSegments}, skip=${skip}, gcd=${gcdValue}`);
+    }
     
+    // Generate the outer vertices first
+    const outerVertices = [];
+    for (let i = 0; i < numSegments; i++) {
+      const angle = i * angleStep;
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius;
+      outerVertices.push(new THREE.Vector2(x, y));
+    }
+    
+    // For a proper star (gcd=1), create a single continuous path
     if (gcdValue === 1) {
-      // Single continuous path - standard star polygon
       let vertex = 0;
       const visited = new Array(numSegments).fill(false);
       
       while (!visited[vertex]) {
-        const angle = vertex * angleStep;
-        const x = Math.cos(angle) * radius;
-        const y = Math.sin(angle) * radius;
-        points.push(new THREE.Vector2(x, y));
+        const currentVertex = outerVertices[vertex];
+        points.push(currentVertex);
         visited[vertex] = true;
         
         // Jump by skip amount
         vertex = (vertex + skip) % numSegments;
       }
+      
+      if (DEBUG_STAR_CUTS) {
+        console.log(`[STAR CUTS] Created stellated geometry with ${points.length} points (single path)`);
+      }
     } else {
-      // Multiple disconnected paths - create all of them
-      // This happens when gcd(n,k) > 1
+      // For multiple disconnected paths (gcd > 1), create each segment separately
       const numPaths = gcdValue;
       const verticesPerPath = numSegments / numPaths;
+      
+      if (DEBUG_STAR_CUTS) {
+        console.log(`[STAR CUTS] Creating ${numPaths} disconnected paths with ${verticesPerPath} vertices each`);
+      }
       
       // Generate each separate path
       for (let pathStart = 0; pathStart < numPaths; pathStart++) {
         let vertex = pathStart;
         
         for (let i = 0; i < verticesPerPath; i++) {
-          const angle = vertex * angleStep;
-          const x = Math.cos(angle) * radius;
-          const y = Math.sin(angle) * radius;
-          points.push(new THREE.Vector2(x, y));
+          const currentVertex = outerVertices[vertex];
+          points.push(currentVertex);
           
           // Jump by skip amount
           vertex = (vertex + skip) % numSegments;
         }
       }
+      
+      if (DEBUG_STAR_CUTS) {
+        console.log(`[STAR CUTS] Created stellated geometry with ${points.length} points (multiple paths)`);
+      }
     }
+    
+    return points;
+  }
+  
+  // For regular polygons (skip=1) or when useStars is false
+  if (skip === 1 || !state?.useStars) {
+    if (DEBUG_STAR_CUTS) {
+      console.log(`[STAR CUTS] Creating regular polygon with ${numSegments} sides`);
+    }
+    
+    // Create simple regular polygon
+    for (let i = 0; i < numSegments; i++) {
+      const angle = i * angleStep;
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius;
+      points.push(new THREE.Vector2(x, y));
+    }
+    
+    return points;
+  }
+  
+  // This should never be reached, but just in case, return a regular polygon
+  for (let i = 0; i < numSegments; i++) {
+    const angle = i * angleStep;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    points.push(new THREE.Vector2(x, y));
   }
   
   return points;
