@@ -13,12 +13,12 @@ export class GlobalStateManager {
     this.lastAngle = 0;
     
     // Audio engine parameters
-    this.attack = 0.01;
-    this.decay = 0.3;
-    this.sustain = 0.5;
-    this.release = 1.0;
-    this.brightness = 1.0;
-    this.volume = 0.8;
+    this.attack = DEFAULT_VALUES.ATTACK;
+    this.decay = DEFAULT_VALUES.DECAY;
+    this.sustain = DEFAULT_VALUES.SUSTAIN;
+    this.release = DEFAULT_VALUES.RELEASE;
+    this.brightness = DEFAULT_VALUES.BRIGHTNESS;
+    this.volume = DEFAULT_VALUES.VOLUME;
     
     // Quantization settings
     this.useQuantization = DEFAULT_VALUES.USE_QUANTIZATION;

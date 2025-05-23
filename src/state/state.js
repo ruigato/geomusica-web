@@ -79,6 +79,7 @@ export function createAppState() {
     bpm: DEFAULT_VALUES.BPM,
     radius: DEFAULT_VALUES.RADIUS,
     copies: DEFAULT_VALUES.COPIES,
+    targetCopies: DEFAULT_VALUES.COPIES,
     segments: DEFAULT_VALUES.SEGMENTS,
     stepScale: DEFAULT_VALUES.STEP_SCALE,
     angle: DEFAULT_VALUES.ANGLE,
@@ -234,7 +235,8 @@ export function createAppState() {
       
       return Math.abs(this.radius - this.targetRadius) > 0.1 ||
              Math.abs(this.stepScale - this.targetStepScale) > 0.001 ||
-             Math.abs(this.angle - this.targetAngle) > 0.1;
+             Math.abs(this.angle - this.targetAngle) > 0.1 ||
+             Math.abs(this.copies - this.targetCopies) > 0.1;
     },
     
     /**
@@ -276,7 +278,8 @@ export function createAppState() {
      */
     setCopies(value) {
       const newValue = Number(value);
-      if (this.targetCopies !== newValue) {
+      // Make sure both targetCopies and copies are properly set
+      if (this.targetCopies !== newValue || this.copies !== newValue) {
         this.targetCopies = newValue;
         this.parameterChanges.copies = true;
         if (!this.useLerp) {
@@ -525,13 +528,36 @@ export function createAppState() {
      * @param {boolean} value Enable/disable lerping
      */
     setUseLerp(value) {
+      const wasLerping = this.useLerp;
       this.useLerp = Boolean(value);
       
+      // If we're enabling lerping, initialize target values to current values
+      if (this.useLerp && !wasLerping) {
+        // Set target values to current values as starting point
+        this.targetRadius = this.radius;
+        this.targetStepScale = this.stepScale;
+        this.targetAngle = this.angle;
+        this.targetAltScale = this.altScale;
+        this.targetCopies = this.copies;
+        
+        // No need to clear lastTrig - we'll use rate limiting instead
+        // Only reset vertex positions if we need to
+        const layerRef = this.layerRef || (window._layers && window._layers.layers && 
+                           window._layers.layers.find(l => l.id === this.layerId));
+        
+        // Store the lerping start time for rate limiting
+        if (layerRef) {
+          layerRef._lerpingStartedAt = performance.now();
+        }
+      }
+      
       if (!this.useLerp) {
+        // When disabling lerping, snap values immediately
         this.radius = this.targetRadius;
         this.stepScale = this.targetStepScale;
         this.angle = this.targetAngle;
         this.altScale = this.targetAltScale;
+        this.copies = this.targetCopies;
         this.needsIntersectionUpdate = true;
       }
     },
@@ -837,19 +863,47 @@ export function createAppState() {
       const oldStepScale = this.stepScale;
       const oldAngle = this.angle;
       const oldAltScale = this.altScale;
+      const oldCopies = this.copies;
       
       const lerpFactor = Math.min(dt / this.lerpTime, 1.0);
       
+      // Apply lerping to main geometry parameters
       this.radius = this.lerp(this.radius, this.targetRadius, lerpFactor);
       this.stepScale = this.lerp(this.stepScale, this.targetStepScale, lerpFactor);
       this.angle = this.lerp(this.angle, this.targetAngle, lerpFactor);
       this.altScale = this.lerp(this.altScale, this.targetAltScale, lerpFactor);
       
-      if (Math.abs(oldRadius - this.radius) > 0.1 || 
-          Math.abs(oldStepScale - this.stepScale) > 0.001 || 
-          Math.abs(oldAngle - this.angle) > 0.1 ||
-          Math.abs(oldAltScale - this.altScale) > 0.01) {
+      // Special handling for copies parameter - needs to be an integer
+      const lerpedCopies = this.lerp(this.copies, this.targetCopies, lerpFactor);
+      // Round to nearest integer to prevent artifacts
+      const newCopies = Math.round(lerpedCopies);
+      
+      // Only update if the rounded value actually changed
+      if (newCopies !== oldCopies) {
+        this.copies = newCopies;
+        // Explicitly mark copies parameter as changed to force geometry update
+        this.parameterChanges.copies = true;
+      }
+      
+      // Check if significant changes occurred and explicitly mark parameters as changed
+      if (Math.abs(oldRadius - this.radius) > 0.1) {
         this.needsIntersectionUpdate = true;
+        this.parameterChanges.radius = true;
+      }
+      
+      if (Math.abs(oldStepScale - this.stepScale) > 0.001) {
+        this.needsIntersectionUpdate = true;
+        this.parameterChanges.stepScale = true;
+      }
+      
+      if (Math.abs(oldAngle - this.angle) > 0.1) {
+        this.needsIntersectionUpdate = true;
+        this.parameterChanges.angle = true;
+      }
+      
+      if (Math.abs(oldAltScale - this.altScale) > 0.01) {
+        this.needsIntersectionUpdate = true;
+        this.parameterChanges.altScale = true;
       }
     },
     

@@ -408,7 +408,19 @@ function createMarker(angle, worldX, worldY, scene, note, camera = null, rendere
   
   // Create a semi-transparent material for the marker
   // Use a different color for quantized triggers to provide visual feedback
-  const markerColor = isQuantized ? 0x00ff00 : 0xff00ff; // Green for quantized, pink for normal
+  let markerColor;
+  if (layer && layer.color) {
+    // Use the layer's color, potentially brightened for quantized triggers
+    if (isQuantized) {
+      // Create a brighter version of the layer color for quantized triggers
+      markerColor = layer.color.clone().multiplyScalar(1.5);
+    } else {
+      markerColor = layer.color;
+    }
+  } else {
+    // Fallback to default colors if no layer or layer has no color
+    markerColor = isQuantized ? 0x00ff00 : 0xff00ff;
+  }
   
   // Scale marker size based on duration
   const baseSize = 8;
@@ -552,6 +564,21 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
   // Skip processing if group is not visible
   if (!group.visible) {
     return false;
+  }
+  
+  // Initialize trigger rate limiting for lerping if needed
+  if (!layer._triggersTimestamps) {
+    layer._triggersTimestamps = new Map();
+  }
+  
+  // Check if lerping is active
+  const isLerping = state && state.isLerping && typeof state.isLerping === 'function' && state.isLerping();
+  
+  // Only apply rate limiting during lerping
+  const LERPING_TRIGGER_COOLDOWN = 250; // ms between triggers during lerping
+  
+  if (isLerping && DEBUG_LOGGING) {
+    console.log(`Layer ${layer.id}: Lerping active, using trigger cooldown: ${LERPING_TRIGGER_COOLDOWN}ms`);
   }
   
   // Ensure lastTrig set exists
@@ -804,6 +831,25 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
           
           // Skip if not triggered last frame
           if (hasCrossed && !layer.lastTrig.has(key)) {
+            // Only apply rate limiting during lerping
+            if (isLerping) {
+              // Check if this vertex is in cooldown period
+              const now = performance.now();
+              const lastTriggerTime = layer._triggersTimestamps.get(key) || 0;
+              const timeSinceLastTrigger = now - lastTriggerTime;
+              
+              // Skip if we're still in the cooldown period
+              if (timeSinceLastTrigger < LERPING_TRIGGER_COOLDOWN) {
+                if (DEBUG_LOGGING && isLerping) {
+                  console.log(`Layer ${layer.id}: Skipping vertex ${vi} in copy ${ci} - in cooldown period (${timeSinceLastTrigger.toFixed(0)}ms < ${LERPING_TRIGGER_COOLDOWN}ms)`);
+                }
+                continue;
+              }
+              
+              // Update the timestamp for this vertex
+              layer._triggersTimestamps.set(key, now);
+            }
+            
             // Check for overlap with previously triggered points
             if (!isPointOverlapping(currX, currY, triggeredPoints)) {
               // Add to triggered points
@@ -923,6 +969,24 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
     // Update the layer's last triggered set
     layer.lastTrig = triggeredNow;
     
+    // Cleanup old trigger timestamps to prevent memory leaks
+    // Only needed if we've been doing rate limiting (during lerping)
+    if (isLerping && layer._triggersTimestamps && layer._triggersTimestamps.size > 0) {
+      const now = performance.now();
+      
+      // More aggressive cleanup when we have a lot of entries
+      if (layer._triggersTimestamps.size > 1000) {
+        const CLEANUP_THRESHOLD = 5000; // 5 seconds
+        
+        // Remove entries older than the threshold
+        for (const [key, timestamp] of layer._triggersTimestamps.entries()) {
+          if (now - timestamp > CLEANUP_THRESHOLD) {
+            layer._triggersTimestamps.delete(key);
+          }
+        }
+      }
+    }
+    
     // Return true if we triggered anything
     return anyTriggers;
   } finally {
@@ -957,7 +1021,7 @@ export function clearLayerMarkers(layer) {
       // Apply fade
       marker.mesh.material.opacity = baseOpacity * fadeProgress;
       
-      // Update color based on state
+      // Update color based on state, but only change color for hit markers
       if (marker.animState === ANIMATION_STATES.HIT) {
         marker.mesh.material.color.setRGB(1, 1, 0); // Yellow for hit markers
       }
@@ -1048,6 +1112,11 @@ export function clearExpiredMarkers(scene, markers) {
       const fadeProgress = marker.life / MARK_LIFE;
       const baseOpacity = marker.noteInfo ? marker.noteInfo.velocity : 0.7;
       marker.mesh.material.opacity = baseOpacity * fadeProgress;
+      
+      // Only change color for hit markers, preserve the original color otherwise
+      if (marker.animState === ANIMATION_STATES.HIT) {
+        marker.mesh.material.color.setRGB(1, 1, 0); // Yellow for hit markers
+      }
     }
     
     // Remove expired markers

@@ -40,6 +40,7 @@ export const TICKS_PER_MEASURE = 1920; // In 4/4 time (480 ticks/beat * 4 beats/
 
 // Default values
 export const DEFAULT_VALUES = {
+  // Shape and animation parameters
   BPM: 120,
   RADIUS: 432,
   COPIES: 1,
@@ -47,6 +48,16 @@ export const DEFAULT_VALUES = {
   STEP_SCALE: 1,
   ANGLE: 15,
   LERP_TIME: 1.0,
+  
+  // Audio engine parameters
+  ATTACK: 0.01,
+  DECAY: 0.3,
+  SUSTAIN: 0.5,
+  RELEASE: 1.0,
+  BRIGHTNESS: 1.0,
+  VOLUME: 0.8,
+  
+  // Feature toggles and values
   MODULUS_VALUE: 4,
   USE_MODULUS: false,
   USE_INTERSECTIONS: false, // Default for intersection feature
@@ -64,7 +75,19 @@ export const DEFAULT_VALUES = {
   STAR_SKIP: 1, // Default for star skip value
   USE_STARS: false, // Default for star polygon feature
   EUCLID_VALUE: 1, // Default Euclidean rhythm value
-  USE_EUCLID: false // Default for Euclidean rhythm feature
+  USE_EUCLID: false, // Default for Euclidean rhythm feature
+  QUANTIZATION_VALUE: "1/4", // Default quantization value
+  USE_QUANTIZATION: false, // Default for quantization feature
+  DURATION_MODE: "fixed", // Default duration mode
+  DURATION_MODULO: 4, // Default duration modulo
+  MIN_DURATION: 0.5, // Default minimum duration
+  MAX_DURATION: 1.0, // Default maximum duration
+  DURATION_PHASE: 0.5, // Default duration phase
+  VELOCITY_MODE: "fixed", // Default velocity mode
+  VELOCITY_MODULO: 4, // Default velocity modulo
+  MIN_VELOCITY: 0.5, // Default minimum velocity
+  MAX_VELOCITY: 1.0, // Default maximum velocity
+  VELOCITY_PHASE: 0.5 // Default velocity phase
 };
 
 // UI Ranges
@@ -77,11 +100,21 @@ export const UI_RANGES = {
   ANGLE: [-180, 180],
   MODULUS_VALUE: [2, 16],
   ALT_SCALE: [0.1, 10],
-    ALT_STEP_N: [1, 32],  TIME_SUBDIVISION_VALUE: [0.125, 8], // 8 slower to 8 faster than global BPM (17 total options)  QUANTIZATION_VALUE: [0, 8],
+  ALT_STEP_N: [1, 32],
+  TIME_SUBDIVISION_VALUE: [0.125, 8], // 8 slower to 8 faster than global BPM (17 total options)
+  QUANTIZATION_VALUE: [0, 8],
   REFERENCE_FREQ: [220, 880],
   FRACTAL_VALUE: [1, 9],
   EUCLID_VALUE: [1, 12], // UI range for Euclidean rhythm value
-  STAR_SKIP: [1, 5] // UI range for star skip value
+  STAR_SKIP: [1, 5], // UI range for star skip value
+  
+  // Audio parameter UI ranges
+  ATTACK: [0.001, 2.0],
+  DECAY: [0.01, 3.0],
+  SUSTAIN: [0.0, 1.0],
+  RELEASE: [0.01, 10.0],
+  BRIGHTNESS: [0.0, 2.0],
+  VOLUME: [0.0, 1.0]
 };
 
 // Parameter ranges (min/max)
@@ -95,6 +128,14 @@ export const PARAMETER_RANGES = {
   SEGMENTS: { MIN: 2, MAX: 32, STEP: 1 },
   STEP_SCALE: { MIN: 0.01, MAX: 10, STEP: 0.01 },
   ANGLE: { MIN: -180, MAX: 180, STEP: 0.1 },
+  
+  // Audio parameter ranges
+  ATTACK: { MIN: 0.001, MAX: 2.0, STEP: 0.001 },
+  DECAY: { MIN: 0.01, MAX: 3.0, STEP: 0.01 },
+  SUSTAIN: { MIN: 0.0, MAX: 1.0, STEP: 0.01 },
+  RELEASE: { MIN: 0.01, MAX: 10.0, STEP: 0.01 },
+  BRIGHTNESS: { MIN: 0.0, MAX: 2.0, STEP: 0.01 },
+  VOLUME: { MIN: 0.0, MAX: 1.0, STEP: 0.01 },
   
   // Modulus parameter ranges
   MODULUS_VALUE: { MIN: 2, MAX: 16, STEP: 1 },
@@ -112,7 +153,9 @@ export const PARAMETER_RANGES = {
   SHOW_AXIS_FREQ_LABELS: { MIN: false, MAX: true, STEP: null },
   SHOW_POINTS_FREQ_LABELS: { MIN: false, MAX: true, STEP: null },
   
-    // Time subdivision ranges (8 slower to 8 faster than global BPM)  TIME_SUBDIVISION_VALUE: { MIN: 0.125, MAX: 8, STEP: 0.125 },  USE_TIME_SUBDIVISION: { MIN: false, MAX: true, STEP: null },
+  // Time subdivision ranges (8 slower to 8 faster than global BPM)
+  TIME_SUBDIVISION_VALUE: { MIN: 0.125, MAX: 8, STEP: 0.125 },
+  USE_TIME_SUBDIVISION: { MIN: false, MAX: true, STEP: null },
   
   // Equal temperament ranges
   USE_EQUAL_TEMPERAMENT: { MIN: false, MAX: true, STEP: null },

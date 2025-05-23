@@ -33,6 +33,9 @@ export class LayerManager {
     this.scene = scene;
     this.activeLayerId = null;
     
+    // Add a collection to track external references to layers
+    this.layerReferences = new Map();
+    
     // Create a container for all layers
     this.layerContainer = new THREE.Group();
     this.layerContainer.name = 'layers';
@@ -223,14 +226,8 @@ export class LayerManager {
       });
     }
     
-    // IMPORTANT: Sync window._appState with the active layer's state
-    if (window._appState) {
-      // Store a reference to the active layer's state in window._appState
-      window._appState = this.layers[layerId].state;
-      if (DEBUG_LOGGING) {
-        console.log(`[LAYER MANAGER] Synced window._appState with active layer ${layerId}`);
-      }
-    }
+    // Ensure window._appState is synchronized with the active layer
+    this.syncWindowAppState();
 
     // Force UI update with the new layer's parameters
     const newLayerState = this.layers[layerId].state;
@@ -251,6 +248,30 @@ export class LayerManager {
     this.forceUIUpdate(layerId, newLayerState);
     
     return this.layers[layerId];
+  }
+  
+  /**
+   * Ensure window._appState is synchronized with the active layer
+   * This should be called whenever layer structure changes or on regular intervals
+   */
+  syncWindowAppState() {
+    const activeLayer = this.getActiveLayer();
+    
+    if (activeLayer) {
+      // If window._appState doesn't exist or points to wrong state, update it
+      if (!window._appState || window._appState !== activeLayer.state) {
+        window._appState = activeLayer.state;
+        if (DEBUG_LOGGING) {
+          console.log(`[LAYER MANAGER] Updated window._appState to sync with active layer ${this.activeLayerId}`);
+        }
+      }
+    } else if (window._appState) {
+      // If no active layer but window._appState exists, clear it
+      window._appState = null;
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER MANAGER] Cleared window._appState since no active layer exists`);
+      }
+    }
   }
   
   /**
@@ -361,8 +382,15 @@ export class LayerManager {
     // Remove from array
     this.layers.splice(layerId, 1);
     
+    // Track layer ID remapping for external references
+    const idRemapping = {};
+    
     // Update IDs for remaining layers
     for (let i = layerId; i < this.layers.length; i++) {
+      // Store the ID remapping (oldId -> newId)
+      idRemapping[i + 1] = i;
+      
+      // Update the layer ID
       this.layers[i].id = i;
       this.layers[i].group.name = `layer-${i}`;
       this.layers[i].group.userData.layerId = i;
@@ -375,10 +403,45 @@ export class LayerManager {
         this.setActiveLayer(Math.min(layerId, this.layers.length - 1));
       } else {
         this.activeLayerId = null;
+        // Clear window._appState if no layers remain
+        if (window._appState) {
+          window._appState = null;
+        }
       }
     } else if (this.activeLayerId > layerId) {
       // Adjust active layer ID if it's after the removed one
       this.activeLayerId--;
+    }
+    
+    // Dispatch an event for other parts of the system to update their references
+    this.dispatchLayerRemovalEvent(layerId, idRemapping);
+  }
+  
+  /**
+   * Dispatch an event to notify the system that layer IDs have changed
+   * @param {number} removedLayerId The ID of the removed layer
+   * @param {Object} idRemapping Map of old IDs to new IDs
+   * @private
+   */
+  dispatchLayerRemovalEvent(removedLayerId, idRemapping) {
+    try {
+      const event = new CustomEvent('layerRemoved', {
+        detail: {
+          removedLayerId,
+          idRemapping,
+          remainingLayers: this.layers.map(layer => layer.id)
+        }
+      });
+      window.dispatchEvent(event);
+      
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER MANAGER] Dispatched layerRemoved event for layer ${removedLayerId}`, {
+          idRemapping,
+          remainingLayers: this.layers.map(layer => layer.id)
+        });
+      }
+    } catch (error) {
+      console.error(`[LAYER MANAGER] Error dispatching layer removal event:`, error);
     }
   }
   
@@ -410,11 +473,7 @@ export class LayerManager {
 
     // Check if window._appState is pointing to the correct layer state
     // This handles cases where _appState might have been reassigned elsewhere
-    const activeLayer = this.getActiveLayer();
-    if (activeLayer && window._appState !== activeLayer.state) {
-      console.warn(`[LAYER MANAGER] window._appState is not pointing to active layer state! Fixing...`);
-      window._appState = activeLayer.state;
-    }
+    this.syncWindowAppState();
 
     // Add camera update based on layer geometry
     this.updateCameraForLayerBounds(scene, shouldLog);
@@ -449,6 +508,19 @@ export class LayerManager {
       // Skip if invisible and not the active layer (active layer should always process)
       if (!layer.visible && !isActiveLayer) {
         continue;
+      }
+      
+      // FIXED: Update lerp values for this layer's state
+      // This is required for the Lag parameter to work correctly
+      if (state.updateLerp && typeof state.updateLerp === 'function') {
+        // Convert ms to seconds for the lerp update
+        const dtSeconds = dt / 1000;
+        state.updateLerp(dtSeconds);
+        
+        // Debugging for lerp updates
+        if (state.useLerp && shouldLog) {
+          console.log(`[LAYER ${layerId}] Updated lerp with dt=${dtSeconds.toFixed(4)}s, isLerping=${state.isLerping()}`);
+        }
       }
       
       // Reset intersection update flag to prevent constant recalculation
@@ -498,7 +570,10 @@ export class LayerManager {
         hasParameterChanges || 
         state.isLerping() || 
         state.justCalculatedIntersections ||
-        this.frameCounter < 10; // Always update during first few frames for stability
+        this.frameCounter < 10 || // Always update during first few frames for stability
+        // FIXED: Force update if copies or angle is different from target AT ALL
+        (state.useLerp && (state.copies !== state.targetCopies || 
+                          Math.abs(state.angle - state.targetAngle) > 0.01));
       
       if (shouldUpdateGroup) {
         // Update the group with current parameters - angle here is for cumulative angle between copies

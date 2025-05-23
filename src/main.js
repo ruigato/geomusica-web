@@ -44,6 +44,7 @@ import { LayerManager } from './state/LayerManager.js';
 import { setupLayersUI, updateLayersUI } from './ui/layersUI.js';
 // Import the global state manager
 import { GlobalStateManager } from './state/GlobalStateManager.js';
+import { initializeUIInputs } from './ui/uiUtils.js';
 
 // Initialize stats for performance monitoring
 const stats = new Stats();
@@ -826,6 +827,9 @@ function initializeApplication() {
           // Add any UI-specific processing here
           return noteCopy;
         };
+        
+        // Initialize UI inputs from constants
+        initializeUIInputs();
         
         // Setup UI controls and bind events
         uiReferences = setupUI(state, syncStateAcrossSystems, silentAudioTrigger);

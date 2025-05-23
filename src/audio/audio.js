@@ -2,6 +2,7 @@
 
 import { Csound } from '@csound/browser';
 import { quantizeToEqualTemperament, getNoteName } from './frequencyUtils.js';
+import { DEFAULT_VALUES, PARAMETER_RANGES } from '../config/constants.js';
 
 // Core audio system variables
 let csoundInstance = null;
@@ -29,12 +30,12 @@ class AudioParameterManager {
     this.pendingParams = null;
     this.isApplying = false;
     this.defaultParams = {
-      attack: 0.01,
-      decay: 0.3,
-      sustain: 0.5,
-      release: 1.0,
-      brightness: 0.0,
-      volume: 0.8
+      attack: DEFAULT_VALUES.ATTACK,
+      decay: DEFAULT_VALUES.DECAY,
+      sustain: DEFAULT_VALUES.SUSTAIN,
+      release: DEFAULT_VALUES.RELEASE,
+      brightness: DEFAULT_VALUES.BRIGHTNESS,
+      volume: DEFAULT_VALUES.VOLUME
     };
   }
 
@@ -51,22 +52,40 @@ class AudioParameterManager {
     const validatedParams = {};
     
     if (params.attack !== undefined) {
-      validatedParams.attack = this.validateRange(params.attack, 0.001, 10.0, 'attack');
+      validatedParams.attack = this.validateRange(params.attack, 
+        PARAMETER_RANGES.ATTACK.MIN, 
+        PARAMETER_RANGES.ATTACK.MAX, 
+        'attack');
     }
     if (params.decay !== undefined) {
-      validatedParams.decay = this.validateRange(params.decay, 0.001, 10.0, 'decay');
+      validatedParams.decay = this.validateRange(params.decay, 
+        PARAMETER_RANGES.DECAY.MIN, 
+        PARAMETER_RANGES.DECAY.MAX, 
+        'decay');
     }
     if (params.sustain !== undefined) {
-      validatedParams.sustain = this.validateRange(params.sustain, 0.0, 1.0, 'sustain');
+      validatedParams.sustain = this.validateRange(params.sustain, 
+        PARAMETER_RANGES.SUSTAIN.MIN, 
+        PARAMETER_RANGES.SUSTAIN.MAX, 
+        'sustain');
     }
     if (params.release !== undefined) {
-      validatedParams.release = this.validateRange(params.release, 0.001, 10.0, 'release');
+      validatedParams.release = this.validateRange(params.release, 
+        PARAMETER_RANGES.RELEASE.MIN, 
+        PARAMETER_RANGES.RELEASE.MAX, 
+        'release');
     }
     if (params.brightness !== undefined) {
-      validatedParams.brightness = this.validateRange(params.brightness, 0.0, 1.0, 'brightness');
+      validatedParams.brightness = this.validateRange(params.brightness, 
+        PARAMETER_RANGES.BRIGHTNESS.MIN, 
+        PARAMETER_RANGES.BRIGHTNESS.MAX, 
+        'brightness');
     }
     if (params.volume !== undefined) {
-      validatedParams.volume = this.validateRange(params.volume, 0.0, 1.0, 'volume');
+      validatedParams.volume = this.validateRange(params.volume, 
+        PARAMETER_RANGES.VOLUME.MIN, 
+        PARAMETER_RANGES.VOLUME.MAX, 
+        'volume');
     }
 
     this.pendingParams = validatedParams;
@@ -325,12 +344,12 @@ export async function setupAudio() {
           csoundStarted = true;
           
           // Set default parameters
-          await csoundInstance.setControlChannel("attack", 0.01);
-          await csoundInstance.setControlChannel("decay", 0.3);
-          await csoundInstance.setControlChannel("sustain", 0.5);
-          await csoundInstance.setControlChannel("release", 1.0);
-          await csoundInstance.setControlChannel("brightness", 0.0);
-          await csoundInstance.setControlChannel("masterVolume", 0.8);
+          await csoundInstance.setControlChannel("attack", DEFAULT_VALUES.ATTACK);
+          await csoundInstance.setControlChannel("decay", DEFAULT_VALUES.DECAY);
+          await csoundInstance.setControlChannel("sustain", DEFAULT_VALUES.SUSTAIN);
+          await csoundInstance.setControlChannel("release", DEFAULT_VALUES.RELEASE);
+          await csoundInstance.setControlChannel("brightness", DEFAULT_VALUES.BRIGHTNESS);
+          await csoundInstance.setControlChannel("masterVolume", DEFAULT_VALUES.VOLUME);
           
           console.log("[AUDIO] Csound initialized and started successfully");
         } catch (error) {
@@ -362,12 +381,12 @@ export async function setupAudio() {
             csoundStarted = true;
             
             // Set default parameters
-            await csoundInstance.setControlChannel("attack", 0.01);
-            await csoundInstance.setControlChannel("decay", 0.3);
-            await csoundInstance.setControlChannel("sustain", 0.5);
-            await csoundInstance.setControlChannel("release", 1.0);
-            await csoundInstance.setControlChannel("brightness", 0.0);
-            await csoundInstance.setControlChannel("masterVolume", 0.8);
+            await csoundInstance.setControlChannel("attack", DEFAULT_VALUES.ATTACK);
+            await csoundInstance.setControlChannel("decay", DEFAULT_VALUES.DECAY);
+            await csoundInstance.setControlChannel("sustain", DEFAULT_VALUES.SUSTAIN);
+            await csoundInstance.setControlChannel("release", DEFAULT_VALUES.RELEASE);
+            await csoundInstance.setControlChannel("brightness", DEFAULT_VALUES.BRIGHTNESS);
+            await csoundInstance.setControlChannel("masterVolume", DEFAULT_VALUES.VOLUME);
             
             // Check if we have any pending parameters to apply
             if (parameterManager.hasPendingParams()) {

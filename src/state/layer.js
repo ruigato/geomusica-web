@@ -268,20 +268,14 @@ export class Layer {
     }
     
     // Store original methods if they haven't been stored already
-    if (!this.state._originalSetRadius) {
-      this.state._originalSetRadius = this.state.setRadius;
-    }
-    
-    if (!this.state._originalSetSegments) {
-      this.state._originalSetSegments = this.state.setSegments;
-    }
-    
-    if (!this.state._originalSetCopies) {
-      this.state._originalSetCopies = this.state.setCopies;
-    }
-    
-    if (!this.state._originalHasParameterChanged) {
-      this.state._originalHasParameterChanged = this.state.hasParameterChanged;
+    // and ensure we're not overriding them if they already exist
+    if (!this.state._originalMethods) {
+      this.state._originalMethods = {
+        setRadius: this.state.setRadius,
+        setSegments: this.state.setSegments,
+        setCopies: this.state.setCopies,
+        hasParameterChanged: this.state.hasParameterChanged
+      };
     }
     
     // Hook into state change methods to add debug logging for this layer
@@ -289,21 +283,21 @@ export class Layer {
       if (DEBUG_LOGGING) {
         console.log(`[LAYER ${this.id}] Setting radius to ${value}`);
       }
-      return this.state._originalSetRadius.call(this.state, value);
+      return this.state._originalMethods.setRadius.call(this.state, value);
     };
     
     this.state.setSegments = (value) => {
       if (DEBUG_LOGGING) {
         console.log(`[LAYER ${this.id}] Setting segments to ${value}`);
       }
-      return this.state._originalSetSegments.call(this.state, value);
+      return this.state._originalMethods.setSegments.call(this.state, value);
     };
     
     this.state.setCopies = (value) => {
       if (DEBUG_LOGGING) {
         console.log(`[LAYER ${this.id}] Setting copies to ${value}`);
       }
-      return this.state._originalSetCopies.call(this.state, value);
+      return this.state._originalMethods.setCopies.call(this.state, value);
     };
     
     // Mark all parameters as changed to force UI updates
@@ -385,16 +379,22 @@ export class Layer {
     }
     
     // Remove debug hooks from state methods when deactivating
-    if (this.state._originalSetRadius) {
-      this.state.setRadius = this.state._originalSetRadius;
-    }
-    
-    if (this.state._originalSetSegments) {
-      this.state.setSegments = this.state._originalSetSegments;
-    }
-    
-    if (this.state._originalSetCopies) {
-      this.state.setCopies = this.state._originalSetCopies;
+    // Only restore original methods if they were properly saved
+    if (this.state._originalMethods) {
+      // Restore all original methods from the stored object
+      this.state.setRadius = this.state._originalMethods.setRadius;
+      this.state.setSegments = this.state._originalMethods.setSegments;
+      this.state.setCopies = this.state._originalMethods.setCopies;
+      
+      if (this.state._originalMethods.hasParameterChanged) {
+        this.state.hasParameterChanged = this.state._originalMethods.hasParameterChanged;
+      }
+      
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER] Layer ${this.id} original methods restored`);
+      }
+    } else if (DEBUG_LOGGING) {
+      console.warn(`[LAYER] Layer ${this.id} has no stored original methods to restore`);
     }
   }
   
