@@ -139,7 +139,7 @@ export class LayerManager {
     
     // Ensure we have some reasonable defaults
     state.radius = state.radius || 300;  // LARGER radius for visibility
-    state.segments = state.segments || 3;
+    state.segments = state.segments || 2;
     state.copies = state.copies || 3;
     
     // Always create fresh geometry

@@ -61,7 +61,8 @@ export function createNote(triggerData, state) {
     pointIndex = totalRegularPoints + intersectionIndex;
   } else if (copyIndex !== undefined && vertexIndex !== undefined) {
     // For regular vertices, combine copy index and vertex index
-    const segments = state ? state.segments : 3;
+    const copies = state ? state.copies : 1;
+    const segments = state ? state.segments : 2;
     pointIndex = (copyIndex * segments) + vertexIndex;
   }
   

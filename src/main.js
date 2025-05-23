@@ -600,28 +600,50 @@ function initializeApplication() {
       
       // Create layers from saved data if available
       if (savedState.layers && savedState.layers.length > 0) {
-        savedState.layers.forEach(layerData => {
-          const layer = layerManager.createLayer({
-            visible: layerData.visible !== false,
-            radius: layerData.state.radius || 100,
-            segments: layerData.state.segments || 3,
-            copies: layerData.state.copies || 1
-          });
-          
-          // Apply saved state to the layer
-          if (layer && layer.state && layerData.state) {
-            applyPropertiesToState(layer.state, layerData.state);
-          }
-          
-          // Apply color if available
-          if (layer && layerData.color && layer.setColor) {
-            const { r, g, b } = layerData.color;
-            layer.setColor(new THREE.Color(r, g, b));
-          }
-          
-          // Set visibility
-          if (layer) {
-            layer.setVisible(layerData.visible !== false);
+        savedState.layers.forEach((layerData, index) => {
+          if (index === 0 && layerManager.layers.length > 0) {
+            // Update first layer instead of creating it
+            const firstLayer = layerManager.layers[0];
+            
+            // Apply saved state to the first layer
+            if (firstLayer && firstLayer.state && layerData.state) {
+              applyPropertiesToState(firstLayer.state, layerData.state);
+            }
+            
+            // Apply color if available
+            if (firstLayer && layerData.color && firstLayer.setColor && window.THREE) {
+              const { r, g, b } = layerData.color;
+              firstLayer.setColor(new window.THREE.Color(r, g, b));
+            }
+            
+            // Set visibility
+            if (firstLayer && firstLayer.setVisible) {
+              firstLayer.setVisible(layerData.visible !== false);
+            }
+          } else {
+            // Create a new layer for layers after the first one
+            const layer = layerManager.createLayer({
+              visible: layerData.visible !== false, // Default to visible if not specified
+              radius: layerData.state.radius || 100,
+              segments: layerData.state.segments || 2,
+              copies: layerData.state.copies || 1
+            });
+            
+            // Apply saved state to the layer
+            if (layer && layer.state && layerData.state) {
+              applyPropertiesToState(layer.state, layerData.state);
+            }
+            
+            // Apply color if available
+            if (layer && layerData.color && layer.setColor) {
+              const { r, g, b } = layerData.color;
+              layer.setColor(new THREE.Color(r, g, b));
+            }
+            
+            // Set visibility
+            if (layer) {
+              layer.setVisible(layerData.visible !== false);
+            }
           }
         });
         

@@ -72,7 +72,7 @@ export const UI_RANGES = {
   BPM: [20, 300],
   RADIUS: [20, 2048],
   COPIES: [0, 32],
-  SEGMENTS: [3, 32],
+  SEGMENTS: [2, 32],
   STEP_SCALE: [0.01, 10],
   ANGLE: [-180, 180],
   MODULUS_VALUE: [2, 16],
@@ -92,7 +92,7 @@ export const PARAMETER_RANGES = {
   // Shape parameter ranges
   RADIUS: { MIN: 20, MAX: 2048, STEP: 1 },
   COPIES: { MIN: 0, MAX: 32, STEP: 1 },
-  SEGMENTS: { MIN: 3, MAX: 32, STEP: 1 },
+  SEGMENTS: { MIN: 2, MAX: 32, STEP: 1 },
   STEP_SCALE: { MIN: 0.01, MAX: 10, STEP: 0.01 },
   ANGLE: { MIN: -180, MAX: 180, STEP: 0.1 },
   

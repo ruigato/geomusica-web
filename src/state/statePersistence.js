@@ -404,7 +404,7 @@ export function recreateLayerStructure(layersData, activeLayerId) {
         const layer = layerManager.createLayer({
           visible: layerData.visible !== false, // Default to visible if not specified
           radius: layerData.state.radius || 100,
-          segments: layerData.state.segments || 3,
+          segments: layerData.state.segments || 2,
           copies: layerData.state.copies || 1
         });
         

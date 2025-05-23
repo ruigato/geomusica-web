@@ -59,7 +59,7 @@ export class Layer {
     
     // Ensure we have some initial state values that will render something
     this.state.copies = this.state.copies || 3;
-    this.state.segments = this.state.segments || 3;
+    this.state.segments = this.state.segments || 2;
     this.state.radius = this.state.radius || 100;
     this.state.stepScale = this.state.stepScale || 1.05;
     
@@ -175,7 +175,7 @@ export class Layer {
     // Make sure layer has initial geometry
     if (!this.baseGeo) {
       this.state.radius = this.state.radius || 100;
-      this.state.segments = this.state.segments || 3;
+      this.state.segments = this.state.segments || 2;
       this.state.copies = this.state.copies || 3;
       
       // Create initial geometry
@@ -234,6 +234,9 @@ export class Layer {
     if (this.state && this.state.parameterChanges) {
       // Set a special flag for color changes
       this.state.parameterChanges.color = true;
+      
+      // Force geometry recreation to update vertex dots with new color
+      this.recreateGeometry();
     }
     
     // Return this for method chaining

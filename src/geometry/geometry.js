@@ -30,7 +30,7 @@ const vertexCircleGeometry = new THREE.CircleGeometry(1, 12); // Fewer segments 
 export function createPolygonGeometry(radius, segments, state = null) {
   // Ensure we have valid inputs
   radius = radius || 300;
-  segments = segments || 3;
+  segments = segments || 2;
   
   // Add this for debugging to track when we're creating new geometry
   const layerId = state && state.layerId !== undefined ? state.layerId : 'unknown';
@@ -585,7 +585,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         
         // Create material with opacity based on velocity
         const vertexCircleMaterial = new THREE.MeshBasicMaterial({ 
-          color: VERTEX_CIRCLE_COLOR,
+          color: mat && mat.color ? mat.color : VERTEX_CIRCLE_COLOR,
           transparent: true,
           opacity: note.velocity, 
           depthTest: false,
@@ -743,7 +743,8 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
           
           // Create material for intersection point
           const intersectionMaterial = new THREE.MeshBasicMaterial({
-            color: INTERSECTION_POINT_COLOR,
+            // Use the layer's color with higher brightness for intersections
+            color: mat && mat.color ? mat.color.clone().multiplyScalar(1.2) : INTERSECTION_POINT_COLOR,
             transparent: true,
             opacity: note.velocity,
             depthTest: false,
