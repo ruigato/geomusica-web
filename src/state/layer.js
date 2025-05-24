@@ -73,15 +73,15 @@ export class Layer {
     this.state.parameterChanges.stepScale = true;
     
     if (DEBUG_LOGGING) {
-      console.log(`Layer ${id} created with: copies=${this.state.copies}, segments=${this.state.segments}, radius=${this.state.radius}`);
-      console.log(`Layer ${id} color:`, this.color);
+      
+      
     }
     
     // Override the setRadius, setSegments, and setCopies methods to add layer-specific logging
     const originalSetRadius = this.state.setRadius;
     this.state.setRadius = (value) => {
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Setting radius to ${value}`);
+        
       }
       return originalSetRadius.call(this.state, value);
     };
@@ -89,7 +89,7 @@ export class Layer {
     const originalSetSegments = this.state.setSegments;
     this.state.setSegments = (value) => {
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Setting segments to ${value}`);
+        
       }
       return originalSetSegments.call(this.state, value);
     };
@@ -97,7 +97,7 @@ export class Layer {
     const originalSetCopies = this.state.setCopies;
     this.state.setCopies = (value) => {
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Setting copies to ${value}`);
+        
       }
       return originalSetCopies.call(this.state, value);
     };
@@ -111,7 +111,7 @@ export class Layer {
           .filter(([_, val]) => val)
           .map(([key, _]) => key)
           .join(", ");
-        console.log(`[LAYER ${id}] Parameter changes detected: ${changedParams}`);
+        
       }
       return hasChanges;
     };
@@ -159,12 +159,7 @@ export class Layer {
     
     // Log material creation with color info
     if (DEBUG_LOGGING) {
-      console.log(`[LAYER ${this.id}] Created material with color:`, {
-        r: this.color.r,
-        g: this.color.g,
-        b: this.color.b,
-        hex: '#' + this.color.getHexString()
-      });
+      
     }
     
     // Apply any state overrides from options
@@ -186,7 +181,7 @@ export class Layer {
     }
     
     if (DEBUG_LOGGING) {
-      console.log(`Layer ${this.id} initialized, group visible: ${this.group.visible}, radius: ${this.state.radius}, segments: ${this.state.segments}, copies: ${this.state.copies}`);
+      
     }
   }
   
@@ -207,12 +202,7 @@ export class Layer {
       this.material.needsUpdate = true; // Important! This forces Three.js to update the material
       
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Updated material color to:`, {
-          r: this.color.r,
-          g: this.color.g,
-          b: this.color.b,
-          hex: '#' + this.color.getHexString()
-        });
+        
       }
     }
     
@@ -263,11 +253,7 @@ export class Layer {
   activate() {
     this.active = true;
     if (DEBUG_LOGGING) {
-      console.log(`[LAYER] Layer ${this.id} activated with state:`, {
-        radius: this.state.radius,
-        segments: this.state.segments,
-        copies: this.state.copies
-      });
+      
     }
     
     // Store original methods if they haven't been stored already
@@ -284,21 +270,21 @@ export class Layer {
     // Hook into state change methods to add debug logging for this layer
     this.state.setRadius = (value) => {
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Setting radius to ${value}`);
+        
       }
       return this.state._originalMethods.setRadius.call(this.state, value);
     };
     
     this.state.setSegments = (value) => {
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Setting segments to ${value}`);
+        
       }
       return this.state._originalMethods.setSegments.call(this.state, value);
     };
     
     this.state.setCopies = (value) => {
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Setting copies to ${value}`);
+        
       }
       return this.state._originalMethods.setCopies.call(this.state, value);
     };
@@ -310,7 +296,7 @@ export class Layer {
       });
       
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Marked all parameters as changed during activation`);
+        
       }
     }
     
@@ -318,7 +304,7 @@ export class Layer {
     if (window._appState !== this.state) {
       window._appState = this.state;
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Updated window._appState reference to this layer's state`);
+        
       }
     }
     
@@ -338,7 +324,7 @@ export class Layer {
       try {
         window.updateUIFromState(this.state);
         if (DEBUG_LOGGING) {
-          console.log(`[LAYER ${this.id}] Called updateUIFromState to update UI`);
+          
         }
       } catch (error) {
         console.error(`[LAYER ${this.id}] Error updating UI from state:`, error);
@@ -350,7 +336,7 @@ export class Layer {
       try {
         window.updateUIForActiveLayer(this.id);
         if (DEBUG_LOGGING) {
-          console.log(`[LAYER ${this.id}] Called updateUIForActiveLayer to update UI`);
+          
         }
       } catch (error) {
         console.error(`[LAYER ${this.id}] Error updating UI for active layer:`, error);
@@ -365,7 +351,7 @@ export class Layer {
       window.dispatchEvent(event);
       
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Dispatched layerActivated event`);
+        
       }
     } catch (error) {
       console.error(`[LAYER ${this.id}] Error dispatching layer activated event:`, error);
@@ -378,7 +364,7 @@ export class Layer {
   deactivate() {
     this.active = false;
     if (DEBUG_LOGGING) {
-      console.log(`[LAYER] Layer ${this.id} deactivated`);
+      
     }
     
     // Remove debug hooks from state methods when deactivating
@@ -394,10 +380,10 @@ export class Layer {
       }
       
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER] Layer ${this.id} original methods restored`);
+        
       }
     } else if (DEBUG_LOGGING) {
-      console.warn(`[LAYER] Layer ${this.id} has no stored original methods to restore`);
+      
     }
   }
   
@@ -409,7 +395,7 @@ export class Layer {
     // If no geometry exists or it's invalid, recreate it
     if (!this.baseGeo || !this.baseGeo.getAttribute('position')) {
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Ensuring valid geometry for trigger detection`);
+        
       }
       this.recreateGeometry();
     }
@@ -419,7 +405,7 @@ export class Layer {
       this.baseGeo.userData.layerId = this.id;
       this.baseGeo.userData.vertexCount = this.state.segments;
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Added layerId and vertexCount to geometry userData`);
+        
       }
     }
     
@@ -427,14 +413,14 @@ export class Layer {
     if (this.group) {
       this.group.userData.state = this.state;
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Ensured group has state reference for trigger detection`);
+        
       }
       
       // Make sure the group is visible
       if (!this.group.visible) {
         this.group.visible = true;
         if (DEBUG_LOGGING) {
-          console.log(`[LAYER ${this.id}] Forced group visibility for trigger detection`);
+          
         }
       }
     }
@@ -443,7 +429,7 @@ export class Layer {
     if (!this.state.lastTrig) {
       this.state.lastTrig = new Set();
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Initialized lastTrig set for trigger detection`);
+        
       }
     }
   }
@@ -564,11 +550,11 @@ export class Layer {
       // Only dispose if not in use
       if (!isGeometryInUse && oldGeometry.dispose) {
         if (DEBUG_LOGGING) {
-          console.log(`[LAYER ${this.id}] Disposing old geometry safely`);
+          
         }
         oldGeometry.dispose();
       } else if (isGeometryInUse && DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Skipping geometry disposal - still in use by other objects`);
+        
       }
     }
     
@@ -577,7 +563,7 @@ export class Layer {
     if (this.prevWorldVertices) {
       this.prevWorldVertices.clear();
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Cleared previous vertex positions to prevent false triggers`);
+        
       }
     }
     
@@ -585,7 +571,7 @@ export class Layer {
     if (this.lastTrig) {
       this.lastTrig.clear();
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Cleared last trigger set after geometry recreation`);
+        
       }
     }
     
@@ -605,7 +591,7 @@ export class Layer {
         this.baseGeo.userData.createdAt = Date.now();
         
         if (DEBUG_LOGGING) {
-          console.log(`[LAYER ${this.id}] Created new geometry with ${this.state.segments} segments`);
+          
         }
       }
       
@@ -621,7 +607,7 @@ export class Layer {
           try {
             window.updateUIFromState(this.state);
           } catch (uiError) {
-            console.warn(`[LAYER ${this.id}] Failed to update UI from state:`, uiError);
+            
           }
         }
         
@@ -632,14 +618,14 @@ export class Layer {
             try {
               layerManager.onActiveLayerGeometryChanged(this);
             } catch (managerError) {
-              console.warn(`[LAYER ${this.id}] Failed to notify layer manager of geometry change:`, managerError);
+              
             }
           }
         }
       }
       
       if (DEBUG_LOGGING) {
-        console.log(`[GEOMETRY UPDATE] Recreated geometry for layer ${this.id}: segments=${this.state.segments}, radius=${this.state.radius}, copies=${this.state.copies}`);
+        
       }
       
     } catch (error) {
@@ -647,7 +633,7 @@ export class Layer {
       
       // FIXED: Fallback - restore old geometry if new creation fails
       if (oldGeometry && !this.baseGeo) {
-        console.warn(`[LAYER ${this.id}] Restoring old geometry due to creation failure`);
+        
         this.baseGeo = oldGeometry;
       }
       
@@ -701,7 +687,7 @@ export class Layer {
     this.recreateGeometry();
     
     if (DEBUG_LOGGING) {
-      console.log(`Forced visibility for layer ${this.id}`);
+      
     }
     
     return this;
@@ -752,13 +738,13 @@ export class Layer {
         
         // Enhanced logging for debugging time subdivision
         if (DEBUG_LOGGING && Math.random() < 0.003) {
-          console.log(`[LAYER ${this.id}] Time subdivision: ${multiplier}x speed`);
-          console.log(`[LAYER ${this.id}] Delta angle: ${originalDelta.toFixed(2)}° → ${deltaAngle.toFixed(2)}° (${multiplier}x)`);
-          console.log(`[LAYER ${this.id}] Current accumulated angle: ${this.accumulatedAngle.toFixed(2)}°`);
+          
+          
+          
         }
       } else if (DEBUG_LOGGING && Math.random() < 0.001) {
         // Log when time subdivision is disabled occasionally
-        console.log(`[LAYER ${this.id}] Time subdivision disabled, normal speed (1x)`);
+        
       }
       
       // Accumulate the angle continuously
@@ -776,7 +762,7 @@ export class Layer {
     } else {
       // Fallback calculation if no global state is available
       if (DEBUG_LOGGING) {
-        console.warn(`[LAYER ${this.id}] No global state available for angle update`);
+        
       }
       
       // Default to a slow rotation (45 degrees per second)
@@ -790,7 +776,7 @@ export class Layer {
         this.currentAngle = (this.currentAngle || 0) + rotationSpeed * deltaTime * multiplier;
         
         if (DEBUG_LOGGING && Math.random() < 0.003) {
-          console.log(`[LAYER ${this.id}] Applied time subdivision in fallback: ${multiplier}x`);
+          
         }
       } else {
         this.currentAngle = (this.currentAngle || 0) + rotationSpeed * deltaTime;
@@ -836,7 +822,7 @@ export class Layer {
     
     // Try global window references as fallback
     if (window.mainCamera && window.mainRenderer) {
-      console.log(`[LAYER ${this.id}] Using global camera and renderer references`);
+      
       return {
         camera: window.mainCamera,
         renderer: window.mainRenderer
@@ -846,7 +832,7 @@ export class Layer {
     // Try scene direct properties as another fallback
     if (scene) {
       if (scene.mainCamera && scene.mainRenderer) {
-        console.log(`[LAYER ${this.id}] Using scene direct properties for camera and renderer`);
+        
         return {
           camera: scene.mainCamera,
           renderer: scene.mainRenderer
@@ -861,7 +847,7 @@ export class Layer {
       );
       
       if (cameraInScene && window.mainRenderer) {
-        console.log(`[LAYER ${this.id}] Found camera in scene children, using with global renderer`);
+        
         return {
           camera: cameraInScene,
           renderer: window.mainRenderer
@@ -869,7 +855,7 @@ export class Layer {
       }
     }
     
-    console.warn(`[LAYER ${this.id}] Cannot find camera or renderer in scene hierarchy`);
+    
     return { camera: null, renderer: null };
   }
 
@@ -924,7 +910,7 @@ export class Layer {
           
           // Log success only on first setup
           if (!this.cameraSetupLogged) {
-            console.log(`[LAYER ${this.id}] Camera and renderer references established`);
+            
             this.cameraSetupLogged = true;
           }
         }
@@ -972,7 +958,7 @@ export class Layer {
     
     // Log success only on first setup
     if (!this.cameraSetupLogged) {
-      console.log(`[LAYER ${this.id}] Camera and renderer references explicitly set`);
+      
       this.cameraSetupLogged = true;
     }
     

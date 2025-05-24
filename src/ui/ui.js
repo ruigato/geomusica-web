@@ -123,7 +123,7 @@ function setupTimeSubdivisionRadioButtons(container, state) {
         // Set time subdivision value on the active layer
         activeState.setTimeSubdivisionValue(parseFloat(value));
         if (DEBUG_LOGGING) {
-          console.log(`[LAYER ${activeState.layerId || 'unknown'}] Time subdivision changed to ${value}`);
+          
         }
       }
     });
@@ -340,7 +340,7 @@ export function setupUI(state) {
   
   // Check if required elements exist before proceeding
   if (!numberRange || !numberNumber || !numberValue) {
-    console.warn('Required UI elements for Number parameter are missing');
+    
     // Continue with other elements that are available
   }
   
@@ -601,7 +601,7 @@ export function setupUI(state) {
   const syncPair = (rangeEl, numEl, spanEl, setter, min, max, parser = v => parseFloat(v)) => {
     // Skip if any elements are missing
     if (!rangeEl || !numEl || !spanEl) {
-      console.warn('UI elements not found, skipping syncPair setup');
+      
       return;
     }
     
@@ -656,7 +656,7 @@ export function setupUI(state) {
               };
             }
           } catch (error) {
-            console.warn('[UI] Error getting active state via getActiveState:', error);
+            
           }
         }
         
@@ -675,7 +675,7 @@ export function setupUI(state) {
               };
             }
           } catch (error) {
-            console.warn('[UI] Error getting active layer via layer manager:', error);
+            
           }
         }
         
@@ -697,13 +697,13 @@ export function setupUI(state) {
               }
             }
           } catch (error) {
-            console.warn('[UI] Error getting active layer via direct access:', error);
+            
           }
         }
         
         // Final fallback to window._appState
         if (!targetState && window._appState) {
-          console.warn(`[UI] Unable to find active layer state for ${setterName}, using fallback appState`);
+          
           return { 
             state: window._appState, 
             isGlobal: false,
@@ -758,7 +758,7 @@ export function setupUI(state) {
       
       // Log state routing for debugging (only if not valid to avoid spam)
       if (!valid) {
-        console.warn(`[UI] Using fallback state routing for ${setterName} -> ${id}`);
+        
       }
       
       try {
@@ -771,17 +771,17 @@ export function setupUI(state) {
           // Call the setter on globalState if it exists
           if (typeof targetState[globalSetterName] === 'function') {
             targetState[globalSetterName](v);
-            console.log(`[GLOBAL] Updated ${paramName} to ${v}`);
+            
           } else {
-            console.warn(`[UI] Global setter ${globalSetterName} not found on globalState`);
+            
           }
         } else {
           // Call the setter on the layer state
           if (typeof setter === 'function') {
             setter.call(targetState, v);
-            console.log(`[UI CHANGE] Updated ${setterName.replace('set', '')} to ${v} on layer ${id}`);
+            
           } else {
-            console.warn(`[UI] Setter function not valid for ${setterName}`);
+            
           }
         }
       } catch (error) {
@@ -817,7 +817,7 @@ export function setupUI(state) {
       
       // Log state routing for debugging (only if not valid to avoid spam)
       if (!valid) {
-        console.warn(`[UI] Using fallback state routing for ${setterName} -> ${id}`);
+        
       }
       
       try {
@@ -830,17 +830,17 @@ export function setupUI(state) {
           // Call the setter on globalState if it exists
           if (typeof targetState[globalSetterName] === 'function') {
             targetState[globalSetterName](v);
-            console.log(`[GLOBAL] Updated ${paramName} to ${v}`);
+            
           } else {
-            console.warn(`[UI] Global setter ${globalSetterName} not found on globalState`);
+            
           }
         } else {
           // Call the setter on the layer state
           if (typeof setter === 'function') {
             setter.call(targetState, v);
-            console.log(`[UI CHANGE] Updated ${setterName.replace('set', '')} to ${v} on layer ${id}`);
+            
           } else {
-            console.warn(`[UI] Setter function not valid for ${setterName}`);
+            
           }
         }
       } catch (error) {
@@ -867,21 +867,21 @@ export function setupUI(state) {
         
         // Log state routing for debugging (only if not valid to avoid spam)
         if (!valid) {
-          console.warn(`[UI] Using fallback state routing for setUseLerp -> ${id}`);
+          
         }
         
         if (typeof targetState.setUseLerp === 'function') {
           targetState.setUseLerp(e.target.checked);
-          console.log(`[UI CHANGE] Set useLerp to ${e.target.checked} on layer ${id}`);
+          
         } else {
-          console.warn('[UI] setUseLerp method not available on target state');
+          
           
           // Fallback to the original approach if the method doesn't exist
           if (typeof window.getActiveState === 'function') {
             const activeState = window.getActiveState();
             if (activeState && typeof activeState.setUseLerp === 'function') {
               activeState.setUseLerp(e.target.checked);
-              console.log(`[UI CHANGE] Set useLerp to ${e.target.checked} via fallback`);
+              
             }
           } else {
             // Last resort fallback to the original state
@@ -1152,10 +1152,10 @@ export function setupUI(state) {
       if (validSkips.length > 0) {
         // Set skip to first valid skip if current value is not valid
         if (!validSkips.includes(state.starSkip)) {
-          console.log(`Current skip ${state.starSkip} is not valid. Setting to ${validSkips[0]}`);
+          
           state.setStarSkip(validSkips[0]);
         } else {
-          console.log(`Current skip ${state.starSkip} is valid among ${validSkips.join(',')}`);
+          
         }
       }
     }
@@ -1235,7 +1235,7 @@ export function setupUI(state) {
   // Add event listeners for layer change events
   window.addEventListener('layerChanged', (event) => {
     const { layerId, state } = event.detail;
-    console.log(`UI received layerChanged event for layer ${layerId}`);
+    
     updateUIFromState(state, {
       radiusRange, radiusNumber, radiusValue,
       copiesRange, copiesNumber, copiesValue,
@@ -1252,7 +1252,7 @@ export function setupUI(state) {
 
   window.addEventListener('layerActivated', (event) => {
     const { layerId, state } = event.detail;
-    console.log(`UI received layerActivated event for layer ${layerId}`);
+    
     updateUIFromState(state, {
       radiusRange, radiusNumber, radiusValue,
       copiesRange, copiesNumber, copiesValue,

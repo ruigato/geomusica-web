@@ -491,7 +491,7 @@ export function createAppState() {
           this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
           
           // Log the change for debugging
-          console.log("Forcing geometry update due to alt scale change");
+          
         }
       }
     },
@@ -510,7 +510,7 @@ export function createAppState() {
           
           // Force recreation of base geometry when available
           if (this.baseGeo) {
-            console.log("Forcing geometry update due to alt step N change");
+            
             
             // Set flags to signal that geometry needs recreation
             this.segmentsChanged = true;
@@ -533,7 +533,7 @@ export function createAppState() {
         
         // Force recreation of base geometry when available
         if (this.baseGeo) {
-          console.log("Forcing geometry update due to alt scale toggle");
+          
           
           // Set flags to signal that geometry needs recreation
           this.segmentsChanged = true;
@@ -971,7 +971,7 @@ export function createAppState() {
         
         // Force recreation of base geometry when available
         if (this.baseGeo && this.useFractal) {
-          console.log("Forcing geometry update due to fractal value change");
+          
           
           // Set flags to signal that geometry needs recreation
           this.segmentsChanged = true;
@@ -994,15 +994,15 @@ export function createAppState() {
         // Update shape type when fractal is toggled
         if (newValue && this.shapeType === 'regular') {
           this.shapeType = 'fractal';
-          console.log("Setting shape type to fractal");
+          
         } else if (!newValue && this.shapeType === 'fractal') {
           this.shapeType = 'regular';
-          console.log("Setting shape type back to regular");
+          
         }
         
         // Force recreation of base geometry when available
         if (this.baseGeo) {
-          console.log("Forcing geometry update due to fractal toggle");
+          
           
           // Set flags to signal that geometry needs recreation
           this.segmentsChanged = true;
@@ -1024,7 +1024,7 @@ export function createAppState() {
         
         // Force recreation of base geometry when available
         if (this.baseGeo && this.useEuclid) {
-          console.log("Forcing geometry update due to Euclidean value change");
+          
           
           // We need to import this dynamically - handled by the main.js overrides
           // Just set a flag to signal that geometry needs recreation
@@ -1048,15 +1048,15 @@ export function createAppState() {
         // Update shape type when Euclidean is toggled
         if (newValue && this.shapeType === 'regular') {
           this.shapeType = 'euclidean';
-          console.log("Setting shape type to euclidean");
+          
         } else if (!newValue && this.shapeType === 'euclidean') {
           this.shapeType = 'regular';
-          console.log("Setting shape type back to regular");
+          
         }
         
         // Force recreation of base geometry when available
         if (this.baseGeo) {
-          console.log("Forcing geometry update due to Euclidean toggle");
+          
           
           // Set flags to signal that geometry needs recreation
           this.segmentsChanged = true;
@@ -1078,12 +1078,12 @@ export function createAppState() {
         // Force intersection update when changing starSkip with stars and cuts enabled
         if (this.useStars && this.useCuts && newValue > 1) {
           if (DEBUG_STAR_CUTS) {
-            console.log(`[STAR CUTS] Forcing intersection update after changing starSkip to ${newValue}`);
+            
           }
           this.needsIntersectionUpdate = true;
         }
         
-        console.log(`Star skip set to ${newValue}`);
+        
       }
     },
     
@@ -1108,7 +1108,7 @@ export function createAppState() {
         // Force intersection update when toggling stars with cuts enabled
         if (this.useCuts && this.starSkip > 1) {
           if (DEBUG_STAR_CUTS) {
-            console.log(`[STAR CUTS] Forcing intersection update after changing useStars`);
+            
           }
           this.needsIntersectionUpdate = true;
         }
@@ -1117,7 +1117,7 @@ export function createAppState() {
         this.segmentsChanged = true;
         this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
         
-        console.log(`Stars ${newValue ? 'enabled' : 'disabled'}, shapeType=${this.shapeType}`);
+        
       }
     },
     
@@ -1134,7 +1134,7 @@ export function createAppState() {
         // Force intersection update when toggling cuts with stars enabled
         if (this.useStars && this.starSkip > 1) {
           if (DEBUG_STAR_CUTS) {
-            console.log(`[STAR CUTS] Forcing intersection update after changing useCuts`);
+            
           }
           this.needsIntersectionUpdate = true;
           
@@ -1143,7 +1143,7 @@ export function createAppState() {
           this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
         }
         
-        console.log(`Cuts ${newValue ? 'enabled' : 'disabled'}`);
+        
       }
     },
     
@@ -1155,7 +1155,7 @@ export function createAppState() {
       const n = this.segments;
       const validSkips = [];
       
-      console.log(`Calculating valid star skips for n=${n}`);
+      
       
       // Check each potential skip value
       for (let k = 1; k < n; k++) {
@@ -1167,10 +1167,10 @@ export function createAppState() {
           // only include k up to n/2
           if (k <= Math.floor(n/2)) {
             validSkips.push(k);
-            console.log(`Valid skip: k=${k} for n=${n} (gcd=${gcdValue})`);
+            
           }
         } else {
-          console.log(`Skip ${k} rejected: forms ${gcdValue} separate figure(s) instead of a single star`);
+          
         }
       }
       
@@ -1179,7 +1179,7 @@ export function createAppState() {
         validSkips.unshift(1);
       }
       
-      console.log(`Valid skips for n=${n}: ${validSkips.join(', ')}`);
+      
       return validSkips;
     },
     
@@ -1207,7 +1207,7 @@ export function createAppState() {
       const validTypes = ['regular', 'fractal', 'star', 'euclidean'];
       if (validTypes.includes(type) && this.shapeType !== type) {
         this.shapeType = type;
-        console.log(`Shape type set to ${type}`);
+        
         
         // Update corresponding feature flags
         if (type === 'fractal') {

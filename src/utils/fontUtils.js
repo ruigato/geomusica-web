@@ -23,10 +23,8 @@ export function preloadFont(options, url) {
     
     // If no URL is provided, we'll use system fonts
     if (!fontUrl) {
-      console.log(`Loading system font: ${fontFamily}`);
       // For system fonts, we can just check if they're available
       if (isFontAvailable(fontFamily)) {
-        console.log(`Font ${fontFamily} already available`);
         if (onFontLoaded && typeof onFontLoaded === 'function') {
           setTimeout(onFontLoaded, 0);
         }
@@ -34,7 +32,6 @@ export function preloadFont(options, url) {
       }
       
       // If the font isn't in the system, we'll use a fallback
-      console.warn(`Font ${fontFamily} not available, using fallback`);
       if (onFontLoaded && typeof onFontLoaded === 'function') {
         setTimeout(onFontLoaded, 0);
       }
@@ -48,7 +45,6 @@ export function preloadFont(options, url) {
   
   // Skip if FontFace API is not supported
   if (!('FontFace' in window)) {
-    console.warn('FontFace API not supported in this browser');
     if (onFontLoaded && typeof onFontLoaded === 'function') {
       setTimeout(onFontLoaded, 0);
     }
@@ -67,7 +63,6 @@ export function preloadFont(options, url) {
           .then(loadedFont => {
             // Add the font to the document fonts
             document.fonts.add(loadedFont);
-            console.log(`Font ${fontFamily} loaded successfully`);
             
             if (onFontLoaded && typeof onFontLoaded === 'function') {
               onFontLoaded();
@@ -87,8 +82,6 @@ export function preloadFont(options, url) {
           });
       } else {
         // No URL provided, assume system font
-        console.log(`Using system font: ${fontFamily}`);
-        
         if (onFontLoaded && typeof onFontLoaded === 'function') {
           setTimeout(onFontLoaded, 0);
         }

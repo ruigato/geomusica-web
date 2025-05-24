@@ -21,7 +21,7 @@ export function initializeTime() {
   if (!timeSystemInitialized) {
     timeStartedAt = performance.now();
     timeSystemInitialized = true;
-    console.log("[TIMING] Initialized with browser performance timing");
+    
   }
   
   return true;
@@ -42,7 +42,7 @@ export function getCurrentTime() {
   // Log time source periodically (not too often)
   const currentTimeMs = Date.now();
   if (currentTimeMs - lastTimingSourceLog > 10000) { // Every 10 seconds
-    console.log(`[TIMING] Current time: ${timeInSeconds.toFixed(3)}s (browser performance timing)`);
+    
     lastTimingSourceLog = currentTimeMs;
   }
   
@@ -54,7 +54,7 @@ export function getCurrentTime() {
  */
 export function resetTime() {
   timeStartedAt = performance.now();
-  console.log("[TIMING] Timer reset to zero");
+  
 }
 
 /**
@@ -73,7 +73,7 @@ export async function diagnoseTiming() {
 // Provide empty implementations of Csound functions for compatibility
 export function updateCsoundInstance() { return true; }
 export async function enableCsoundTiming() { 
-  console.log("[TIMING] Using browser performance timing only");
+  
   return true; 
 }
 export async function diagnoseCsoundTiming() { 

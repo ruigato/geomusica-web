@@ -47,7 +47,7 @@ class AudioParameterManager {
    */
   setPendingParams(params) {
     if (!params || typeof params !== 'object') {
-      console.warn('[AUDIO] Invalid parameters object provided');
+      
       return false;
     }
 
@@ -100,13 +100,13 @@ class AudioParameterManager {
    */
   validateRange(value, min, max, paramName) {
     if (isNaN(value) || value === null || value === undefined) {
-      console.warn(`[AUDIO] Invalid ${paramName} value: ${value}, using default`);
+      
       return this.defaultParams[paramName];
     }
     
     const clamped = Math.max(min, Math.min(max, value));
     if (clamped !== value) {
-      console.warn(`[AUDIO] ${paramName} value ${value} clamped to ${clamped} (range: ${min}-${max})`);
+      
     }
     
     return clamped;
@@ -121,7 +121,7 @@ class AudioParameterManager {
     }
 
     if (!csoundInstance || !csoundStarted) {
-      console.warn('[AUDIO] Cannot apply parameters - Csound not ready');
+      
       return false;
     }
 
@@ -151,7 +151,7 @@ class AudioParameterManager {
       }
 
       if (DEBUG_AUDIO) {
-        console.log('[AUDIO] Applied pending parameters:', params);
+        
       }
       this.pendingParams = null;
       return true;
@@ -200,17 +200,17 @@ function validateNoteParameters(note) {
 
   // Validate frequency
   if (isNaN(note.frequency) || note.frequency === undefined || note.frequency === null) {
-    console.warn('[AUDIO] Invalid frequency, using default 440Hz:', note.frequency);
+    
     validated.frequency = 440;
     validated.noteName = note.noteName || 'A4';
   } else if (note.frequency <= 0) {
-    console.warn('[AUDIO] Negative or zero frequency, using default 440Hz:', note.frequency);
+    
     validated.frequency = 440;
     validated.noteName = note.noteName || 'A4';
   } else if (note.frequency < 10 || note.frequency > 22050) {
     // Extended range check - allow subsonic and ultrasonic but warn
     const clamped = Math.max(20, Math.min(20000, note.frequency));
-    console.warn(`[AUDIO] Frequency ${note.frequency}Hz outside audible range, clamped to ${clamped}Hz`);
+    
     validated.frequency = clamped;
     validated.noteName = note.noteName || `${clamped}Hz`;
   } else {
@@ -220,11 +220,11 @@ function validateNoteParameters(note) {
 
   // Validate duration
   if (isNaN(note.duration) || note.duration === undefined || note.duration === null || note.duration <= 0) {
-    console.warn('[AUDIO] Invalid duration, using default 0.3s:', note.duration);
+    
     validated.duration = 0.3;
   } else if (note.duration > 30) {
     // Prevent extremely long notes that could cause memory issues
-    console.warn(`[AUDIO] Duration ${note.duration}s too long, clamped to 30s`);
+    
     validated.duration = 30;
   } else {
     validated.duration = note.duration;
@@ -232,12 +232,12 @@ function validateNoteParameters(note) {
 
   // Validate velocity/amplitude
   if (isNaN(note.velocity) || note.velocity === undefined || note.velocity === null) {
-    console.warn('[AUDIO] Invalid velocity, using default 0.7:', note.velocity);
+    
     validated.velocity = 0.7;
   } else {
     validated.velocity = Math.max(0, Math.min(1, note.velocity));
     if (validated.velocity !== note.velocity) {
-      console.warn(`[AUDIO] Velocity ${note.velocity} clamped to ${validated.velocity} (range: 0-1)`);
+      
     }
   }
 
@@ -247,7 +247,7 @@ function validateNoteParameters(note) {
   } else {
     validated.pan = Math.max(-1, Math.min(1, note.pan));
     if (validated.pan !== note.pan) {
-      console.warn(`[AUDIO] Pan ${note.pan} clamped to ${validated.pan} (range: -1 to 1)`);
+      
     }
   }
 
@@ -357,7 +357,7 @@ export async function setupAudio() {
           await csoundInstance.setControlChannel("masterVolume", DEFAULT_VALUES.VOLUME);
           
           if (DEBUG_AUDIO) {
-            console.log("[AUDIO] Csound initialized and started successfully");
+            
           }
         } catch (error) {
           console.error("[AUDIO] Error during immediate Csound initialization:", error);
@@ -376,7 +376,7 @@ export async function setupAudio() {
         if (audioContext.state === 'suspended') {
           await audioContext.resume();
           if (DEBUG_AUDIO) {
-            console.log("[AUDIO] Audio context resumed on user interaction");
+            
           }
           audioContextActivated = true;
         }
@@ -402,7 +402,7 @@ export async function setupAudio() {
             if (parameterManager.hasPendingParams()) {
               await parameterManager.applyPendingParams();
               if (DEBUG_AUDIO) {
-                console.log("Applied pending synth parameters after initialization");
+                
               }
             }
             
@@ -438,7 +438,7 @@ export async function setupAudio() {
  */
 export async function applySynthParameters(params) {
   if (!csoundInstance || !csoundStarted) {
-    console.warn("Csound not initialized yet, will apply parameters when ready");
+    
     
     // Store params to apply when audio starts using parameter manager
     parameterManager.setPendingParams(params);
@@ -540,7 +540,7 @@ export async function triggerAudio(note) {
       
       // Special logging for star cuts
       if (DEBUG_AUDIO) {
-        console.log(`[STAR CUTS] Triggered star cut audio at ${validatedNote.frequency.toFixed(1)}Hz with copy index ${note.copyIndex || 'unknown'}`);
+        
       }
     } else {
       // Play a regular note
@@ -585,7 +585,7 @@ export async function setBrightness(brightness) {
 export function startCsoundTimeUpdates() {
   // This function has been deprecated and is kept for backward compatibility
   if (DEBUG_AUDIO) {
-    console.log("[TIMING] Csound timing disabled, using browser performance timing");
+    
   }
 }
 
@@ -593,7 +593,7 @@ export function startCsoundTimeUpdates() {
 export function stopCsoundTimeUpdates() {
   // This function has been deprecated and is kept for backward compatibility
   if (DEBUG_AUDIO) {
-    console.log("[TIMING] No Csound time updates to stop");
+    
   }
 }
 
@@ -672,7 +672,7 @@ export const Tone = {
  */
 export async function startCsoundTimer() {
   if (DEBUG_AUDIO) {
-    console.log("[TIMING] Csound timing disabled, using browser performance timing");
+    
   }
   return true;
 }

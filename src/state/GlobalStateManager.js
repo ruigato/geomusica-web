@@ -53,7 +53,7 @@ export class GlobalStateManager {
     if (this.bpm !== newValue) {
       this.bpm = newValue;
       this.parameterChanges.bpm = true;
-      console.log(`[GLOBAL] BPM changed to ${newValue}`);
+      
     }
   }
   
@@ -67,7 +67,7 @@ export class GlobalStateManager {
     if (this.quantizationValue !== value) {
       this.quantizationValue = value;
       this.parameterChanges.quantization = true;
-      console.log(`[GLOBAL] Quantization changed to ${value}`);
+      
     }
   }
   
@@ -80,7 +80,7 @@ export class GlobalStateManager {
     if (this.useQuantization !== newValue) {
       this.useQuantization = newValue;
       this.parameterChanges.useQuantization = true;
-      console.log(`[GLOBAL] Quantization ${newValue ? 'enabled' : 'disabled'}`);
+      
     }
   }
   
@@ -93,7 +93,7 @@ export class GlobalStateManager {
     if (this.useEqualTemperament !== newValue) {
       this.useEqualTemperament = newValue;
       this.parameterChanges.useEqualTemperament = true;
-      console.log(`[GLOBAL] Equal temperament ${newValue ? 'enabled' : 'disabled'}`);
+      
     }
   }
   
@@ -106,7 +106,7 @@ export class GlobalStateManager {
     if (this.referenceFrequency !== newValue) {
       this.referenceFrequency = newValue;
       this.parameterChanges.referenceFrequency = true;
-      console.log(`[GLOBAL] Reference frequency changed to ${newValue}`);
+      
     }
   }
   
@@ -119,7 +119,7 @@ export class GlobalStateManager {
     if (this.attack !== newValue) {
       this.attack = newValue;
       this.parameterChanges.attack = true;
-      console.log(`[GLOBAL] Attack changed to ${newValue}`);
+      
     }
   }
   
@@ -132,7 +132,7 @@ export class GlobalStateManager {
     if (this.decay !== newValue) {
       this.decay = newValue;
       this.parameterChanges.decay = true;
-      console.log(`[GLOBAL] Decay changed to ${newValue}`);
+      
     }
   }
   
@@ -145,7 +145,7 @@ export class GlobalStateManager {
     if (this.sustain !== newValue) {
       this.sustain = newValue;
       this.parameterChanges.sustain = true;
-      console.log(`[GLOBAL] Sustain changed to ${newValue}`);
+      
     }
   }
   
@@ -158,7 +158,7 @@ export class GlobalStateManager {
     if (this.release !== newValue) {
       this.release = newValue;
       this.parameterChanges.release = true;
-      console.log(`[GLOBAL] Release changed to ${newValue}`);
+      
     }
   }
   
@@ -171,7 +171,7 @@ export class GlobalStateManager {
     if (this.brightness !== newValue) {
       this.brightness = newValue;
       this.parameterChanges.brightness = true;
-      console.log(`[GLOBAL] Brightness changed to ${newValue}`);
+      
     }
   }
   
@@ -184,7 +184,7 @@ export class GlobalStateManager {
     if (this.volume !== newValue) {
       this.volume = newValue;
       this.parameterChanges.volume = true;
-      console.log(`[GLOBAL] Volume changed to ${newValue}`);
+      
     }
   }
   
@@ -244,7 +244,7 @@ export class GlobalStateManager {
     
     // Debug logging periodically (about once every 5 seconds at 60fps)
     if (Math.random() < 0.003) { // ~0.3% chance each frame
-      console.log(`[ROTATION] BPM: ${this.bpm}, Rotations/sec: ${rotationsPerSecond.toFixed(2)}, Degrees/sec: ${degreesPerSecond.toFixed(2)}, Delta: ${angleDelta.toFixed(2)}°`);
+      
     }
     
     // Store for next frame

@@ -8,13 +8,13 @@ let createNote;
 try {
   createNote = (await import('../notes/notes.js')).createNote;
 } catch (e) {
-  console.warn('Could not import createNote from notes.js, using mock implementation');
+  
   createNote = (props) => ({ ...props, mock: true });
 }
 
 // Mock implementation of createMarker for the demo
 export function createMarker(position, color, duration = 1.0) {
-  console.log('Mock createMarker called', { position, color, duration });
+  
   return {
     position: position ? { ...position } : { x: 0, y: 0, z: 0 },
     color: color || 0xffffff,
@@ -250,7 +250,7 @@ export function detectTemporalLayerTriggers(layer, tNow, audioCallback, options 
             
             // Check base geometry bounds
             if (vi * 3 + 1 >= basePositions.length) {
-              console.warn(`Vertex index out of range: ${vi} for layer ${layer.id}`);
+              
               continue;
             }
             
@@ -260,7 +260,7 @@ export function detectTemporalLayerTriggers(layer, tNow, audioCallback, options 
             
             // Validate coordinates
             if (x0 === undefined || y0 === undefined || isNaN(x0) || isNaN(y0)) {
-              console.warn(`Invalid base coordinates at ${vi} for layer ${layer.id}: x=${x0}, y=${y0}`);
+              
               continue;
             }
             

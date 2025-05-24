@@ -40,7 +40,7 @@ export function initLabels(renderer) {
   // Reset ID counter
   nextLabelId = 1;
   
-  console.log("[LABELS] Label system initialized");
+  
 }
 
 /**

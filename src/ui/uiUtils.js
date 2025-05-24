@@ -96,7 +96,7 @@ function initializeSynthControls() {
  */
 function initializeInputGroup(elements, paramName, defaultValue, paramRange) {
   if (!elements.range || !elements.number || !elements.value) {
-    console.warn(`[UI] Missing UI elements for ${paramName}`);
+    
     return;
   }
   

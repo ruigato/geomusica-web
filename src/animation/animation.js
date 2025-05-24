@@ -89,7 +89,7 @@ export function animate(props) {
         timeDelta: (timeDelta * 1000).toFixed(2) + 'ms',
         targetFPS: TARGET_FPS
       };
-      console.log(`[ANIMATION PERFORMANCE]`, performanceInfo);
+      
       
       // Reset stats periodically to avoid skew
       if (frameCount % 6000 === 0) {
@@ -119,9 +119,7 @@ export function animate(props) {
     const bpm = globalState?.bpm || 120;
     const rotationHz = bpm / 240; // Rotations per second
     
-    console.log(`[ANIMATION] Frame ${frameCount}, time: ${currentTime.toFixed(3)}s, ` + 
-                `FPS: ${currentFPS.toFixed(1)}, BPM: ${bpm}, RotHz: ${rotationHz.toFixed(2)}, ` +
-                `FrameTime: ${(timeDelta * 1000).toFixed(2)}ms`);
+    
   }
   
   // Get the active layer from the scene if available
@@ -134,21 +132,7 @@ export function animate(props) {
     const rotationSpeed = bpm / 240; // rotations per second
     const degreesPerFrame = (rotationSpeed * 360) / currentFPS;
     
-    console.log(`[ANIMATION] Layer debug:`, {
-      id: activeLayer.id,
-      bpm: bpm,
-      rotationHz: rotationSpeed.toFixed(3),
-      degreesPerFrame: degreesPerFrame.toFixed(2),
-      currentFPS: currentFPS.toFixed(1),
-      visible: activeLayer.visible,
-      groupVisible: activeLayer.group?.visible,
-      childCount: activeLayer.group?.children.length,
-      state: {
-        radius: activeLayer.state.radius,
-        segments: activeLayer.state.segments,
-        copies: activeLayer.state.copies
-      }
-    });
+    
   }
   
   // Handle active layer if available (prefer it over passed-in group)

@@ -6,7 +6,7 @@ import { TemporalTriggerEngine, TemporalCrossingResult } from './triggers/tempor
 // Simple mock for setTemporalTriggersEnabled 
 let _temporalTriggersEnabled = false;
 function setTemporalTriggersEnabled(enabled) {
-  console.log(`[Demo] Temporal triggers ${enabled ? 'enabled' : 'disabled'}`);
+  
   _temporalTriggersEnabled = enabled;
 }
 
@@ -59,7 +59,7 @@ function initializeDemo() {
   const demoContainer = document.getElementById('demo-container');
   
   // Log for debugging
-  console.log('Demo initialization started', demoContainer);
+  
   
   // Clear any existing content
   demoContainer.innerHTML = '';
@@ -78,12 +78,12 @@ function initializeDemo() {
   
   // Initialize engine
   engine.initialize();
-  console.log('Engine initialized');
+  
   
   // Enable temporal triggers
-  console.log('Setting temporal triggers enabled');
+  
   setTemporalTriggersEnabled(true);
-  console.log('Temporal triggers enabled:', isTemporalTriggersEnabled());
+  
   
   // Set up UI controls
   setupControls(demoContainer);
@@ -91,7 +91,7 @@ function initializeDemo() {
   // Draw initial state
   try {
     draw();
-    console.log('Initial draw complete');
+    
   } catch (e) {
     console.error('Error during initial draw:', e);
     ctx.fillStyle = 'red';
@@ -101,7 +101,7 @@ function initializeDemo() {
   // Start the animation
   try {
     startAnimation();
-    console.log('Animation started');
+    
   } catch (e) {
     console.error('Error starting animation:', e);
     ctx.fillStyle = 'red';

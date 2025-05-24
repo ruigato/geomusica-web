@@ -98,7 +98,7 @@ function interpolateAngle(startAngle, endAngle, t) {
 function calculateFrequency(x, y, state) {
   // Safety check for invalid inputs
   if (isNaN(x) || isNaN(y) || x === undefined || y === undefined) {
-    console.warn(`Invalid coordinates for frequency calculation: x=${x}, y=${y}`);
+    
     // Return a safe default
     return {
       frequency: 440, // Default to A4
@@ -113,7 +113,7 @@ function calculateFrequency(x, y, state) {
   
   // If distance calculation resulted in NaN or is zero, use a safe default
   if (isNaN(distance) || distance === 0) {
-    console.warn(`Invalid distance calculated from coordinates: x=${x}, y=${y}, distance=${distance}`);
+    
     return {
       frequency: 440, // Default to A4
       noteName: "A4",
@@ -130,7 +130,7 @@ function calculateFrequency(x, y, state) {
   
   // Ensure frequency is not NaN
   if (isNaN(frequency)) {
-    console.warn(`Invalid frequency calculated: distance=${distance}, using default 440Hz`);
+    
     frequency = 440; // Default to A4
   }
   
@@ -150,13 +150,13 @@ function calculateFrequency(x, y, state) {
       noteName = getNoteName(frequency, refFreq);
     } catch (e) {
       // If quantization fails, use unquantized frequency
-      console.warn(`Equal temperament calculation failed: ${e.message}, using unquantized frequency`);
+      
     }
   }
   
   // Final safety check - if after all processing frequency is still NaN, use default
   if (isNaN(frequency)) {
-    console.warn(`Frequency still invalid after processing, using default 440Hz`);
+    
     frequency = 440;
     noteName = "A4";
   }
@@ -219,7 +219,7 @@ export function processPendingTriggers(currentTime, audioCallback, scene) {
       const timingDelta = Math.abs(currentTime - executeTime);
       if (timingDelta > 0.001) { // Log if more than 1ms off
         if (DEBUG_LOGGING) {
-          console.log(`[PENDING TRIGGER] Timing delta: ${(timingDelta * 1000).toFixed(2)}ms, scheduled: ${executeTime.toFixed(4)}, actual: ${currentTime.toFixed(4)}`);
+          
         }
       }
       
@@ -602,13 +602,13 @@ function detectIntersectionTriggers(
 ) {
   // Debug when this function is called
   if (DEBUG_STAR_CUTS) {
-    console.log(`[STAR CUTS] detectIntersectionTriggers called for copy ${copyIndex}`);
+    
   }
   
   // Check if this copy group has intersection markers
   if (!copyGroup || !copyGroup.userData) {
     if (DEBUG_STAR_CUTS) {
-      console.log(`[STAR CUTS] Copy ${copyIndex} has no userData`);
+      
     }
     return false;
   }
@@ -632,13 +632,13 @@ function detectIntersectionTriggers(
   
   if (!intersectionGroup || !intersectionGroup.children) {
     if (DEBUG_STAR_CUTS) {
-      console.log(`[STAR CUTS] No intersection markers in copy ${copyIndex}`);
+      
     }
     return false;
   }
   
   if (DEBUG_STAR_CUTS) {
-    console.log(`[STAR CUTS] Found ${intersectionGroup.children.length} intersection markers in copy ${copyIndex}`);
+    
   }
   
   // Get layer data
@@ -677,7 +677,7 @@ function detectIntersectionTriggers(
   const isStarCuts = state.useStars && state.useCuts && state.starSkip > 1;
   
   if (isStarCuts && DEBUG_STAR_CUTS) {
-    console.log(`[STAR CUTS] Processing star cut intersections in copy ${copyIndex}`);
+    
   }
   
   // Create a map for vertices that have already been checked
@@ -716,7 +716,7 @@ function detectIntersectionTriggers(
     // Skip if already triggered in this frame
     if (triggeredNow.has(key)) {
       if (DEBUG_STAR_CUTS) {
-        console.log(`[STAR CUTS] Skipping already triggered point ${i} in copy ${copyIndex}`);
+        
       }
       continue;
     }
@@ -763,7 +763,7 @@ function detectIntersectionTriggers(
       
       if (positionDistance > MAX_REASONABLE_MOVEMENT) {
         if (DEBUG_STAR_CUTS) {
-          console.log(`[STAR CUTS] Skipping intersection ${i} due to large position change (${positionDistance.toFixed(2)})`);
+          
         }
         continue;
       }
@@ -852,7 +852,7 @@ function detectIntersectionTriggers(
               createMarker(angle, currX, currY, scene, noteCopy, camera, renderer, isQuantized, layer);
               
               if (DEBUG_STAR_CUTS) {
-                console.log(`[STAR CUTS] Triggered ${isStarCuts ? 'star cut' : 'intersection'} ${i} in copy ${copyIndex}`);
+                
               }
               
               // Increment counter
@@ -867,7 +867,7 @@ function detectIntersectionTriggers(
             createMarker(angle, currX, currY, scene, note, camera, renderer, false, layer);
             
             if (DEBUG_STAR_CUTS) {
-              console.log(`[STAR CUTS] Triggered ${isStarCuts ? 'star cut' : 'intersection'} ${i} in copy ${copyIndex}`);
+              
             }
             
             // Increment counter
@@ -886,7 +886,7 @@ function detectIntersectionTriggers(
   
   // Log summary if any triggers occurred
   if (anyTriggers && DEBUG_STAR_CUTS) {
-    console.log(`[STAR CUTS] Triggered ${triggersCount} ${isStarCuts ? 'star cuts' : 'intersections'} in copy ${copyIndex}`);
+    
   }
   
   return anyTriggers;
@@ -902,7 +902,7 @@ function detectIntersectionTriggers(
 export function detectLayerTriggers(layer, tNow, audioCallback) {
   // Validation checks
   if (!layer) {
-    if (DEBUG_LOGGING) console.warn("No layer provided for trigger detection");
+    
     return false;
   }
   
@@ -927,7 +927,7 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
   const LERPING_TRIGGER_COOLDOWN = 250; // ms between triggers during lerping
   
   if (isLerping && DEBUG_LOGGING) {
-    console.log(`Layer ${layer.id}: Lerping active, using trigger cooldown: ${LERPING_TRIGGER_COOLDOWN}ms`);
+    
   }
   
   // Ensure lastTrig set exists
@@ -936,7 +936,7 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
   // Get the scene from the group's parent
   const scene = group.parent;
   if (!scene) {
-    if (DEBUG_LOGGING) console.warn("Cannot find scene for layer:", layer.id);
+    
     return false;
   }
   
@@ -971,7 +971,7 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
     
     if (timeSinceCreation < GEOMETRY_GRACE_PERIOD) {
       if (DEBUG_LOGGING) {
-        console.log(`Layer ${layer.id}: Skipping trigger detection during geometry grace period (${timeSinceCreation}ms)`);
+        
       }
       return false;
     }
@@ -994,7 +994,7 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
   
   // Skip if no copies or zero segments
   if (copies <= 0 || state.segments <= 0) {
-    if (DEBUG_LOGGING) console.log(`Layer ${layer.id}: Skipping trigger detection (copies=${copies}, segments=${state.segments})`);
+    
     return false;
   }
   
@@ -1016,7 +1016,7 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
   // Log large angle jumps that might cause trigger skipping
   if (angleDelta > Math.PI / 6) { // More than 30 degrees
     if (DEBUG_LOGGING) {
-      console.log(`[TRIGGER WARNING] Large angle jump detected: ${(angleDelta * 180 / Math.PI).toFixed(1)}° at BPM ${bpm} - potential trigger skipping`);
+      
     }
   }
   
@@ -1026,13 +1026,13 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
   // Determine how many steps to use for processing
   const processSteps = needsInterpolation ? INTERPOLATION_STEPS : 1;
   if (DEBUG_LOGGING && needsInterpolation) {
-    console.log(`Layer ${layer.id}: Large angle step detected (${(angleDelta * 180 / Math.PI).toFixed(1)}°), using ${processSteps} interpolation steps`);
+    
   }
   
   // FIXED: Debouncing to prevent race conditions during rapid operations
   // Check if we're in a processing state and skip if needed
   if (layer._triggerProcessing) {
-    if (DEBUG_LOGGING) console.log(`Layer ${layer.id}: Skipping trigger detection - already processing`);
+    
     return false;
   }
   
@@ -1085,14 +1085,14 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
       
       // Skip if we couldn't find a valid copy group
       if (!copyGroup || !copyGroup.children || copyGroup.children.length === 0) {
-        if (DEBUG_LOGGING) console.warn(`Could not find copy group ${ci} for layer ${layer.id}`);
+        
         continue;
       }
       
       // The first child should be the LineLoop
       const mesh = copyGroup.children.find(child => child.type === 'LineLoop');
       if (!mesh) {
-        if (DEBUG_LOGGING) console.warn(`Could not find LineLoop in copy group ${ci} for layer ${layer.id}`);
+        
         continue;
       }
       
@@ -1107,13 +1107,13 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
       
       // Validate geometry and attributes
       if (!mesh.geometry || !mesh.geometry.getAttribute('position')) {
-        if (DEBUG_LOGGING) console.warn(`Invalid geometry for copy ${ci} of layer ${layer.id}`);
+        
         continue;
       }
       
       const positions = mesh.geometry.getAttribute('position');
       if (!positions || !positions.count) {
-        if (DEBUG_LOGGING) console.warn(`Invalid position attribute for copy ${ci} of layer ${layer.id}`);
+        
         continue;
       }
       
@@ -1121,7 +1121,7 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
       
       // Validate base geometry
       if (!layer.baseGeo || !layer.baseGeo.getAttribute('position') || !layer.baseGeo.getAttribute('position').array) {
-        if (DEBUG_LOGGING) console.warn(`Invalid base geometry for layer ${layer.id}`);
+        
         continue;
       }
       
@@ -1186,7 +1186,7 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
           
           if (positionDistance > MAX_REASONABLE_MOVEMENT) {
             if (DEBUG_LOGGING) {
-              console.log(`Layer ${layer.id}: Skipping vertex ${vi} due to large position change (${positionDistance.toFixed(2)})`);
+              
             }
             continue;
           }
@@ -1212,7 +1212,7 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
               // Skip if we're still in the cooldown period
               if (timeSinceLastTrigger < LERPING_TRIGGER_COOLDOWN) {
                 if (DEBUG_LOGGING && isLerping) {
-                  console.log(`Layer ${layer.id}: Skipping vertex ${vi} in copy ${ci} - in cooldown period (${timeSinceLastTrigger.toFixed(0)}ms < ${LERPING_TRIGGER_COOLDOWN}ms)`);
+                  
                 }
                 continue;
               }
@@ -1228,7 +1228,7 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
               
               // Check base geometry bounds
               if (vi * 3 + 1 >= basePositions.length) {
-                console.warn(`Vertex index out of range: ${vi} for layer ${layer.id}`);
+                
                 continue;
               }
               
@@ -1238,7 +1238,7 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
               
               // Validate coordinates
               if (x0 === undefined || y0 === undefined || isNaN(x0) || isNaN(y0)) {
-                console.warn(`Invalid base coordinates at ${vi} for layer ${layer.id}: x=${x0}, y=${y0}`);
+                
                 continue;
               }
               
@@ -1299,7 +1299,7 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
                   createMarker(angle, currX, currY, scene, noteCopy, camera, renderer, isQuantized, layer);
                   
                   if (DEBUG_LOGGING) {
-                    console.log(`Layer ${layer.id}: Triggered vertex ${vi} in copy ${ci} with crossingFactor ${crossingFactor.toFixed(3)}`);
+                    
                   }
                   
                   // Increment counter
@@ -1314,7 +1314,7 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
                 createMarker(angle, currX, currY, scene, note, camera, renderer, false, layer);
                 
                 if (DEBUG_LOGGING) {
-                  console.log(`Layer ${layer.id}: Triggered vertex ${vi} in copy ${ci} with crossingFactor ${crossingFactor.toFixed(3)}`);
+                  
                 }
                 
                 // Increment counter
@@ -1345,7 +1345,7 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
       
       // Detect anomalies - too many triggers at once may indicate a problem
       if (triggersInCopy > 3) {
-        console.warn(`Potential anomaly: ${triggersInCopy} triggers in one frame for layer ${layer.id}, copy ${ci}`);
+        
       }
     }
     
@@ -1466,7 +1466,7 @@ export function detectTriggers(baseGeo, lastAngle, angle, copies, group, lastTri
   // If no layer found, use legacy fallback behavior
   const triggeredNow = new Set();
   
-  console.warn("Using legacy trigger detection - layer system not found");
+  
   
   return triggeredNow;
 }

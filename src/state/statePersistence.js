@@ -17,7 +17,7 @@ export function saveState(state) {
     const globalState = window._globalState;
     
     if (!layerManager || !globalState) {
-      console.warn('Layer manager or global state not found, saving only active state');
+      
     }
     
     // Extract serializable properties for the active state
@@ -72,7 +72,7 @@ export function saveState(state) {
     // Convert to string and save
     const saveString = JSON.stringify(saveData);
     localStorage.setItem(STORAGE_KEY, saveString);
-    console.log('State saved successfully:', saveData);
+    
     
     return true;
   } catch (error) {
@@ -176,13 +176,13 @@ export function loadState() {
       const saveString = localStorage.getItem(STORAGE_KEY);
       
       if (!saveString) {
-        console.log('No saved state found');
+        
         resolve(null);
         return;
       }
       
       const loadedState = JSON.parse(saveString);
-      console.log('State loaded successfully:', loadedState);
+      
       
       resolve(loadedState);
     } catch (error) {
@@ -215,32 +215,32 @@ export function applyLoadedState(state, loadedState) {
                        loadedState.hasOwnProperty('layers');
     
     if (isNewFormat) {
-      console.log('Applying new format state with layers and global state');
+      
       
       // Apply global state if available
       if (loadedState.globalState && window._globalState) {
         applyPropertiesToState(window._globalState, loadedState.globalState);
-        console.log('Applied global state');
+        
       }
       
       // Apply active state to the current state
       if (loadedState.activeState) {
         applyPropertiesToState(state, loadedState.activeState);
-        console.log('Applied active state to current state');
+        
       }
       
       // If we have layers and a layer manager, recreate the layer structure
       if (loadedState.layers && loadedState.layers.length > 0 && window._layers) {
         recreateLayerStructure(loadedState.layers, loadedState.activeLayerId);
-        console.log('Recreated layer structure');
+        
       }
     } else {
       // Legacy format - directly apply each property
-      console.log('Applying legacy format state (single state object)');
+      
       applyPropertiesToState(state, loadedState);
     }
     
-    console.log('State applied successfully');
+    
     return true;
   } catch (error) {
     console.error('Error applying state:', error);
@@ -483,7 +483,7 @@ export function updateAudioEngineFromState(state, audioModule) {
       }
     }
     
-    console.log('Audio engine updated from state successfully');
+    
     return true;
   } catch (error) {
     console.error('Error updating audio engine from state:', error);
@@ -902,7 +902,7 @@ export function updateUIFromState(state, uiElements) {
         if (radioButton) {
           radioButton.checked = true;
         } else {
-          console.warn(`Could not find quantization radio button with selector: ${safeCssSelector}`);
+          
         }
       } catch (error) {
         console.error(`Error selecting quantization radio button: ${error.message}`);
@@ -937,7 +937,7 @@ export function updateUIFromState(state, uiElements) {
       uiElements.useCutsCheckbox.checked = state.useCuts;
     }
     
-    console.log('UI updated from state successfully');
+    
     return true;
   } catch (error) {
     console.error('Error updating UI from state:', error);

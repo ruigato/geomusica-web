@@ -131,12 +131,12 @@ function performStateSync(isLayerSwitch = false) {
     
     // Final fallback to appState
     if (!state) {
-      console.warn('[STATE SYNC] Unable to find active layer state, using fallback appState');
+      
       state = appState;
       activeLayerId = 'fallback';
     }
     
-    console.log(`[STATE SYNC] Syncing state for active layer ID: ${activeLayerId}${isLayerSwitch ? ' (layer switch)' : ''}`);
+    
     
     // FIXED: Validate state before proceeding
     if (!state) {
@@ -160,11 +160,7 @@ function performStateSync(isLayerSwitch = false) {
         
         // Verify the active layer's state is correctly set
         if (DEBUG_BUTTONS) {
-          console.log(`[STATE SYNC] Active layer ${activeLayerId} state:`, {
-            radius: activeLayer.state.radius,
-            segments: activeLayer.state.segments,
-            copies: activeLayer.state.copies
-          });
+          
         }
       }
     }
@@ -193,14 +189,14 @@ function performStateSync(isLayerSwitch = false) {
     if (isLayerSwitch && state && typeof state.resetParameterChanges === 'function') {
       // Reset parameter changes to prevent unnecessary geometry recreation
       state.resetParameterChanges();
-      console.log(`[STATE SYNC] Reset parameter changes during layer switch for layer ${activeLayerId}`);
+      
     }
     
     // FIXED: Improved geometry update logic
     if (!isLayerSwitch && state && state.parameterChanges) {
       handleGeometryUpdates(state, activeLayer);
     } else if (isLayerSwitch) {
-      console.log("[STATE SYNC] Skipping geometry recreation during layer switch");
+      
     }
     
   } catch (error) {
@@ -216,7 +212,7 @@ function performStateSync(isLayerSwitch = false) {
 function updateUIFromActiveState(state) {
   try {
     if (uiReferences && state) {
-      console.log(`Updating UI to match active layer state: radius=${state.radius}, segments=${state.segments}, copies=${state.copies}`);
+      
       // Add specific UI update logic here if needed
     }
   } catch (error) {
@@ -230,7 +226,7 @@ function updateUIFromActiveState(state) {
  */
 function updateGlobalUI(globalState) {
   try {
-    console.log(`Updating global UI: BPM=${globalState.bpm}`);
+    
     
     // Update BPM display with null checks
     const bpmValue = document.getElementById('bpmValue');
@@ -300,12 +296,12 @@ function updateLayerGeometry(activeLayer, state) {
         try {
           oldGeo.dispose();
         } catch (disposeError) {
-          console.warn('[STATE SYNC] Error disposing old geometry:', disposeError);
+          
         }
       }, 100);
     }
     
-    console.log("Forced geometry update due to critical parameter change");
+    
   } catch (error) {
     console.error('[STATE SYNC] Error updating layer geometry:', error);
   }
@@ -373,7 +369,7 @@ function addStateControlsToUI(state) {
               brightness: state.brightness,
               volume: state.volume
             }).then(result => {
-              console.log("Synth parameters applied after import:", result);
+              
             });
           } else {
             alert('Failed to import settings');
@@ -400,7 +396,7 @@ function addStateControlsToUI(state) {
     if (typeof saveState === 'function') {
       const success = saveState(currentState);
       if (success) {
-        console.log('Current state saved as default for next page load');
+        
         
         // Provide visual feedback
         makeDefaultButton.textContent = 'Saved!';
@@ -493,11 +489,11 @@ function loadFontAndInitApp() {
  * Initialize the main application
  */
 function initializeApplication() {
-  console.log("Initializing GeoMusica Web...");
+  
   
   // Initialize time system first - using browser performance timing
   initializeTime();
-  console.log("[TIMING] Browser timing system initialized");
+  
   
   // Setup tab system
   setupHeaderTabs();
@@ -508,13 +504,13 @@ function initializeApplication() {
   renderer.setClearColor(0x000000, 0);
   
   // Add debugging for renderer
-  console.log("Renderer initialized:", renderer);
-  console.log("WebGL supported:", renderer.capabilities.isWebGL2 ? "WebGL2" : "WebGL1");
+  
+  
   
   // Get canvas container and set renderer size
   const canvasContainer = document.getElementById('canvas');
-  console.log("Canvas container:", canvasContainer);
-  console.log("Canvas container dimensions:", canvasContainer.clientWidth, "x", canvasContainer.clientHeight);
+  
+  
   
   const containerWidth = canvasContainer.clientWidth;
   const containerHeight = canvasContainer.clientHeight;
@@ -528,7 +524,7 @@ function initializeApplication() {
   
   // Add renderer to DOM
   canvasContainer.appendChild(renderer.domElement);
-  console.log("Canvas element added to DOM, dimensions:", renderer.domElement.width, "x", renderer.domElement.height);
+  
   
   // Create scene
   const scene = new THREE.Scene();
@@ -553,12 +549,12 @@ function initializeApplication() {
   window.mainRenderer = renderer;
   window.mainScene = scene;
   
-  console.log("Camera position:", camera.position);
-  console.log("Camera field of view:", camera.fov);
-  console.log("Scene userData camera set:", !!scene.userData.camera);
-  console.log("Scene userData renderer set:", !!scene.userData.renderer);
-  console.log("Window global camera set:", !!window.mainCamera);
-  console.log("Window global renderer set:", !!window.mainRenderer);
+  
+  
+  
+  
+  
+  
   
   // Add a simple ambient light to improve visibility
   const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
@@ -586,10 +582,10 @@ function initializeApplication() {
   // Load saved state (if any) before creating default layers
   loadSavedState().then(savedState => {
     if (!savedState) {
-      console.log("No saved state found, creating default layers...");
+      
       createDefaultLayers();
     } else {
-      console.log("Using saved state to initialize layers");
+      
     }
     
     // Continue with application initialization
@@ -609,7 +605,7 @@ function initializeApplication() {
       // Apply global state if available
       if (savedState.globalState && globalState) {
         applyPropertiesToState(globalState, savedState.globalState);
-        console.log('Applied global state from localStorage');
+        
       }
       
       // Create layers from saved data if available
@@ -683,7 +679,7 @@ function initializeApplication() {
    * Create default layers if no saved state is available
    */
   function createDefaultLayers() {
-    console.log("Creating 3 default layers...");
+    
   
     // Create the first layer (triangle)
     const layer0 = layerManager.createLayer({
@@ -751,8 +747,8 @@ function initializeApplication() {
     layer2.setVisible(true);
     
     // Debug layers after creation
-    console.log(`Created 3 layers. Active layer: ${layerManager.activeLayerId}`);
-    console.log("Scene structure:", scene.children.map(c => c.name || 'unnamed'));
+    
+    
   }
   
   /**
@@ -785,7 +781,7 @@ function initializeApplication() {
           layerManager.layers.forEach(layer => {
             if (layer && layer.group) {
               layer.group.userData.globalState = globalState;
-              console.log(`[LAYER ${layer.id}] Attached global state to layer group`);
+              
             }
           });
         }
@@ -798,7 +794,7 @@ function initializeApplication() {
               setBrightness(globalState.brightness);
               setMasterVolume(globalState.volume);
               
-              console.log("[AUDIO] Envelope, brightness and volume initialized");
+              
             })
             .catch(error => {
               console.error("Failed to setup envelope:", error);
@@ -864,11 +860,11 @@ function initializeApplication() {
           if (activeLayer && activeLayer.state) {
             // Only log if there's a mismatch between active layer and layer ID
             if (activeLayer.id !== activeLayerId) {
-              console.warn(`[getActiveState] Layer ID mismatch: activeLayer.id=${activeLayer.id}, activeLayerId=${activeLayerId}`);
+              
             }
             return activeLayer.state;
           } else {
-            console.warn(`[getActiveState] Unable to find active layer state, falling back to default state`);
+            
             return state;
           }
         };
@@ -973,23 +969,15 @@ function initializeApplication() {
       if (activeLayer) {
         // Get the current layer state before recreation
         const layerId = activeLayer.id;
-        console.log(`[DEBUG] Before geometry recreation for layer ${layerId}:`, {
-          radius: activeLayer.state.radius,
-          segments: activeLayer.state.segments,
-          copies: activeLayer.state.copies
-        });
+        
         
         // Force recreation
         activeLayer.recreateGeometry();
         
         // Log after recreation
-        console.log(`[DEBUG] After geometry recreation for layer ${layerId}:`, {
-          radius: activeLayer.state.radius,
-          segments: activeLayer.state.segments,
-          copies: activeLayer.state.copies
-        });
         
-        console.log(`[DEBUG] Manually recreated geometry for active layer ${layerId}`);
+        
+        
       }
     });
     
@@ -1010,18 +998,11 @@ function initializeApplication() {
     
     compareLayersButton.addEventListener('click', () => {
       if (layerManager && layerManager.layers.length > 0) {
-        console.log(`[DEBUG] Current active layer ID: ${layerManager.activeLayerId}`);
+        
         
         // Log state of all layers
         layerManager.layers.forEach(layer => {
-          console.log(`[DEBUG] Layer ${layer.id} state:`, {
-            active: layer.active,
-            radius: layer.state.radius,
-            segments: layer.state.segments,
-            copies: layer.state.copies,
-            visible: layer.visible,
-            groupVisible: layer.group.visible
-          });
+          
         });
       }
     });
@@ -1043,16 +1024,12 @@ function initializeApplication() {
     
     recreateAllButton.addEventListener('click', () => {
       if (layerManager && layerManager.layers.length > 0) {
-        console.log(`[DEBUG] Recreating geometry for ALL layers`);
+        
         
         // Force recreation of all layers' geometries
         layerManager.layers.forEach(layer => {
           // Log before state
-          console.log(`[DEBUG] Layer ${layer.id} BEFORE recreation:`, {
-            radius: layer.state.radius,
-            segments: layer.state.segments,
-            copies: layer.state.copies
-          });
+          
           
           // Force parameter changes to trigger geometry update
           layer.state.parameterChanges.radius = true;
@@ -1063,14 +1040,10 @@ function initializeApplication() {
           layer.recreateGeometry();
           
           // Log after recreation
-          console.log(`[DEBUG] Layer ${layer.id} AFTER recreation:`, {
-            radius: layer.state.radius,
-            segments: layer.state.segments,
-            copies: layer.state.copies
-          });
+          
         });
         
-        console.log(`[DEBUG] All geometries recreated`);
+        
       }
     });
     
@@ -1091,7 +1064,7 @@ function initializeApplication() {
     
     fixLayerColorsButton.addEventListener('click', () => {
       if (layerManager && typeof layerManager.forceSyncLayerColors === 'function') {
-        console.log(`[DEBUG] Fixing all layer colors`);
+        
         layerManager.forceSyncLayerColors();
         
         // Also force geometry recreation to ensure the colors are applied
@@ -1103,7 +1076,7 @@ function initializeApplication() {
           layer.recreateGeometry();
         });
         
-        console.log(`[DEBUG] Layer colors fixed and geometries recreated`);
+        
       } else {
         console.error(`[DEBUG] Cannot fix layer colors: layerManager.forceSyncLayerColors is not a function`);
       }
@@ -1125,50 +1098,28 @@ function initializeApplication() {
     debugSceneButton.style.display = DEBUG_BUTTONS ? 'block' : 'none';
     
     debugSceneButton.addEventListener('click', () => {
-      console.log('---------- SCENE DEBUG ----------');
+      
       if (!scene) {
         console.error('No scene available!');
         return;
       }
       
-      console.log('Scene structure:', scene);
-      console.log('Scene children:', scene.children.map(c => ({
-        name: c.name || 'unnamed',
-        type: c.type,
-        visible: c.visible,
-        childCount: c.children?.length || 0
-      })));
+      
+      
       
       if (scene._layerManager) {
-        console.log('Layer Manager:', scene._layerManager);
-        console.log('Active Layer ID:', scene._layerManager.activeLayerId);
+        
+        
         
         scene._layerManager.layers.forEach(layer => {
-          console.log(`Layer ${layer.id}:`, {
-            active: layer.active,
-            visible: layer.visible,
-            group: layer.group ? {
-              visible: layer.group.visible,
-              childCount: layer.group.children.length
-            } : 'no group',
-            baseGeo: layer.baseGeo ? 'exists' : 'missing',
-            material: layer.material ? {
-              color: '#' + layer.material.color.getHexString(),
-              visible: !layer.material.transparent || layer.material.opacity > 0
-            } : 'no material',
-            state: {
-              radius: layer.state.radius,
-              segments: layer.state.segments,
-              copies: layer.state.copies
-            }
-          });
+          
         });
       }
       
-      console.log('Camera:', camera);
-      console.log('Renderer:', renderer);
-      console.log('Animation stats:', stats ? stats.getFPS() : 'no stats');
-      console.log('----------------------------------');
+      
+      
+      
+      
     });
     
     // Add all buttons to the document

@@ -43,9 +43,9 @@ export function createPolygonGeometry(radius, segments, state = null) {
   
   // More verbose debugging for star shapes
   if (DEBUG_STAR_CUTS && state?.useStars) {
-    console.log(`[STAR CUTS] Creating geometry: shapeType=${shapeType}, useStars=${state.useStars}, starSkip=${state.starSkip}, useCuts=${state.useCuts}`);
+    
   } else if (DEBUG_LOGGING) {
-    console.log(`[GEOMETRY CREATE] Creating polygon geometry for layer ${layerId} with radius=${radius}, segments=${segments}, shapeType=${shapeType}`);
+    
   }
   
   // Handle different shape types
@@ -53,19 +53,19 @@ export function createPolygonGeometry(radius, segments, state = null) {
     case 'star':
       // Create a star polygon
       if (DEBUG_STAR_CUTS) {
-        console.log(`[STAR CUTS] Creating star polygon geometry with ${segments} segments and skip=${state?.starSkip || 1}`);
+        
       }
       
       const starPoints = createStarPolygonPoints(radius, segments, state?.starSkip || 1, state);
       if (DEBUG_STAR_CUTS) {
-        console.log(`[STAR CUTS] Created star polygon with ${starPoints.length} points`);
+        
       }
       return createGeometryFromPoints(starPoints, state);
       
     case 'fractal':
       // Create a fractal-like shape
       if (DEBUG_LOGGING) {
-        console.log(`[GEOMETRY CREATE] Creating fractal polygon with fractalValue=${state?.fractalValue}, segments=${segments}`);
+        
       }
       const fractalPoints = createFractalPolygonPoints(radius, segments, state?.fractalValue || 1, state);
       return createGeometryFromPoints(fractalPoints, state);
@@ -73,7 +73,7 @@ export function createPolygonGeometry(radius, segments, state = null) {
     case 'euclidean':
       // Create a polygon with Euclidean rhythm
       if (DEBUG_LOGGING) {
-        console.log(`[GEOMETRY CREATE] Creating Euclidean rhythm polygon with euclidValue=${state?.euclidValue}, segments=${segments}`);
+        
       }
       const euclidPoints = createEuclideanPoints(radius, segments, state?.euclidValue || 3, state);
       return createGeometryFromPoints(euclidPoints, state);
@@ -83,7 +83,7 @@ export function createPolygonGeometry(radius, segments, state = null) {
       // When useStars is true but shapeType is not 'star', override to create a star
       if (state?.useStars && state?.starSkip > 1) {
         if (DEBUG_STAR_CUTS) {
-          console.log(`[STAR CUTS] Overriding regular shape to star based on useStars flag`);
+          
         }
         const starPoints = createStarPolygonPoints(radius, segments, state.starSkip, state);
         return createGeometryFromPoints(starPoints, state);
@@ -159,7 +159,7 @@ function createGeometryFromPoints(points, state) {
  */
 function createStarPolygonGeometry(radius, n, k, useFractal, fractalValue, debug = false) {
   // This function is now obsolete - replaced by createStarPolygonPoints
-  console.warn("createStarPolygonGeometry is deprecated, use createStarPolygonPoints instead");
+  
   
   // Create points using our new implementation
   const points = createStarPolygonPoints(radius, n, k, { useFractal, fractalValue, useCuts: false });
@@ -194,7 +194,7 @@ function createStarPolygonGeometry(radius, n, k, useFractal, fractalValue, debug
  */
 function createEuclideanPolygonGeometry(radius, n, k, useFractal, fractalValue, debug = false) {
   // This function is now obsolete - replaced by createEuclideanPoints
-  console.warn("createEuclideanPolygonGeometry is deprecated, use createEuclideanPoints instead");
+  
   
   // Create points using our new implementation
   const points = createEuclideanPoints(radius, n, k, { useFractal, fractalValue });
@@ -434,8 +434,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   const useStarCuts = state && state.useStars && state.useCuts && state.starSkip > 1;
   
   if (DEBUG_STAR_CUTS && useStarCuts) {
-    console.log(`[STAR CUTS] updateGroup called with useStars=${state.useStars}, useCuts=${state.useCuts}, ` +
-                `starSkip=${state.starSkip}, copies=${copies}, justCalculatedIntersections=${justCalculatedIntersections}`);
+    
   }
   
   // Force intersection update when star cuts are enabled
@@ -443,7 +442,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     state.needsIntersectionUpdate = true;
     // Process the intersections for star cuts
     if (DEBUG_STAR_CUTS) {
-      console.log(`[STAR CUTS] Forcing intersection processing for star cuts`);
+      
     }
     processIntersections(state, baseGeo, group);
     justCalculatedIntersections = true;
@@ -456,7 +455,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     group.userData.justCalculatedIntersections = false;
     
     if (DEBUG_STAR_CUTS && useStarCuts) {
-      console.log(`[STAR CUTS] Using justCalculatedIntersections from group userData`);
+      
     }
   }
   
@@ -708,7 +707,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
             state.pointFreqLabels.push(labelInfo);
             pointFreqLabelsCreated.push(labelInfo);
           } catch (labelError) {
-            console.warn(`Failed to create point frequency label for vertex ${v} in copy ${i}:`, labelError);
+            
             // Continue processing other vertices even if one label fails
           }
         }
@@ -729,7 +728,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
           (state.useIntersections || useStarCuts) && !isLerping) {
         
         if (DEBUG_STAR_CUTS && useStarCuts) {
-          console.log(`[STAR CUTS] Creating intersection markers for copy ${i} with finalScale=${finalScale}, useModulus=${state.useModulus}`);
+          
         }
         
         try {
@@ -834,7 +833,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
                 state.pointFreqLabels.push(labelInfo);
                 pointFreqLabelsCreated.push(labelInfo);
               } catch (labelError) {
-                console.warn(`Failed to create intersection point label for point ${j}:`, labelError);
+                
                 // Continue processing other intersection points
               }
             }
@@ -847,8 +846,8 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
           copyGroup.userData.intersectionMarkerGroup = intersectionMarkerGroup;
           
           if (DEBUG_STAR_CUTS && useStarCuts) {
-            console.log(`[STAR CUTS] Added ${state.intersectionPoints.length} scaled intersection markers to copy ${i}`);
-            console.log(`[STAR CUTS] Marker group has ${intersectionMarkerGroup.children.length} children`);
+            
+            
           }
         } catch (intersectionError) {
           console.error("Error creating intersection markers:", intersectionError);
@@ -873,7 +872,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
             labelInfo.label.dispose();
           }
         } catch (disposeError) {
-          console.warn("Error disposing label during cleanup:", disposeError);
+          
         }
       }
       
@@ -892,7 +891,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
           child.parent.remove(child);
         }
       } catch (removeError) {
-        console.warn("Error removing child during cleanup:", removeError);
+        
       }
     }
     
@@ -907,7 +906,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
           material.dispose();
         }
       } catch (disposeError) {
-        console.warn("Error disposing material:", disposeError);
+        
       }
     }
     
@@ -917,7 +916,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
           geometry.dispose();
         }
       } catch (disposeError) {
-        console.warn("Error disposing geometry:", disposeError);
+        
       }
     }
   }
@@ -990,7 +989,7 @@ function calculateEuclideanRhythm(n, k) {
   // Verify we have exactly k pulses
   const pulseCount = pattern.filter(p => p).length;
   if (pulseCount !== k) {
-    console.warn(`Expected ${k} pulses but generated ${pulseCount}. Adjusting pattern.`);
+    
     
     // Force exactly k pulses by adding or removing as needed
     if (pulseCount < k) {
@@ -1100,14 +1099,14 @@ function createStarPolygonPoints(radius, numSegments, skip, state = null) {
   // When creating a star with cuts, force intersection update
   if (state && state.useStars && state.useCuts && skip > 1) {
     if (DEBUG_STAR_CUTS) {
-      console.log(`[STAR CUTS] Forcing needsIntersectionUpdate for star with cuts: segments=${numSegments}, skip=${skip}`);
+      
     }
     // Force intersection recalculation
     state.needsIntersectionUpdate = true;
   }
   
   if (DEBUG_STAR_CUTS && state && state.useStars) {
-    console.log(`[STAR CUTS] Creating star points: segments=${numSegments}, skip=${skip}, gcd=${gcdValue}, useCuts=${state?.useCuts}`);
+    
   }
   
   // Create a stellated figure when useStars is true and skip > 1
@@ -1115,7 +1114,7 @@ function createStarPolygonPoints(radius, numSegments, skip, state = null) {
   
   if (createStellateFigure) {
     if (DEBUG_STAR_CUTS) {
-      console.log(`[STAR CUTS] Creating stellated figure with segments=${numSegments}, skip=${skip}, gcd=${gcdValue}`);
+      
     }
     
     // Generate the outer vertices first
@@ -1142,7 +1141,7 @@ function createStarPolygonPoints(radius, numSegments, skip, state = null) {
       }
       
       if (DEBUG_STAR_CUTS) {
-        console.log(`[STAR CUTS] Created stellated geometry with ${points.length} points (single path)`);
+        
       }
     } else {
       // For multiple disconnected paths (gcd > 1), create each segment separately
@@ -1150,7 +1149,7 @@ function createStarPolygonPoints(radius, numSegments, skip, state = null) {
       const verticesPerPath = numSegments / numPaths;
       
       if (DEBUG_STAR_CUTS) {
-        console.log(`[STAR CUTS] Creating ${numPaths} disconnected paths with ${verticesPerPath} vertices each`);
+        
       }
       
       // Generate each separate path
@@ -1167,7 +1166,7 @@ function createStarPolygonPoints(radius, numSegments, skip, state = null) {
       }
       
       if (DEBUG_STAR_CUTS) {
-        console.log(`[STAR CUTS] Created stellated geometry with ${points.length} points (multiple paths)`);
+        
       }
     }
     
@@ -1177,7 +1176,7 @@ function createStarPolygonPoints(radius, numSegments, skip, state = null) {
   // For regular polygons (skip=1) or when useStars is false
   if (skip === 1 || !state?.useStars) {
     if (DEBUG_STAR_CUTS) {
-      console.log(`[STAR CUTS] Creating regular polygon with ${numSegments} sides`);
+      
     }
     
     // Create simple regular polygon
@@ -1242,8 +1241,8 @@ function createFractalPolygonPoints(radius, numSegments, fractalValue, state = n
   // Start with a regular polygon
   const basePoints = createRegularPolygonPoints(radius, numSegments, state);
   
-  console.log(`[FRACTAL] Starting with ${basePoints.length} base points from regular polygon`);
-  console.log(`[FRACTAL] Fractal value: ${fractalValue}`);
+  
+  
   
   // If fractal value is 1 or less, just return the base polygon
   if (fractalValue <= 1) {
@@ -1252,7 +1251,7 @@ function createFractalPolygonPoints(radius, numSegments, fractalValue, state = n
   
   // Number of divisions per segment (rounded to nearest integer)
   const divisions = Math.max(2, Math.round(fractalValue));
-  console.log(`[FRACTAL] Dividing each segment into ${divisions} parts (${divisions-1} new points per segment)`);
+  
   
   const newPoints = [];
   
@@ -1274,7 +1273,7 @@ function createFractalPolygonPoints(radius, numSegments, fractalValue, state = n
     }
   }
   
-  console.log(`[FRACTAL] Final point count: ${newPoints.length} (${basePoints.length} original + ${newPoints.length - basePoints.length} new)`);
+  
   return newPoints;
 }
 
@@ -1287,6 +1286,6 @@ function createFractalPolygonPoints(radius, numSegments, fractalValue, state = n
  */
 function generateEuclideanRhythm(n, k) {
   // This function is now obsolete - replaced by calculateEuclideanRhythm
-  console.warn("generateEuclideanRhythm is deprecated, use calculateEuclideanRhythm instead");
+  
   return calculateEuclideanRhythm(n, k);
 }

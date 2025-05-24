@@ -58,7 +58,7 @@ export class LayerManager {
         this.layerContainer.userData.globalState = scene.userData.globalState;
       }
       
-      console.log(`Layer container initialized with camera and renderer from scene`);
+      
     }
     
     // Add the container to the scene
@@ -66,9 +66,9 @@ export class LayerManager {
     
     // Ensure the container is added to the scene and visible
     if (DEBUG_LOGGING) {
-      console.log("Layer container created with visible =", this.layerContainer.visible);
-      console.log("Layer container added to scene, scene child count =", this.scene.children.length);
-      console.log("Scene children:", this.scene.children.map(child => child.name || 'unnamed'));
+      
+      
+      
     }
   }
   
@@ -86,7 +86,7 @@ export class LayerManager {
       const hue = (id * 60) % 360; // Each layer gets a 60-degree shift in hue
       options.color = new THREE.Color(`hsl(${hue}, 100%, 50%)`);
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER MANAGER] Created distinct color for layer ${id}: hue=${hue}`);
+        
       }
     }
     
@@ -106,7 +106,7 @@ export class LayerManager {
       // First layer is triangle (3), second is square (4), etc.
       layer.state.segments = 3 + id;
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER MANAGER] Set distinct segments for layer ${id}: ${layer.state.segments}`);
+        
       }
       
       // Make sure the parameter change is registered
@@ -127,16 +127,16 @@ export class LayerManager {
       if (camera && renderer && typeof layer.propagateCameraAndRenderer === 'function') {
         layer.propagateCameraAndRenderer(camera, renderer);
         if (DEBUG_LOGGING) {
-          console.log(`[LAYER MANAGER] Propagated camera and renderer to new layer ${id}`);
+          
         }
       }
     }
     
     // Log for debugging
     if (DEBUG_LOGGING) {
-      console.log(`Created layer ${id}, added to container. Container has ${this.layerContainer.children.length} children`);
-      console.log(`Layer ${id} visibility:`, layer.visible, "Group visibility:", layer.group.visible);
-      console.log(`Layer ${id} color:`, layer.color);
+      
+      
+      
     }
     
     // Add to layer collection
@@ -162,13 +162,8 @@ export class LayerManager {
     const layerId = layer.id;
     
     if (DEBUG_LOGGING) {
-      console.log(`[LAYER MANAGER] Initializing geometry for layer ${layerId}`);
-      console.log(`[LAYER MANAGER] Layer ${layerId} state:`, {
-        radius: state.radius,
-        segments: state.segments,
-        copies: state.copies,
-        stepScale: state.stepScale
-      });
+      
+      
     }
     
     // Ensure we have some reasonable defaults
@@ -190,7 +185,7 @@ export class LayerManager {
     );
     
     if (DEBUG_LOGGING) {
-      console.log(`[GEOMETRY INIT] Created geometry for layer ${layerId} with ${state.segments} segments and ${state.copies} copies`);
+      
     }
     
     // Initialize the group with the geometry
@@ -208,7 +203,7 @@ export class LayerManager {
     );
     
     if (DEBUG_LOGGING) {
-      console.log(`[LAYER MANAGER] Initialized group for layer ${layerId}, group now has ${layer.group.children.length} children`);
+      
     }
   }
   
@@ -223,15 +218,11 @@ export class LayerManager {
     }
     
     if (DEBUG_LOGGING) {
-      console.log(`[LAYER MANAGER] Changing active layer from ${this.activeLayerId} to ${layerId}`);
+      
     
       // Log the current state of the layer we're switching to before making it active
       if (this.layers[layerId]) {
-        console.log(`[LAYER MANAGER] Layer ${layerId} state before activation:`, {
-          radius: this.layers[layerId].state.radius,
-          segments: this.layers[layerId].state.segments,
-          copies: this.layers[layerId].state.copies
-        });
+        
       }
     }
     
@@ -242,7 +233,7 @@ export class LayerManager {
       
       previousLayer.deactivate();
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER MANAGER] Deactivated layer ${previousLayerId}`);
+        
       }
     }
     
@@ -250,11 +241,7 @@ export class LayerManager {
     this.layers[layerId].activate();
     this.activeLayerId = layerId;
     if (DEBUG_LOGGING) {
-      console.log(`[LAYER MANAGER] Activated layer ${layerId}, state:`, {
-        radius: this.layers[layerId].state.radius,
-        segments: this.layers[layerId].state.segments,
-        copies: this.layers[layerId].state.copies
-      });
+      
     }
     
     // Ensure window._appState is synchronized with the active layer
@@ -271,7 +258,7 @@ export class LayerManager {
       });
       
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER MANAGER] Marked all parameters as changed for layer ${layerId} to force UI update`);
+        
       }
     }
     
@@ -293,14 +280,14 @@ export class LayerManager {
       if (!window._appState || window._appState !== activeLayer.state) {
         window._appState = activeLayer.state;
         if (DEBUG_LOGGING) {
-          console.log(`[LAYER MANAGER] Updated window._appState to sync with active layer ${this.activeLayerId}`);
+          
         }
       }
     } else if (window._appState) {
       // If no active layer but window._appState exists, clear it
       window._appState = null;
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER MANAGER] Cleared window._appState since no active layer exists`);
+        
       }
     }
   }
@@ -317,7 +304,7 @@ export class LayerManager {
       try {
         window.updateUIFromState(layerState);
         if (DEBUG_LOGGING) {
-          console.log(`[LAYER MANAGER] Called updateUIFromState for layer ${layerId}`);
+          
         }
       } catch (error) {
         console.error(`[LAYER MANAGER] Error updating UI from state:`, error);
@@ -329,7 +316,7 @@ export class LayerManager {
       try {
         window.updateUIForActiveLayer(layerId);
         if (DEBUG_LOGGING) {
-          console.log(`[LAYER MANAGER] Called updateUIForActiveLayer for layer ${layerId}`);
+          
         }
       } catch (error) {
         console.error(`[LAYER MANAGER] Error updating UI for active layer:`, error);
@@ -343,7 +330,7 @@ export class LayerManager {
       });
       window.dispatchEvent(event);
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER MANAGER] Dispatched layerChanged event for layer ${layerId}`);
+        
       }
     } catch (error) {
       console.error(`[LAYER MANAGER] Error dispatching layer change event:`, error);
@@ -466,10 +453,7 @@ export class LayerManager {
       window.dispatchEvent(event);
       
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER MANAGER] Dispatched layerRemoved event for layer ${removedLayerId}`, {
-          idRemapping,
-          remainingLayers: this.layers.map(layer => layer.id)
-        });
+        
       }
     } catch (error) {
       console.error(`[LAYER MANAGER] Error dispatching layer removal event:`, error);
@@ -503,12 +487,12 @@ export class LayerManager {
       if (!window.mainRenderer) window.mainRenderer = renderer;
       if (!window.mainScene) window.mainScene = scene;
     } else {
-      console.warn("[LAYER MANAGER] Missing camera or renderer in animation parameters");
+      
     }
 
     // Ensure we're working with the correct active layer
     if (activeLayerId !== undefined && this.activeLayerId !== activeLayerId) {
-      console.warn(`[LAYER MANAGER] Active layer mismatch! LayerManager: ${this.activeLayerId}, Animation: ${activeLayerId}`);
+      
       // Force sync to the one from animation params
       this.setActiveLayer(activeLayerId);
     }
@@ -526,9 +510,9 @@ export class LayerManager {
 
     // Debug log all layers' key parameters if logging is enabled
     if (shouldLog) {
-      console.log(`[LAYER MANAGER] Updating layers. Active layer ID: ${this.activeLayerId}`);
+      
       this.layers.forEach(layer => {
-        console.log(`[LAYER MANAGER] Layer ${layer.id} state: radius=${layer.state.radius}, segments=${layer.state.segments}, copies=${layer.state.copies}, active=${layer.active}`);
+        
       });
     }
 
@@ -565,7 +549,7 @@ export class LayerManager {
         
         // Debugging for lerp updates
         if (state.useLerp && shouldLog) {
-          console.log(`[LAYER ${layerId}] Updated lerp with dt=${dtSeconds.toFixed(4)}s, isLerping=${state.isLerping()}`);
+          
         }
       }
       
@@ -600,7 +584,7 @@ export class LayerManager {
         
         // Log geometry recreation for debugging
         if (DEBUG_LOGGING) {
-          console.log(`[GEOMETRY UPDATE] Updated geometry for layer ${layerId}${isActiveLayer ? ' (ACTIVE)' : ''}: radius=${state.radius}, segments=${state.segments}, copies=${state.copies}`);
+          
         }
       }
       
@@ -637,7 +621,7 @@ export class LayerManager {
         );
         
         if ((shouldLog || hasParameterChanges) && DEBUG_LOGGING) {
-          console.log(`[LAYER MANAGER] Updated group for layer ${layerId}: reason=${hasParameterChanges ? 'parameter changes' : (state.isLerping() ? 'lerping' : 'initialization')}`);
+          
         }
       }
       
@@ -663,8 +647,7 @@ export class LayerManager {
         // Occasionally log rotation info for debugging
         if (DEBUG_LOGGING && Math.random() < 0.001) {
           const hasTimeSubdivision = state.useTimeSubdivision && state.timeSubdivisionValue !== 1;
-          console.log(`[LAYER ${layerId}] Rotation: ${(rotationAngle * 180 / Math.PI).toFixed(1)}°, ` + 
-                      `Time subdivision: ${hasTimeSubdivision ? state.timeSubdivisionValue + 'x' : 'disabled'}`);
+          
         }
       }
       
@@ -691,7 +674,7 @@ export class LayerManager {
     
     // Log which layers had geometry updates in this frame (if any)
     if (updatedGeometryForLayers.length > 0 && DEBUG_LOGGING) {
-      console.log(`[LAYER MANAGER] Updated geometry for layers: ${updatedGeometryForLayers.join(', ')}`);
+      
     }
   }
 
@@ -704,7 +687,7 @@ export class LayerManager {
     // Get camera and renderer references from scene userData
     const camera = scene.userData?.camera;
     if (!camera) {
-      if (shouldLog) console.warn("Cannot update camera: No camera reference in scene userData");
+      
       return;
     }
 
@@ -754,7 +737,7 @@ export class LayerManager {
         
         // Log camera update if requested
         if (shouldLog) {
-          console.log(`Updating camera distance: ${previousDistance.toFixed(0)} → ${targetDistance.toFixed(0)} (max radius: ${maxBoundingRadius.toFixed(0)})`);
+          
         }
       }
       
@@ -777,7 +760,7 @@ export class LayerManager {
     }
     
     const layer = this.layers[layerId];
-    console.log(`Forcing geometry recreation for layer ${layerId}`);
+    
     
     // Recreate the geometry
     this.initializeLayerGeometry(layer);
@@ -791,7 +774,7 @@ export class LayerManager {
    */
   forceSyncLayerColors() {
     if (DEBUG_LOGGING) {
-      console.log(`[LAYER MANAGER] Forcing synchronization of all layer colors`);
+      
     }
     
     for (const layer of this.layers) {
@@ -810,7 +793,7 @@ export class LayerManager {
         
         // Log the color change
         if (DEBUG_LOGGING) {
-          console.log(`[LAYER MANAGER] Updated layer ${layer.id} material color from #${oldColor} to #${layer.color.getHexString()}`);
+          
         }
       }
       
@@ -833,7 +816,7 @@ export class LayerManager {
     }
     
     if (DEBUG_LOGGING) {
-      console.log(`[LAYER MANAGER] Layer color synchronization complete`);
+      
     }
   }
 
@@ -843,7 +826,7 @@ export class LayerManager {
    * and all global references point to the same object
    */
   debugActiveLayerState() {
-    console.log('------- LAYER STATE DEBUG -------');
+    
     const activeLayer = this.getActiveLayer();
     
     if (!activeLayer) {
@@ -851,38 +834,38 @@ export class LayerManager {
       return;
     }
     
-    console.log(`Active layer ID: ${this.activeLayerId}`);
-    console.log(`Active layer's state.layerId: ${activeLayer.state.layerId}`);
+    
+    
     
     // Check if the state's layer ID matches the actual layer ID
     if (activeLayer.state.layerId !== this.activeLayerId) {
       console.error(`MISMATCH: Active layer ID (${this.activeLayerId}) does not match state.layerId (${activeLayer.state.layerId})`);
     } else {
-      console.log('MATCH: Active layer ID matches state.layerId reference');
+      
     }
     
     // Check if window._appState points to the active layer's state
     if (window._appState === activeLayer.state) {
-      console.log('CORRECT: window._appState points to the active layer state');
+      
     } else {
       console.error('INCORRECT: window._appState does NOT point to the active layer state');
-      console.log('window._appState.layerId =', window._appState.layerId);
-      console.log('activeLayer.state.layerId =', activeLayer.state.layerId);
+      
+      
     }
     
     // Check if getActiveState returns the active layer's state
     if (typeof window.getActiveState === 'function') {
       const activeState = window.getActiveState();
       if (activeState === activeLayer.state) {
-        console.log('CORRECT: getActiveState() returns the active layer state');
+        
       } else {
         console.error('INCORRECT: getActiveState() does NOT return the active layer state');
-        console.log('getActiveState().layerId =', activeState.layerId);
-        console.log('activeLayer.state.layerId =', activeLayer.state.layerId);
+        
+        
       }
     }
     
-    console.log('------ END LAYER STATE DEBUG ------');
+    
   }
 
   /**
@@ -993,7 +976,7 @@ export class LayerManager {
     }
     
     // Log success
-    console.log(`[LAYER MANAGER] Camera and renderer references propagated to ${successCount}/${this.layers.length} layers`);
+    
     
     return { camera, renderer };
   }

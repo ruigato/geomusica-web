@@ -9,21 +9,20 @@ try {
   const triggersModule = await import('./triggers.js');
   originalDetectLayerTriggers = triggersModule.detectLayerTriggers;
   originalResetTriggerSystem = triggersModule.resetTriggerSystem;
-  console.log('Successfully imported triggers.js');
+  
 } catch (e) {
-  console.warn('Could not import from triggers.js, using mock implementations', e);
+  
   // Mock implementations for demo
   originalDetectLayerTriggers = (layer, tNow, audioCallback) => {
-    console.log('Mock detectLayerTriggers called');
+    
     return false;
   };
   originalResetTriggerSystem = () => {
-    console.log('Mock resetTriggerSystem called');
+    
   };
 }
 
 // Log that this module loaded
-console.log('[triggersPatch.js] Module loaded');
 
 // Feature flag to enable/disable temporal trigger detection
 let useTemporalTriggers = false;
@@ -34,7 +33,7 @@ let useTemporalTriggers = false;
  */
 export function setTemporalTriggersEnabled(enabled) {
   useTemporalTriggers = enabled;
-  console.log(`[Trigger System] ${enabled ? 'Enabled' : 'Disabled'} temporal trigger detection engine`);
+  
 }
 
 /**

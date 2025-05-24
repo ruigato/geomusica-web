@@ -206,7 +206,7 @@ export function setupLayersUI(layerManager) {
 function calculateLuminance(color) {
   // Validate input
   if (!color || typeof color.r !== 'number' || typeof color.g !== 'number' || typeof color.b !== 'number') {
-    console.warn('Invalid color object provided to calculateLuminance, using fallback');
+    
     return 0; // Default to dark (white text)
   }
   
@@ -247,7 +247,7 @@ function getContrastColor(backgroundColor) {
 function colorToRGB(color) {
   // Validate input
   if (!color || typeof color.r !== 'number' || typeof color.g !== 'number' || typeof color.b !== 'number') {
-    console.warn('Invalid color object provided to colorToRGB, using fallback red');
+    
     return 'rgb(255, 0, 0)'; // Fallback to red
   }
   
@@ -410,7 +410,7 @@ function addDebugButtons(container, layerManager) {
   recreateGeometryButton.addEventListener('click', () => {
     const activeLayer = layerManager.getActiveLayer();
     if (activeLayer) {
-      console.log(`Recreating geometry for layer ${activeLayer.id}`);
+      
       activeLayer.recreateGeometry();
     }
   });

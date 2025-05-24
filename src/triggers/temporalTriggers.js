@@ -101,7 +101,7 @@ export class TemporalTriggerEngine {
   initialize() {
     this.lastProcessedTime = getCurrentTime();
     this._initialized = true;
-    console.log(`[TemporalTrigger] Initialized engine with ${this.resolution}Hz resolution`);
+    
   }
   
   /**
