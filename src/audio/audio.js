@@ -581,27 +581,8 @@ export async function setBrightness(brightness) {
   return await parameterManager.applyPendingParams();
 }
 
-// Start Csound time updates - now just a stub
-export function startCsoundTimeUpdates() {
-  // This function has been deprecated and is kept for backward compatibility
-  if (DEBUG_AUDIO) {
-    
-  }
-}
-
-// Stop Csound time updates - now just a stub
-export function stopCsoundTimeUpdates() {
-  // This function has been deprecated and is kept for backward compatibility
-  if (DEBUG_AUDIO) {
-    
-  }
-}
-
 // Clean up audio system
 export async function cleanupAudio() {
-  // Stop time updates first
-  stopCsoundTimeUpdates();
-  
   // Clear any pending parameters
   parameterManager.clearPendingParams();
   
@@ -665,14 +646,3 @@ export const Tone = {
     }
   }
 };
-
-/**
- * Csound timer stub for compatibility
- * @returns {Promise<boolean>} Always resolves to true
- */
-export async function startCsoundTimer() {
-  if (DEBUG_AUDIO) {
-    
-  }
-  return true;
-}
