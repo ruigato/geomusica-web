@@ -71,15 +71,10 @@ export async function diagnoseTiming() {
 }
 
 // Provide empty implementations of Csound functions for compatibility
-export function updateCsoundInstance() { return true; }
-export async function enableCsoundTiming() { 
-  
-  return true; 
-}
-export async function diagnoseCsoundTiming() { 
-  return await diagnoseTiming();
-}
-export async function startCsoundTimer() { return true; }
+export function updateCsoundInstance() {}
+export async function enableCsoundTiming() {}
+export async function diagnoseCsoundTiming() {}
+export async function startCsoundTimer() {}
 
 /**
  * Convert seconds to ticks based on BPM
