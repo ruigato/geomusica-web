@@ -1,4 +1,4 @@
-// src/triggers/triggers.js - Complete redesign for layer system
+// src/triggers/triggers.js - Complete redesign for layer system with subframe precision
 import * as THREE from 'three';
 import { MARK_LIFE, OVERLAP_THRESHOLD, TICKS_PER_BEAT, TICKS_PER_MEASURE, ANIMATION_STATES, MAX_VELOCITY } from '../config/constants.js';
 import { createOrUpdateLabel, createAxisLabel, removeLabel } from '../ui/domLabels.js';
