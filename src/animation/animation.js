@@ -1,7 +1,7 @@
 // src/animation/animation.js - Enhanced for high framerate trigger detection with subframe precision
 import * as THREE from 'three';
 import { getCurrentTime } from '../time/time.js';
-import { processPendingTriggers, clearLayerMarkers, createMarker, detectLayerTriggers, resetTriggerSystem } from '../triggers/triggers.js';
+import { processPendingTriggers, clearLayerMarkers, detectLayerTriggers, resetTriggerSystem } from '../triggers/triggers.js';
 import { ANIMATION_STATES, MAX_VELOCITY } from '../config/constants.js';
 import { detectIntersections, applyVelocityToMarkers } from '../geometry/intersections.js';
 import { updateLabelPositions, updateAxisLabels } from '../ui/domLabels.js';

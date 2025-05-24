@@ -11,7 +11,7 @@ import {
   getMeasurePosition 
 } from '../time/time.js';
 import { createNote } from '../notes/notes.js';
-import { TemporalTriggerEngine, TemporalCrossingResult } from '../SubframeTrigger.js';
+import { TemporalTriggerEngine } from '../SubframeTrigger.js';
 
 // Debug flag to control logging
 const DEBUG_LOGGING = false;
