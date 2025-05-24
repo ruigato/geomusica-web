@@ -19,6 +19,11 @@ const DEBUG_LOGGING = false;
 // Debug flag for star cuts (intersection points)
 const DEBUG_STAR_CUTS = false;
 
+// Memory management configurations
+const RECENT_TRIGGERS_MAX_AGE = 10; // Time in seconds before a trigger is considered stale
+const PENDING_TRIGGERS_MAX_SIZE = 1000; // Maximum number of pending triggers to store
+const CLEANUP_INTERVAL = 5000; // Milliseconds between cleanup operations
+
 // Map to track triggered points and prevent re-triggering
 const recentTriggers = new Map();
 
@@ -38,6 +43,68 @@ subframeEngine.initialize();
 const POSITION_RECORD_INTERVAL = 1 / 120; // Record positions at max 120Hz for efficiency
 const DEFAULT_COOLDOWN_TIME = 0.05; // 50ms default cooldown between triggers
 let lastPositionRecordTime = 0;
+
+// Setup periodic cleanup timer
+let cleanupTimerId = null;
+setupCleanupTimer();
+
+// Register cleanup on window unload to prevent memory leaks
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    disposeTriggerSystem();
+  });
+}
+
+/**
+ * Set up a periodic timer to clean up stale data and prevent memory leaks
+ */
+function setupCleanupTimer() {
+  // Clear any existing timer
+  if (cleanupTimerId !== null) {
+    clearInterval(cleanupTimerId);
+  }
+  
+  // Create a new timer that runs periodically
+  cleanupTimerId = setInterval(() => {
+    cleanupRecentTriggers();
+    cleanupPendingTriggers();
+  }, CLEANUP_INTERVAL);
+}
+
+/**
+ * Remove stale entries from recentTriggers map to prevent memory leaks
+ */
+function cleanupRecentTriggers() {
+  const now = getCurrentTime();
+  
+  // Remove entries older than RECENT_TRIGGERS_MAX_AGE
+  for (const [key, data] of recentTriggers.entries()) {
+    if (now - data.time > RECENT_TRIGGERS_MAX_AGE) {
+      recentTriggers.delete(key);
+    }
+  }
+}
+
+/**
+ * Clean up executed or excess entries from pendingTriggers array
+ */
+function cleanupPendingTriggers() {
+  const now = getCurrentTime();
+  
+  // Remove already executed triggers (with some margin)
+  pendingTriggers = pendingTriggers.filter(trigger => 
+    trigger.executeTime > now - 1 // Keep triggers from the last second in case of processing delays
+  );
+  
+  // If still too large, keep only the most recent triggers
+  if (pendingTriggers.length > PENDING_TRIGGERS_MAX_SIZE) {
+    // Sort by execution time if not already sorted
+    pendingTriggers.sort((a, b) => a.executeTime - b.executeTime);
+    
+    // Trim to maximum size
+    pendingTriggers = pendingTriggers.slice(0, PENDING_TRIGGERS_MAX_SIZE);
+  }
+}
 
 /**
  * Calculate distance between two points in 2D space
@@ -156,6 +223,16 @@ function calculateFrequency(x, y, state) {
  * @param {number} quantizedTime - Time when trigger should execute
  */
 function storePendingTrigger(triggerInfo, quantizedTime) {
+  // Clean up executed triggers before adding new ones to avoid overflow
+  cleanupPendingTriggers();
+  
+  // Check if we've reached the maximum size limit
+  if (pendingTriggers.length >= PENDING_TRIGGERS_MAX_SIZE) {
+    // Log warning about hitting the limit
+    console.warn(`Pending triggers limit (${PENDING_TRIGGERS_MAX_SIZE}) reached. Some triggers may be lost.`);
+    return; // Skip adding this trigger
+  }
+  
   // Create deep copy of trigger info to prevent reference issues
   const storedInfo = {
     ...triggerInfo,
@@ -212,6 +289,11 @@ export function processPendingTriggers(currentTime, audioCallback, scene) {
         createMarker(worldRot, noteCopy.x, noteCopy.y, scene, noteCopy, camera, renderer, isQuantized, layer);
       }
     }
+  }
+  
+  // After processing, clean up any remaining stale triggers
+  if (pendingTriggers.length > 0) {
+    cleanupPendingTriggers();
   }
 }
 
@@ -520,12 +602,45 @@ export function createMarker(angle, worldX, worldY, scene, note, camera = null, 
  * Reset the trigger system - call when geometry changes
  */
 export function resetTriggerSystem() {
+  // Clear all collections completely
   recentTriggers.clear();
   pendingTriggers = [];
   
   // Also reset the subframe engine
   if (subframeEngine) {
     subframeEngine.clearAllHistory();
+  }
+  
+  // Reset timers and restart cleanup
+  if (cleanupTimerId !== null) {
+    clearInterval(cleanupTimerId);
+    cleanupTimerId = null;
+  }
+  setupCleanupTimer();
+  
+  // Reset the last position record time
+  lastPositionRecordTime = 0;
+}
+
+/**
+ * Completely dispose of the trigger system and free resources
+ * Call this when the application is shutting down or when
+ * the trigger system is no longer needed
+ */
+export function disposeTriggerSystem() {
+  // Clear all collections
+  recentTriggers.clear();
+  pendingTriggers = [];
+  
+  // Dispose of the subframe engine
+  if (subframeEngine) {
+    subframeEngine.dispose();
+  }
+  
+  // Clear any timers
+  if (cleanupTimerId !== null) {
+    clearInterval(cleanupTimerId);
+    cleanupTimerId = null;
   }
 }
 
@@ -1250,6 +1365,17 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
       const vertexId = `${layer.id}-${ci}-${vi}`;
       
       try {
+        // Skip if this trigger is in the recent triggers map and still in cooldown
+        if (recentTriggers.has(vertexId)) {
+          const triggerData = recentTriggers.get(vertexId);
+          const timeSinceLastTrigger = timestamp - triggerData.time;
+          
+          // Skip if cooldown hasn't elapsed
+          if (timeSinceLastTrigger < cooldownTime) {
+            continue;
+          }
+        }
+        
         // Check for trigger crossing with subframe precision
         const crossingResult = subframeEngine.detectCrossing(vertexId, cooldownTime);
         
@@ -1270,6 +1396,15 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
           // Use the position from the crossing result
           const nonRotatedX = crossingResult.position.x;
           const nonRotatedY = crossingResult.position.y;
+          
+          // Add to recent triggers with current timestamp
+          recentTriggers.set(vertexId, {
+            time: timestamp,
+            position: {
+              x: nonRotatedX,
+              y: nonRotatedY
+            }
+          });
           
           // Create note based on existing system
           let note;
@@ -1440,12 +1575,32 @@ function detectIntersectionSubframeTriggers(
         // Skip if already triggered in this frame
         if (triggeredNow.has(vertexId)) continue;
         
+        // Skip if this trigger is in the recent triggers map and still in cooldown
+        if (recentTriggers.has(vertexId)) {
+          const triggerData = recentTriggers.get(vertexId);
+          const timeSinceLastTrigger = timestamp - triggerData.time;
+          
+          // Skip if cooldown hasn't elapsed
+          if (timeSinceLastTrigger < cooldownTime) {
+            continue;
+          }
+        }
+        
         // Check for overlap with previously triggered points
         if (!isPointOverlapping(crossingResult.position.x, crossingResult.position.y, triggeredPoints)) {
           // Add to triggered points
           triggeredPoints.push({ 
             x: crossingResult.position.x, 
             y: crossingResult.position.y 
+          });
+          
+          // Add to recent triggers with current timestamp
+          recentTriggers.set(vertexId, {
+            time: timestamp,
+            position: {
+              x: crossingResult.position.x,
+              y: crossingResult.position.y
+            }
           });
           
           // Create note based on intersection properties

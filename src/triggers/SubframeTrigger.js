@@ -74,21 +74,95 @@ export class TemporalTriggerEngine {
    * @param {Object} options - Configuration options
    * @param {number} options.resolution - Temporal resolution in Hz (default: 1000)
    * @param {number} options.maxMemory - Maximum memory states to keep (default: 50)
+   * @param {number} options.maxVertices - Maximum number of vertices to track (default: 1000)
+   * @param {number} options.cleanupInterval - Interval in ms to run automatic cleanup (default: 10000)
    */
   constructor(options = {}) {
     // Constants for temporal engine
     const TEMPORAL_RESOLUTION = 1000; // Hz - 1ms time slices for sub-frame precision
     const DEFAULT_TEMPORAL_MEMORY = 50; // Number of temporal states to keep in history
+    const DEFAULT_MAX_VERTICES = 1000; // Maximum number of vertices to track
+    const DEFAULT_CLEANUP_INTERVAL = 10000; // 10 seconds between cleanup operations
     
     this.resolution = options.resolution || TEMPORAL_RESOLUTION;
     this.maxMemory = options.maxMemory || DEFAULT_TEMPORAL_MEMORY;
+    this.maxVertices = options.maxVertices || DEFAULT_MAX_VERTICES;
+    this.cleanupInterval = options.cleanupInterval || DEFAULT_CLEANUP_INTERVAL;
     this.timeSlice = 1 / this.resolution;
     
     // State tracking
     this.vertexStates = new Map(); // Maps vertex IDs to arrays of temporal states
+    this.vertexLastAccessed = new Map(); // For LRU tracking - Maps vertex IDs to last access timestamp
     this.lastProcessedTime = 0;
     this.recentCrossings = new Map(); // Maps vertex IDs to last crossing time
     this._initialized = false;
+    
+    // Setup automatic cleanup
+    this.cleanupTimerId = null;
+    this._setupCleanupTimer();
+  }
+  
+  /**
+   * Set up periodic cleanup timer
+   * @private
+   */
+  _setupCleanupTimer() {
+    // Clear any existing timer
+    if (this.cleanupTimerId !== null) {
+      clearInterval(this.cleanupTimerId);
+    }
+    
+    // Create a new cleanup timer
+    this.cleanupTimerId = setInterval(() => {
+      this._performVertexCleanup();
+    }, this.cleanupInterval);
+  }
+  
+  /**
+   * Perform cleanup of vertex states based on LRU strategy
+   * @private
+   */
+  _performVertexCleanup() {
+    // Skip if not initialized
+    if (!this._initialized) return;
+    
+    const now = this.getCurrentTime();
+    
+    // First pass: remove old entries from each vertex's history
+    for (const [id, states] of this.vertexStates.entries()) {
+      // Prune states that are too old (older than 5 seconds)
+      const recentStates = states.filter(state => now - state.timestamp < 5);
+      
+      if (recentStates.length === 0) {
+        // If no recent states, remove this vertex entirely
+        this.vertexStates.delete(id);
+        this.vertexLastAccessed.delete(id);
+      } else if (recentStates.length !== states.length) {
+        // Update with pruned list
+        this.vertexStates.set(id, recentStates);
+      }
+    }
+    
+    // Second pass: if still too many vertices, use LRU to evict oldest accessed
+    if (this.vertexStates.size > this.maxVertices) {
+      // Convert to array for sorting
+      const entries = Array.from(this.vertexLastAccessed.entries());
+      
+      // Sort by last accessed time (oldest first)
+      entries.sort((a, b) => a[1] - b[1]);
+      
+      // Calculate how many to remove
+      const removeCount = this.vertexStates.size - this.maxVertices;
+      
+      // Remove oldest entries
+      for (let i = 0; i < removeCount; i++) {
+        if (i < entries.length) {
+          const idToRemove = entries[i][0];
+          this.vertexStates.delete(idToRemove);
+          this.vertexLastAccessed.delete(idToRemove);
+        }
+      }
+    }
   }
   
   /**
@@ -97,6 +171,7 @@ export class TemporalTriggerEngine {
   initialize() {
     this.lastProcessedTime = this.getCurrentTime();
     this._initialized = true;
+    this._setupCleanupTimer();
   }
   
   /**
@@ -116,6 +191,14 @@ export class TemporalTriggerEngine {
   recordVertexPosition(id, position, timestamp) {
     if (!this._initialized) {
       this.initialize();
+    }
+    
+    // Update last accessed time for LRU tracking
+    this.vertexLastAccessed.set(id, timestamp);
+    
+    // Check if we're at capacity before adding
+    if (!this.vertexStates.has(id) && this.vertexStates.size >= this.maxVertices) {
+      this._evictLeastRecentlyUsed();
     }
     
     // Create state object
@@ -138,11 +221,48 @@ export class TemporalTriggerEngine {
   }
   
   /**
+   * Evict the least recently used vertex from tracking
+   * @private
+   */
+  _evictLeastRecentlyUsed() {
+    if (this.vertexLastAccessed.size === 0) return;
+    
+    // Find the oldest accessed vertex
+    let oldestId = null;
+    let oldestTime = Infinity;
+    
+    for (const [id, time] of this.vertexLastAccessed.entries()) {
+      if (time < oldestTime) {
+        oldestTime = time;
+        oldestId = id;
+      }
+    }
+    
+    // Remove it from both maps
+    if (oldestId !== null) {
+      this.vertexStates.delete(oldestId);
+      this.vertexLastAccessed.delete(oldestId);
+    }
+  }
+  
+  /**
    * Record multiple vertex positions in batch
    * @param {Array<Object>} vertices - Array of {id, position} objects
    * @param {number} timestamp - Current timestamp (in seconds)
    */
   recordVertexPositions(vertices, timestamp) {
+    // If we have too many vertices, prioritize the current batch
+    if (vertices.length + this.vertexStates.size > this.maxVertices) {
+      // Make room for new vertices by removing least recently used
+      const spaceNeeded = Math.min(vertices.length, this.maxVertices);
+      
+      // Clean existing states to make room
+      while (this.vertexStates.size > this.maxVertices - spaceNeeded) {
+        this._evictLeastRecentlyUsed();
+      }
+    }
+    
+    // Record all vertices in the batch
     vertices.forEach(vertex => {
       this.recordVertexPosition(vertex.id, vertex.position, timestamp);
     });
@@ -156,6 +276,9 @@ export class TemporalTriggerEngine {
     if (this.vertexStates.has(id)) {
       this.vertexStates.delete(id);
     }
+    if (this.vertexLastAccessed.has(id)) {
+      this.vertexLastAccessed.delete(id);
+    }
     if (this.recentCrossings.has(id)) {
       this.recentCrossings.delete(id);
     }
@@ -166,7 +289,20 @@ export class TemporalTriggerEngine {
    */
   clearAllHistory() {
     this.vertexStates.clear();
+    this.vertexLastAccessed.clear();
     this.recentCrossings.clear();
+  }
+  
+  /**
+   * Dispose of the engine and clean up resources
+   */
+  dispose() {
+    if (this.cleanupTimerId !== null) {
+      clearInterval(this.cleanupTimerId);
+      this.cleanupTimerId = null;
+    }
+    this.clearAllHistory();
+    this._initialized = false;
   }
   
   /**
