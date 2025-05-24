@@ -1,11 +1,10 @@
 // src/animation/animation.js - Enhanced for high framerate trigger detection with subframe precision
 import * as THREE from 'three';
 import { getCurrentTime } from '../time/time.js';
-import { processPendingTriggers, clearLayerMarkers, createMarker } from '../triggers/triggers.js';
+import { processPendingTriggers, clearLayerMarkers, createMarker, detectLayerTriggers, resetTriggerSystem } from '../triggers/triggers.js';
 import { ANIMATION_STATES, MAX_VELOCITY } from '../config/constants.js';
 import { detectIntersections, applyVelocityToMarkers } from '../geometry/intersections.js';
 import { updateLabelPositions, updateAxisLabels } from '../ui/domLabels.js';
-import { TemporalTriggerEngine, TemporalCrossingResult } from '../SubframeTrigger.js';
 
 // Frame counter and timing stats
 let frameCount = 0;
@@ -16,20 +15,6 @@ let fpsStats = { min: Infinity, max: 0, avg: 0, frames: 0, total: 0 };
 const TARGET_FPS = 120; // Target 120 FPS for better trigger precision
 const MIN_FRAME_TIME = 1 / TARGET_FPS; // Minimum time between frames
 const MAX_FRAME_TIME = 1 / 30;
-
-// Subframe trigger engine
-const subframeEngine = new TemporalTriggerEngine({
-  resolution: 1000, // 1000Hz = 1ms resolution
-  maxMemory: 100
-});
-
-// Initialize the engine
-subframeEngine.initialize();
-
-// Subframe timing variables
-let lastPositionRecordTime = 0;
-const POSITION_RECORD_INTERVAL = 1 / 120; // Record positions at max 120Hz for efficiency
-const DEFAULT_COOLDOWN_TIME = 0.05; // 50ms default cooldown between triggers
 
 /**
  * Main animation function with enhanced subframe timing for high BPM support
@@ -45,6 +30,11 @@ export function animate(props) {
     globalState,
     stats 
   } = props;
+  
+  // Initialize trigger system on first frame
+  if (frameCount === 0) {
+    resetTriggerSystem();
+  }
   
   // IMPORTANT: Set camera and renderer in scene userData at the very beginning
   // This ensures they're available throughout the entire frame
@@ -202,15 +192,10 @@ export function animate(props) {
       globalState.updateAngle(currentTime * 1000);
     }
     
-    // SUBFRAME ENHANCEMENT: Record positions at fixed intervals
-    // This decouples position recording from frame rate for more consistent trigger detection
-    if (currentTime - lastPositionRecordTime >= POSITION_RECORD_INTERVAL) {
-      recordLayerVertexPositions(activeLayer, currentTime);
-      lastPositionRecordTime = currentTime;
+    // Use the SubframeTrigger system to detect triggers with high precision
+    if (triggerAudioCallback) {
+      detectLayerTriggers(activeLayer, currentTime, triggerAudioCallback);
     }
-    
-    // SUBFRAME ENHANCEMENT: Check for triggers with subframe precision
-    detectSubframeTriggers(activeLayer, currentTime, triggerAudioCallback, cam, renderer, scene);
     
     // Update DOM label positions if the function is available
     if (typeof updateLabelPositions === 'function') {
@@ -262,233 +247,5 @@ export function animate(props) {
   // End stats tracking
   if (stats) {
     stats.end();
-  }
-}
-
-/**
- * Record vertex positions for a layer into the subframe engine
- * @param {Object} layer Layer to record positions for
- * @param {number} timestamp Current time in seconds
- */
-function recordLayerVertexPositions(layer, timestamp) {
-  if (!layer || !layer.group) return;
-  
-  const state = layer.state;
-  const group = layer.group;
-  
-  // Skip if group is not visible
-  if (!group.visible) return;
-  
-  // Check how many copies we have
-  let copies = 0;
-  if (state.copies) {
-    copies = state.copies;
-  } else if (group.children) {
-    // Count real copies (excluding intersection marker groups)
-    copies = group.children.filter(child => 
-      !(child.userData && child.userData.isIntersectionGroup)
-    ).length - 1; // Subtract 1 for the debug sphere
-  }
-  
-  // Skip if no copies or zero segments
-  if (copies <= 0 || state.segments <= 0) return;
-  
-  // Get angle for rotation calculations
-  const angle = layer.currentAngle || 0;
-  
-  // Create matrices for calculations
-  const inverseRotationMatrix = new THREE.Matrix4().makeRotationZ(-angle);
-  const rotationMatrix = new THREE.Matrix4().makeRotationZ(angle);
-  
-  // Process each copy
-  for (let ci = 0; ci < copies; ci++) {
-    // Find the correct copy group
-    let copyIndex = ci;
-    let copyGroup = null;
-    let foundCopyCount = 0;
-    
-    // Find the copy group, skipping non-copy groups
-    for (let i = 0; i < group.children.length; i++) {
-      const child = group.children[i];
-      // Skip debug objects and intersection groups
-      if (child.userData && child.userData.isIntersectionGroup) continue;
-      if (child.type === 'Mesh' && child.geometry && child.geometry.type === 'SphereGeometry') continue;
-      if (child.type === 'Line') continue;
-      
-      // Count this as a valid copy group
-      if (foundCopyCount === ci) {
-        copyGroup = child;
-        break;
-      }
-      
-      // Otherwise, increment our counter and continue
-      foundCopyCount++;
-    }
-    
-    // Skip if we couldn't find a valid copy group
-    if (!copyGroup || !copyGroup.children || copyGroup.children.length === 0) {
-      continue;
-    }
-    
-    // Find the LineLoop (main geometry)
-    const mesh = copyGroup.children.find(child => child.type === 'LineLoop');
-    if (!mesh) {
-      continue;
-    }
-    
-    // Validate geometry and attributes
-    if (!mesh.geometry || !mesh.geometry.getAttribute('position')) {
-      continue;
-    }
-    
-    const positions = mesh.geometry.getAttribute('position');
-    if (!positions || !positions.count) {
-      continue;
-    }
-    
-    const count = positions.count;
-    
-    // Calculate world matrix without rotation
-    const tempWorldMatrix = new THREE.Matrix4();
-    mesh.updateMatrixWorld();
-    tempWorldMatrix.copy(mesh.matrixWorld);
-    tempWorldMatrix.premultiply(inverseRotationMatrix);
-    
-    // Temp vector for calculations
-    const worldPos = new THREE.Vector3();
-    
-    // Process each vertex in this copy
-    for (let vi = 0; vi < count; vi++) {
-      // Create a unique vertex ID
-      const vertexId = `${layer.id}-${ci}-${vi}`;
-      
-      try {
-        // Get current vertex world position (unrotated)
-        worldPos.fromBufferAttribute(positions, vi);
-        
-        // Skip invalid vertices
-        if (isNaN(worldPos.x) || isNaN(worldPos.y) || isNaN(worldPos.z)) {
-          continue;
-        }
-        
-        // Apply unrotated world matrix to get position in world space
-        worldPos.applyMatrix4(tempWorldMatrix);
-        
-        // Apply rotation for trigger detection
-        const rotatedPos = worldPos.clone().applyMatrix4(rotationMatrix);
-        
-        // Record position in subframe engine
-        subframeEngine.recordVertexPosition(
-          vertexId,
-          {
-            x: rotatedPos.x,
-            y: rotatedPos.y,
-            z: rotatedPos.z
-          },
-          timestamp
-        );
-      } catch (error) {
-        console.error(`Error recording vertex position for layer ${layer.id}, copy ${ci}, vertex ${vi}:`, error);
-      }
-    }
-  }
-}
-
-/**
- * Detect triggers using subframe precision
- * @param {Object} layer Layer to detect triggers for
- * @param {number} timestamp Current time in seconds
- * @param {Function} audioCallback Callback for triggered audio
- * @param {THREE.Camera} camera Camera for visual feedback
- * @param {THREE.WebGLRenderer} renderer Renderer for visual feedback
- * @param {THREE.Scene} scene Scene for adding visual markers
- */
-function detectSubframeTriggers(layer, timestamp, audioCallback, camera, renderer, scene) {
-  if (!layer || !layer.group || !audioCallback) return;
-  
-  const state = layer.state;
-  const group = layer.group;
-  
-  // Skip if group is not visible
-  if (!group.visible) return;
-  
-  // Get cooldown time from state or use default
-  const cooldownTime = state.triggerCooldown || DEFAULT_COOLDOWN_TIME;
-  
-  // Check how many copies we have
-  let copies = 0;
-  if (state.copies) {
-    copies = state.copies;
-  } else if (group.children) {
-    // Count real copies (excluding intersection marker groups)
-    copies = group.children.filter(child => 
-      !(child.userData && child.userData.isIntersectionGroup)
-    ).length - 1; // Subtract 1 for the debug sphere
-  }
-  
-  // Skip if no copies or zero segments
-  if (copies <= 0 || state.segments <= 0) return;
-  
-  // Get angle for calculations
-  const angle = layer.currentAngle || 0;
-  
-  // Process each copy
-  for (let ci = 0; ci < copies; ci++) {
-    // Process each vertex in this copy
-    for (let vi = 0; vi < state.segments; vi++) {
-      // Create a unique vertex ID
-      const vertexId = `${layer.id}-${ci}-${vi}`;
-      
-      try {
-        // Check for trigger crossing with subframe precision
-        const crossingResult = subframeEngine.detectCrossing(vertexId, cooldownTime);
-        
-        // Process if crossing detected
-        if (crossingResult.hasCrossed) {
-          // Create frequency based on vertex properties (similar to original system)
-          // This is a simplified version - you might need to adapt this based on your existing code
-          const baseFreq = 440; // A4
-          const octaveOffset = (ci % 4) - 2; // -2 to +1 octave range
-          const semitoneOffset = vi % 12; // 0 to 11 semitones
-          
-          const frequency = baseFreq * Math.pow(2, octaveOffset + semitoneOffset/12);
-          
-          // Create note object
-          const note = {
-            frequency: frequency,
-            noteName: `Note-${vi}`,
-            velocity: 0.8, // Default velocity
-            duration: 0.5,
-            x: crossingResult.position.x,
-            y: crossingResult.position.y,
-            z: crossingResult.position.z,
-            time: crossingResult.exactTime, // Use precise crossing time
-            isSubframe: true,
-            vertexId: vertexId
-          };
-          
-          // Trigger audio with the precise crossing time
-          audioCallback(note);
-          
-          // Add visual marker at crossing position
-          // This assumes you have a createMarker function similar to the one in triggers.js
-          if (typeof createMarker === 'function') {
-            createMarker(
-              angle, 
-              crossingResult.position.x, 
-              crossingResult.position.y, 
-              scene, 
-              note, 
-              camera, 
-              renderer, 
-              false, // not quantized
-              layer
-            );
-          }
-        }
-      } catch (error) {
-        console.error(`Error in subframe trigger detection for layer ${layer.id}, copy ${ci}, vertex ${vi}:`, error);
-      }
-    }
   }
 }

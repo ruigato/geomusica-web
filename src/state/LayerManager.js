@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { createPolygonGeometry, calculateBoundingSphere } from '../geometry/geometry.js';
 import { updateGroup } from '../geometry/geometry.js';
 import { detectLayerTriggers, clearLayerMarkers } from '../triggers/triggers.js';
+import { resetTriggerSystem } from '../triggers/triggers.js';
 
 // Debug flag to control logging
 const DEBUG_LOGGING = false;
@@ -656,7 +657,7 @@ export class LayerManager {
         // Use direct layer trigger detection with the imported function
         detectLayerTriggers(
           layer,
-          tNow,
+          tNow / 1000, // Convert milliseconds to seconds for subframe trigger system
           (note) => {
             // Add layer ID to the note for routing to correct instrument
             const layerNote = { ...note, layerId: layerId };
@@ -761,6 +762,8 @@ export class LayerManager {
     
     const layer = this.layers[layerId];
     
+    // Reset the trigger system to avoid false triggers after geometry change
+    resetTriggerSystem();
     
     // Recreate the geometry
     this.initializeLayerGeometry(layer);
