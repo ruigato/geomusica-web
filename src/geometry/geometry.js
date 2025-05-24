@@ -565,6 +565,10 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         const modulusScale = state.getScaleFactorForCopy(i);
         finalScale = modulusScale * stepScaleFactor;
       }
+      // Apply alt scale if enabled
+      else if (state && state.useAltScale && ((i + 1) % state.altStepN === 0)) {
+        finalScale = stepScaleFactor * state.altScale;
+      }
       
       // Each copy gets a cumulative angle (i * angle) in degrees
       const cumulativeAngleDegrees = i * angle;
