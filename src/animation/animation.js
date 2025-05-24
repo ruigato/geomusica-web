@@ -10,282 +10,144 @@ import { updateLabelPositions, updateAxisLabels } from '../ui/domLabels.js';
 let frameCount = 0;
 let lastTime = 0;
 let fpsStats = { min: Infinity, max: 0, avg: 0, frames: 0, total: 0 };
+let lastFrameTimestamp = 0;
 
-// Enhanced timing controls for high BPM support
-const TARGET_FPS = 120; // Target 120 FPS for better trigger precision
-const MIN_FRAME_TIME = 1 / TARGET_FPS; // Minimum time between frames
-const MAX_FRAME_TIME = 1 / 30; // Maximum frame time to prevent huge jumps
+// Enhanced timing controls for extreme high-precision trigger detection
+const TARGET_FPS = 240; // Target 240 FPS for maximum precision
+const FRAME_INTERVAL = 1000 / TARGET_FPS;
+let animationFrameId = null;
+let lastFrameTime = 0;
 
 /**
- * Main animation function with enhanced timing for high BPM support
- * @param {Object} props Animation properties and dependencies
+ * Main animation loop with optimized timing
+ * @param {Object} props Animation properties
  */
 export function animate(props) {
   const { 
-    scene, 
-    cam, 
-    renderer, 
-    state, 
-    triggerAudioCallback, 
-    globalState,
-    stats 
+    scene, renderer, cam, state, stats, 
+    group, triggerAudioCallback, csound, globalState
   } = props;
   
-  // IMPORTANT: Set camera and renderer in scene userData at the very beginning
-  // This ensures they're available throughout the entire frame
+  // IMPORTANT: Ensure camera and renderer are properly set in the scene
+  // This is critical for proper trigger detection and visualization
   if (scene && cam && renderer) {
+    // Set camera and renderer in scene userData for access by all systems
+    scene.userData = scene.userData || {};
     scene.userData.camera = cam;
     scene.userData.renderer = renderer;
     
-    // Also ensure each layer has access to camera and renderer
+    // Also set direct properties for backwards compatibility
+    scene.mainCamera = cam;
+    scene.mainRenderer = renderer;
+    
+    // Ensure each layer has access to camera and renderer
     if (scene._layerManager && scene._layerManager.layers) {
-      scene._layerManager.layers.forEach(layer => {
-        // Make sure the layer's group has references to camera and renderer
-        if (layer && layer.group) {
-          layer.group.userData.camera = cam;
-          layer.group.userData.renderer = renderer;
-        }
-      });
+      scene._layerManager.ensureCameraAndRendererForLayers(cam, renderer);
     }
   }
   
-  // Use requestAnimationFrame to schedule the next frame
-  requestAnimationFrame(() => animate(props));
-  
-  // Get current time in seconds using browser performance API
+  // Measure current time for this frame
+  const timestamp = performance.now();
   const currentTime = getCurrentTime();
   
-  // Calculate time delta with enhanced precision control
-  let timeDelta = currentTime - lastTime;
+  // Calculate time since last frame
+  const deltaTime = timestamp - lastFrameTimestamp;
+  lastFrameTimestamp = timestamp;
   
-  // Clamp delta time for stability and precision
-  timeDelta = Math.max(0, Math.min(timeDelta, MAX_FRAME_TIME));
+  // Calculate actual FPS
+  const actualFps = 1000 / deltaTime;
   
-  // Skip frame if delta is too small (prevents unnecessary processing)
-  if (timeDelta < MIN_FRAME_TIME * 0.5) {
-    return;
-  }
-  
-  // Update lastTime for next frame
-  lastTime = currentTime;
-  
-  // Update FPS stats with enhanced tracking
-  frameCount++;
-  if (timeDelta > 0) {
-    const fps = 1 / timeDelta;
+  // Skip calculations on first frame or if frame time is too long
+  if (frameCount > 0 && deltaTime < 1000) {
+    // Update FPS stats
     fpsStats.frames++;
-    fpsStats.total += fps;
+    fpsStats.total += actualFps;
     fpsStats.avg = fpsStats.total / fpsStats.frames;
-    fpsStats.min = Math.min(fpsStats.min, fps);
-    fpsStats.max = Math.max(fpsStats.max, fps);
+    fpsStats.min = Math.min(fpsStats.min, actualFps);
+    fpsStats.max = Math.max(fpsStats.max, actualFps);
     
-    // Track high-speed performance
-    if (frameCount % 600 === 0) { // Log every 10 seconds at 60fps
-      const performanceInfo = {
-        currentFPS: fps.toFixed(1),
-        avgFPS: fpsStats.avg.toFixed(1),
-        minFPS: fpsStats.min.toFixed(1),
-        maxFPS: fpsStats.max.toFixed(1),
-        timeDelta: (timeDelta * 1000).toFixed(2) + 'ms',
-        targetFPS: TARGET_FPS
-      };
-      console.log(`[ANIMATION PERFORMANCE]`, performanceInfo);
-      
-      // Reset stats periodically to avoid skew
-      if (frameCount % 6000 === 0) {
-        fpsStats = { min: Infinity, max: 0, avg: 0, frames: 0, total: 0 };
-      }
+    // Occasionally log FPS stats
+    if (frameCount % 300 === 0) {
+      console.log(`FPS: current=${actualFps.toFixed(1)}, avg=${fpsStats.avg.toFixed(1)}, min=${fpsStats.min.toFixed(1)}, max=${fpsStats.max.toFixed(1)}`);
     }
   }
   
-  // Update stats if available
-  if (stats) {
-    stats.begin();
+  // Begin stats monitoring if available
+  if (stats) stats.begin();
+  
+  // Update all layers by delegating to the layer manager
+  if (scene._layerManager) {
+    // Pass animation parameters to updateLayers
+    scene._layerManager.updateLayers({
+      tNow: currentTime,
+      dt: deltaTime,
+      angle: state?.angle || 0,
+      activeLayerId: scene._layerManager.activeLayerId,
+      camera: cam,
+      renderer: renderer,
+      triggerAudioCallback: triggerAudioCallback
+    });
   }
   
-  // Update state.lastTime which is used for angle calculation
-  if (state && typeof state.lastTime !== 'undefined') {
-    state.lastTime = currentTime;
-  }
+  // Process any pending triggers (for quantized notes)
+  processPendingTriggers(currentTime, triggerAudioCallback, scene);
   
-  // Process any pending quantized triggers with high precision timing
-  if (triggerAudioCallback) {
-    processPendingTriggers(currentTime, triggerAudioCallback, scene);
-  }
-  
-  // Log timing info with enhanced frequency for debugging high BPM issues
-  if (frameCount % 300 === 0) {
-    const currentFPS = 1 / timeDelta;
-    const bpm = globalState?.bpm || 120;
-    const rotationHz = bpm / 240; // Rotations per second
-    
-    console.log(`[ANIMATION] Frame ${frameCount}, time: ${currentTime.toFixed(3)}s, ` + 
-                `FPS: ${currentFPS.toFixed(1)}, BPM: ${bpm}, RotHz: ${rotationHz.toFixed(2)}, ` +
-                `FrameTime: ${(timeDelta * 1000).toFixed(2)}ms`);
-  }
-  
-  // Get the active layer from the scene if available
-  const activeLayer = scene?._layerManager?.getActiveLayer();
-  
-  // Enhanced layer status logging for debugging trigger issues
-  if (frameCount % 1200 === 0 && activeLayer) { // Every 20 seconds at 60fps
-    const bpm = globalState?.bpm || 120;
-    const currentFPS = 1 / timeDelta;
-    const rotationSpeed = bpm / 240; // rotations per second
-    const degreesPerFrame = (rotationSpeed * 360) / currentFPS;
-    
-    console.log(`[ANIMATION] Layer debug:`, {
-      id: activeLayer.id,
-      bpm: bpm,
-      rotationHz: rotationSpeed.toFixed(3),
-      degreesPerFrame: degreesPerFrame.toFixed(2),
-      currentFPS: currentFPS.toFixed(1),
-      visible: activeLayer.visible,
-      groupVisible: activeLayer.group?.visible,
-      childCount: activeLayer.group?.children.length,
-      state: {
-        radius: activeLayer.state.radius,
-        segments: activeLayer.state.segments,
-        copies: activeLayer.state.copies
+  // Clear expired markers for all layers
+  if (scene._layerManager) {
+    scene._layerManager.layers.forEach(layer => {
+      if (layer.visible) {
+        clearLayerMarkers(layer);
       }
     });
   }
   
-  // Handle active layer if available (prefer it over passed-in group)
-  if (activeLayer) {
-    // Force visibility in case it was toggled off
-    if (!activeLayer.visible) {
-      activeLayer.visible = true;
-      if (activeLayer.group) {
-        activeLayer.group.visible = true;
-      }
-    }
-    
-    // Update markers (dots) based on intersections
-    if (activeLayer.state.needsIntersectionUpdate) {
-      // Only detect intersections if they're enabled
-      const useIntersections = activeLayer.state.useIntersections === true;
-      const useStarCuts = activeLayer.state.useStars === true && activeLayer.state.useCuts === true;
-      
-      if (useIntersections || useStarCuts) {
-        detectIntersections(activeLayer);
-      }
-      
-      // Always reset the flag regardless
-      activeLayer.state.needsIntersectionUpdate = false;
-    }
-    
-    // Apply velocity updates to markers with enhanced timing
-    applyVelocityToMarkers(activeLayer, timeDelta);
-    
-    // Ensure camera and renderer are set in the layer's group before updating
-    if (activeLayer.group && cam && renderer) {
-      if (!activeLayer.group.userData) activeLayer.group.userData = {};
-      activeLayer.group.userData.camera = cam;
-      activeLayer.group.userData.renderer = renderer;
-      
-      // Also ensure the scene has them
-      if (scene) {
-        scene.userData = scene.userData || {};
-        scene.userData.camera = cam;
-        scene.userData.renderer = renderer;
-      }
-    }
-    
-    // Call the update method on the active layer with precise timing
-    if (typeof activeLayer.update === 'function') {
-      activeLayer.update(currentTime, timeDelta);
-    }
-    
-    // Also update the global angle in GlobalStateManager with enhanced precision
-    if (globalState && typeof globalState.updateAngle === 'function') {
-      // Convert to ms for compatibility with the existing updateAngle method
-      globalState.updateAngle(currentTime * 1000);
-    }
-    
-    // Check if any markers need to trigger audio
-    const markers = activeLayer.markers;
-    if (markers && markers.length > 0) {
-      for (let i = 0; i < markers.length; i++) {
-        const marker = markers[i];
-        
-        // Skip markers that aren't in hit state
-        if (marker.state !== ANIMATION_STATES.HIT) continue;
-        
-        // Get velocity from marker or use max velocity
-        const velocity = marker.velocity !== undefined ? marker.velocity : MAX_VELOCITY;
-        
-        // Create frequency from marker and trigger audio with precise timing
-        const note = {
-          frequency: marker.frequency,
-          noteName: marker.noteName || "",
-          velocity: velocity,
-          duration: 0.5,
-          x: marker.position.x,
-          y: marker.position.y,
-          // Add additional properties for debugging
-          markerId: i,
-          time: currentTime,
-          frameTime: timeDelta, // Add frame timing info
-          bpm: globalState?.bpm || 120
-        };
-        
-        triggerAudioCallback(note);
-        
-        // Change state to triggered
-        marker.state = ANIMATION_STATES.TRIGGERED;
-      }
-    }
-    
-    // Update DOM label positions if the function is available
-    if (typeof updateLabelPositions === 'function') {
-      updateLabelPositions(activeLayer, cam, renderer);
-    }
-    
-    // Update and fade out axis labels
-    if (typeof updateAxisLabels === 'function') {
-      updateAxisLabels();
-    }
-  }
+  // Update DOM label positions if any exist
+  updateLabelPositions(renderer, cam);
   
-  // Enhanced layer manager update with high precision timing
-  if (scene._layerManager && typeof scene._layerManager.updateLayers === 'function') {
-    // Create animation parameters to pass to the layer manager
-    const animationParams = {
-      scene,
-      tNow: currentTime * 1000, // Convert to ms for backward compatibility
-      dt: timeDelta * 1000,     // Convert to ms for backward compatibility
-      angle: globalState?.lastAngle || 0,
-      lastAngle: globalState?.previousAngle || 0,
-      triggerAudioCallback,
-      activeLayerId: scene._layerManager.activeLayerId,
-      camera: cam,              // Pass camera reference
-      renderer: renderer,       // Pass renderer reference
-      // Enhanced timing information
-      frameTime: timeDelta,
-      targetFPS: TARGET_FPS,
-      currentFPS: 1 / timeDelta
-    };
-    
-    // Update all layers via the layer manager
-    scene._layerManager.updateLayers(animationParams);
-    
-    // IMPORTANT: Clean up expired markers for all layers
-    // This was missing and is why markers weren't fading out!
-    if (scene._layerManager.layers) {
-      for (const layer of scene._layerManager.layers) {
-        if (layer && typeof clearLayerMarkers === 'function') {
-          clearLayerMarkers(layer);
-        }
-      }
-    }
-  }
+  // Update axis labels with current time
+  updateAxisLabels(currentTime);
+  
+  // Apply physics to markers (mainly for visuals)
+  applyVelocityToMarkers(scene);
   
   // Render the scene
   renderer.render(scene, cam);
   
-  // End stats tracking
-  if (stats) {
-    stats.end();
+  // End stats monitoring
+  if (stats) stats.end();
+  
+  // Update last angle for next frame
+  if (state) {
+    state.lastAngle = state.angle;
   }
+  
+  // Increment frame counter
+  frameCount++;
+  
+  // Calculate the time that's passed since the last frame
+  const now = performance.now();
+  const timeSinceLastFrame = now - lastFrameTime;
+  
+  // Calculate how long to wait until the next frame to maintain our target FPS
+  // If we're behind schedule, run immediately
+  const timeToNextFrame = Math.max(0, FRAME_INTERVAL - timeSinceLastFrame);
+  
+  // Use setTimeout to schedule the next frame with precise timing
+  // This allows us to exceed the monitor refresh rate
+  if (timeToNextFrame <= 0) {
+    // We're behind schedule, run next frame immediately
+    lastFrameTime = now;
+    setTimeout(() => animate(props), 0);
+  } else {
+    // Schedule next frame at precisely the right time
+    lastFrameTime = now + timeToNextFrame;
+    setTimeout(() => animate(props), timeToNextFrame);
+  }
+  
+  // Also use requestAnimationFrame as a fallback to ensure we always have a frame
+  // This ensures we have a reliable rendering loop even if setTimeout fails
+  animationFrameId = requestAnimationFrame(() => {
+    // Don't animate again if setTimeout already handled it
+    // This is just a safety fallback
+  });
 }

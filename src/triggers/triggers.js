@@ -24,9 +24,9 @@ const recentTriggers = new Map();
 // Store for pending triggers when using quantization
 let pendingTriggers = [];
 
-// Enhanced trigger detection constants
-const MAX_ANGLE_STEP = Math.PI / 12; // 15 degrees - maximum angle step before we need interpolation
-const INTERPOLATION_STEPS = 8; // Number of intermediate steps to check when angle is large
+// Enhanced trigger detection constants - optimized for ultra-high precision
+const MAX_ANGLE_STEP = Math.PI / 24; // 7.5 degrees - reduced for more interpolation
+const INTERPOLATION_STEPS = 32; // Increased from 8 to 32 for smoother sub-frame detection
 
 /**
  * Calculate distance between two points in 2D space
@@ -200,7 +200,7 @@ export function processPendingTriggers(currentTime, audioCallback, scene) {
   
   // Find triggers that should be executed with enhanced precision
   const triggersToExecute = [];
-  const tolerance = 0.002; // Reduced to 2ms tolerance for better high BPM precision
+  const tolerance = 0.001; // Reduced to 1ms tolerance for better high BPM precision
   
   while (pendingTriggers.length > 0 && pendingTriggers[0].executeTime <= currentTime + tolerance) {
     triggersToExecute.push(pendingTriggers.shift());
@@ -552,830 +552,357 @@ export function resetTriggerSystem() {
  * @returns {Object} Object with hasCrossed boolean and interpolation factor
  */
 function checkEnhancedAxisCrossing(prevX, prevY, currX, currY) {
-  // Basic case: point crosses from right to left and is above X-axis
-  if (prevX > 0 && currX <= 0 && currY > 0) {
-    // Calculate the exact interpolation factor where crossing occurred
-    const crossingFactor = prevX / (prevX - currX);
-    return { hasCrossed: true, crossingFactor };
+  // Calculate if the line segment from prev to curr crosses the X axis
+  const crossesXAxis = (prevY > 0 && currY <= 0) || (prevY <= 0 && currY > 0);
+  
+  // Calculate if the line segment from prev to curr crosses the Y axis
+  const crossesYAxis = (prevX > 0 && currX <= 0) || (prevX <= 0 && currX > 0);
+  
+  // If no crossing, return early
+  if (!crossesXAxis && !crossesYAxis) {
+    return { crossed: false };
   }
   
-  // Handle large angle changes with enhanced detection
-  if (currY > 0) {
-    const prevAngleFromYAxis = Math.atan2(prevX, prevY);
-    const currAngleFromYAxis = Math.atan2(currX, currY);
+  // Calculate the precise intersection point
+  let intersection = null;
+  let axis = '';
+  
+  if (crossesXAxis) {
+    // Calculate X coordinate where segment crosses Y=0
+    const t = prevY / (prevY - currY);
+    const xAtCrossing = prevX + t * (currX - prevX);
     
-    if (Math.sign(prevAngleFromYAxis) > 0 && Math.sign(currAngleFromYAxis) <= 0) {
-      const angleDiff = Math.abs(prevAngleFromYAxis - currAngleFromYAxis);
-      if (angleDiff < Math.PI) {
-        // Calculate approximate crossing factor based on angle progression
-        const crossingFactor = Math.abs(prevAngleFromYAxis) / angleDiff;
-        return { hasCrossed: true, crossingFactor };
+    intersection = { x: xAtCrossing, y: 0 };
+    axis = 'x';
+  }
+  
+  if (crossesYAxis) {
+    // Calculate Y coordinate where segment crosses X=0
+    const t = prevX / (prevX - currX);
+    const yAtCrossing = prevY + t * (currY - prevY);
+    
+    // If we already found an X axis crossing, choose the closest one
+    if (intersection) {
+      const distX = Math.sqrt(Math.pow(intersection.x, 2));
+      const distY = Math.sqrt(Math.pow(yAtCrossing, 2));
+      
+      if (distY < distX) {
+        intersection = { x: 0, y: yAtCrossing };
+        axis = 'y';
       }
+    } else {
+      intersection = { x: 0, y: yAtCrossing };
+      axis = 'y';
     }
   }
   
-  return { hasCrossed: false, crossingFactor: 0 };
+  return {
+    crossed: true,
+    axis,
+    intersection
+  };
 }
 
 /**
- * Detect triggers for intersection points (including star cuts)
- * This function processes the intersection markers in each copy group
- * @param {Object} copyGroup - The copy group containing intersection markers
- * @param {Object} layer - The layer object
- * @param {number} copyIndex - The index of the current copy
- * @param {number} angle - Current rotation angle
- * @param {number} lastAngle - Previous rotation angle
- * @param {number} tNow - Current time
- * @param {Function} audioCallback - Callback function for triggered audio
- * @param {Set} triggeredNow - Set of already triggered points
- * @param {Array} triggeredPoints - Array of triggered point positions
- * @param {THREE.Matrix4} inverseRotationMatrix - Matrix to remove rotation
- * @param {THREE.Matrix4} rotationMatrix - Matrix to apply rotation
- * @param {boolean} isLerping - Whether values are currently being lerped
- * @param {number} LERPING_TRIGGER_COOLDOWN - Cooldown time for triggers during lerping
- * @returns {boolean} True if any triggers were detected
+ * Check if the angle change has crossed an axis with enhanced interpolation
+ * @param {Object} layer - The layer being processed
+ * @param {number} lastAngle - Previous angle in radians
+ * @param {number} angle - Current angle in radians
+ * @param {number} bpm - Current BPM
+ * @returns {boolean} True if we should process triggers
  */
-function detectIntersectionTriggers(
-  copyGroup, layer, copyIndex, angle, lastAngle, tNow, audioCallback, 
-  triggeredNow, triggeredPoints, inverseRotationMatrix, rotationMatrix, 
-  isLerping, LERPING_TRIGGER_COOLDOWN
-) {
-  // Debug when this function is called
-  if (DEBUG_STAR_CUTS) {
-    console.log(`[STAR CUTS] detectIntersectionTriggers called for copy ${copyIndex}`);
+function shouldProcessTriggers(layer, lastAngle, angle, bpm) {
+  // Skip if angles are invalid
+  if (isNaN(lastAngle) || isNaN(angle)) return false;
+  
+  // Calculate the absolute angle delta
+  let angleDelta = Math.abs(angle - lastAngle);
+  
+  // Handle wraparound cases for more accurate detection
+  if (angleDelta > Math.PI) {
+    angleDelta = 2 * Math.PI - angleDelta;
   }
   
-  // Check if this copy group has intersection markers
-  if (!copyGroup || !copyGroup.userData) {
-    if (DEBUG_STAR_CUTS) {
-      console.log(`[STAR CUTS] Copy ${copyIndex} has no userData`);
-    }
-    return false;
-  }
+  // Ultra-high precision dynamicMinDelta based on BPM
+  // Reduced threshold for maximum precision across all frequencies
+  const dynamicMinDelta = Math.max(0.00005, bpm / 480000); // Scale with BPM
   
-  // Improved detection of intersection marker group
-  let intersectionGroup = null;
-  
-  // First, check the standard location
-  if (copyGroup.userData.intersectionMarkerGroup) {
-    intersectionGroup = copyGroup.userData.intersectionMarkerGroup;
-  } else {
-    // Try to find an intersection group as a direct child
-    for (let i = 0; copyGroup.children && i < copyGroup.children.length; i++) {
-      const child = copyGroup.children[i];
-      if (child.userData && child.userData.isIntersectionGroup) {
-        intersectionGroup = child;
-        break;
-      }
-    }
-  }
-  
-  if (!intersectionGroup || !intersectionGroup.children) {
-    if (DEBUG_STAR_CUTS) {
-      console.log(`[STAR CUTS] No intersection markers in copy ${copyIndex}`);
-    }
-    return false;
-  }
-  
-  if (DEBUG_STAR_CUTS) {
-    console.log(`[STAR CUTS] Found ${intersectionGroup.children.length} intersection markers in copy ${copyIndex}`);
-  }
-  
-  // Get layer data
-  const state = layer.state;
-  const scene = layer.group?.parent;
-  
-  // Skip if no scene or state
-  if (!scene || !state) {
-    return false;
-  }
-  
-  // Get camera and renderer from multiple possible sources
-  let camera = scene?.userData?.camera;
-  let renderer = scene?.userData?.renderer;
-  
-  // Try to get camera and renderer from layer's group if not found in scene
-  if (!camera || !renderer) {
-    camera = layer.group?.userData?.camera;
-    renderer = layer.group?.userData?.renderer;
-    
-    // Try layer's ensureCameraAndRenderer method as a last resort
-    if ((!camera || !renderer) && typeof layer.ensureCameraAndRenderer === 'function') {
-      const result = layer.ensureCameraAndRenderer();
-      camera = result.camera;
-      renderer = result.renderer;
-      
-      // Cache the results if they were found
-      if (camera && renderer) {
-        scene.userData.camera = camera;
-        scene.userData.renderer = renderer;
-      }
-    }
-  }
-  
-  // Determine if these are star cut intersections
-  const isStarCuts = state.useStars && state.useCuts && state.starSkip > 1;
-  
-  if (isStarCuts && DEBUG_STAR_CUTS) {
-    console.log(`[STAR CUTS] Processing star cut intersections in copy ${copyIndex}`);
-  }
-  
-  // Create a map for vertices that have already been checked
-  if (!layer.prevIntersectionVertices) {
-    layer.prevIntersectionVertices = new Map();
-  }
-  
-  // Temp vectors for calculations
-  const worldPos = new THREE.Vector3();
-  const prevWorldPos = new THREE.Vector3();
-  
-  // Get the current world matrix of the copy group
-  const tempWorldMatrix = new THREE.Matrix4();
-  intersectionGroup.updateMatrixWorld();
-  tempWorldMatrix.copy(intersectionGroup.matrixWorld);
-  
-  // Apply the inverse rotation to get the unrotated world positions
-  tempWorldMatrix.premultiply(inverseRotationMatrix);
-  
-  // Track if any triggers occurred
-  let anyTriggers = false;
-  let triggersCount = 0;
-  
-  // Process each intersection marker (point)
-  for (let i = 0; i < intersectionGroup.children.length; i++) {
-    const marker = intersectionGroup.children[i];
-    
-    // Skip non-mesh objects
-    if (marker.type !== 'Mesh') {
-      continue;
-    }
-    
-    // Create a unique key for this intersection point
-    const key = `${layer.id}-intersection-${copyIndex}-${i}`;
-    
-    // Skip if already triggered in this frame
-    if (triggeredNow.has(key)) {
-      if (DEBUG_STAR_CUTS) {
-        console.log(`[STAR CUTS] Skipping already triggered point ${i} in copy ${copyIndex}`);
-      }
-      continue;
-    }
-    
-    try {
-      // Get current marker world position (unrotated)
-      worldPos.copy(marker.position);
-      
-      // Skip invalid positions
-      if (isNaN(worldPos.x) || isNaN(worldPos.y) || isNaN(worldPos.z)) {
-        continue;
-      }
-      
-      // Apply unrotated world matrix to get position in world space
-      worldPos.applyMatrix4(tempWorldMatrix);
-      
-      // Store original non-rotated position for frequency calculation
-      const nonRotatedPos = worldPos.clone();
-      
-      // Apply rotation manually for trigger detection
-      worldPos.applyMatrix4(rotationMatrix);
-      
-      // Get previous vertex world position
-      let hasPrevPos = false;
-      if (layer.prevIntersectionVertices.has(key)) {
-        prevWorldPos.copy(layer.prevIntersectionVertices.get(key));
-        hasPrevPos = true;
-      } else {
-        // For first frame, use current position
-        prevWorldPos.copy(worldPos);
-      }
-      
-      // Store current position for next frame (with rotation)
-      layer.prevIntersectionVertices.set(key, worldPos.clone());
-      
-      // Skip trigger detection if we don't have previous positions
-      if (!hasPrevPos) {
-        continue;
-      }
-      
-      // Check for large position changes (likely due to geometry changes)
-      const positionDistance = prevWorldPos.distanceTo(worldPos);
-      const MAX_REASONABLE_MOVEMENT = 50; // Maximum reasonable movement between frames
-      
-      if (positionDistance > MAX_REASONABLE_MOVEMENT) {
-        if (DEBUG_STAR_CUTS) {
-          console.log(`[STAR CUTS] Skipping intersection ${i} due to large position change (${positionDistance.toFixed(2)})`);
-        }
-        continue;
-      }
-      
-      // Unwrap position values
-      const currX = worldPos.x;
-      const currY = worldPos.y;
-      const prevX = prevWorldPos.x;
-      const prevY = prevWorldPos.y;
-      
-      // Enhanced crossing detection with interpolation support
-      const { hasCrossed, crossingFactor } = checkEnhancedAxisCrossing(prevX, prevY, currX, currY);
-      
-      // Skip if not triggered this frame
-      if (hasCrossed && !layer.lastTrig.has(key)) {
-        // Only apply rate limiting during lerping
-        if (isLerping) {
-          // Check if this intersection is in cooldown period
-          const now = performance.now();
-          const lastTriggerTime = layer._triggersTimestamps.get(key) || 0;
-          const timeSinceLastTrigger = now - lastTriggerTime;
-          
-          // Skip if we're still in the cooldown period
-          if (timeSinceLastTrigger < LERPING_TRIGGER_COOLDOWN) {
-            continue;
-          }
-          
-          // Update the timestamp for this intersection
-          layer._triggersTimestamps.set(key, now);
-        }
-        
-        // Check for overlap with previously triggered points
-        if (!isPointOverlapping(currX, currY, triggeredPoints)) {
-          // Add to triggered points
-          triggeredPoints.push({ x: currX, y: currY });
-          
-          // Use the non-rotated position from the transformed geometry
-          // This already has all scaling factors applied (including modulus)
-          const nonRotatedX = nonRotatedPos.x;
-          const nonRotatedY = nonRotatedPos.y;
-          
-          // Calculate frequency directly from the transformed coordinates
-          const frequency = Math.hypot(nonRotatedX, nonRotatedY);
-          
-          // Calculate more accurate timing based on crossing factor
-          const adjustedTime = tNow - (1 - crossingFactor) * (1000 / 120);
-          
-          // Create a note object for this intersection point
-          const note = createNote({
-            x: nonRotatedX,
-            y: nonRotatedY,
-            isIntersection: true,
-            isStarCut: isStarCuts, // Set isStarCut flag based on the state
-            intersectionIndex: i,
-            copyIndex: copyIndex,
-            frequency: frequency,
-          }, state);
-          
-          // Update time information
-          note.time = adjustedTime;
-          
-          // Handle quantization
-          if (state.useQuantization) {
-            // Create trigger info
-            const triggerInfo = {
-              note: {...note},
-              worldRot: angle,
-              camera,
-              renderer,
-              isQuantized: true,
-              layer
-            };
-            
-            // Handle quantization
-            const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(tNow, state, triggerInfo);
-            
-            if (shouldTrigger) {
-              // Trigger with precise time
-              const noteCopy = {...note};
-              noteCopy.time = triggerTime;
-              
-              // Trigger audio
-              audioCallback(noteCopy);
-              
-              // Create marker
-              createMarker(angle, currX, currY, scene, noteCopy, camera, renderer, isQuantized, layer);
-              
-              if (DEBUG_STAR_CUTS) {
-                console.log(`[STAR CUTS] Triggered ${isStarCuts ? 'star cut' : 'intersection'} ${i} in copy ${copyIndex}`);
-              }
-              
-              // Increment counter
-              triggersCount++;
-              anyTriggers = true;
-            }
-          } else {
-            // Regular non-quantized trigger
-            audioCallback(note);
-            
-            // Create marker
-            createMarker(angle, currX, currY, scene, note, camera, renderer, false, layer);
-            
-            if (DEBUG_STAR_CUTS) {
-              console.log(`[STAR CUTS] Triggered ${isStarCuts ? 'star cut' : 'intersection'} ${i} in copy ${copyIndex}`);
-            }
-            
-            // Increment counter
-            triggersCount++;
-            anyTriggers = true;
-          }
-          
-          // Add to triggered set
-          triggeredNow.add(key);
-        }
-      }
-    } catch (error) {
-      console.error(`Error in intersection trigger detection for layer ${layer.id}, intersection ${i}:`, error);
-    }
-  }
-  
-  // Log summary if any triggers occurred
-  if (anyTriggers && DEBUG_STAR_CUTS) {
-    console.log(`[STAR CUTS] Triggered ${triggersCount} ${isStarCuts ? 'star cuts' : 'intersections'} in copy ${copyIndex}`);
-  }
-  
-  return anyTriggers;
-}
-
-/**
- * Detect triggers for a layer
- * @param {Object} layer Layer to detect triggers for
- * @param {number} tNow Current time
- * @param {Function} audioCallback Callback function for triggered audio
- * @returns {boolean} True if any triggers were detected
- */
-export function detectLayerTriggers(layer, tNow, audioCallback) {
-  // Validation checks
-  if (!layer) {
-    if (DEBUG_LOGGING) console.warn("No layer provided for trigger detection");
-    return false;
-  }
-  
-  // Get layer data
-  const state = layer.state;
-  const group = layer.group;
-  
-  // Skip processing if group is not visible
-  if (!group.visible) {
-    return false;
-  }
-  
-  // Initialize trigger rate limiting for lerping if needed
-  if (!layer._triggersTimestamps) {
-    layer._triggersTimestamps = new Map();
-  }
-  
-  // Check if lerping is active
-  const isLerping = state && state.isLerping && typeof state.isLerping === 'function' && state.isLerping();
-  
-  // Only apply rate limiting during lerping
-  const LERPING_TRIGGER_COOLDOWN = 250; // ms between triggers during lerping
-  
-  if (isLerping && DEBUG_LOGGING) {
-    console.log(`Layer ${layer.id}: Lerping active, using trigger cooldown: ${LERPING_TRIGGER_COOLDOWN}ms`);
-  }
-  
-  // Ensure lastTrig set exists
-  if (!layer.lastTrig) layer.lastTrig = new Set();
-  
-  // Get the scene from the group's parent
-  const scene = group.parent;
-  if (!scene) {
-    if (DEBUG_LOGGING) console.warn("Cannot find scene for layer:", layer.id);
-    return false;
-  }
-  
-  // Get camera and renderer from multiple possible sources
-  let camera = scene?.userData?.camera;
-  let renderer = scene?.userData?.renderer;
-  
-  // Try to get camera and renderer from layer's group if not found in scene
-  if (!camera || !renderer) {
-    camera = layer.group?.userData?.camera;
-    renderer = layer.group?.userData?.renderer;
-    
-    // Try layer's ensureCameraAndRenderer method as a last resort
-    if ((!camera || !renderer) && typeof layer.ensureCameraAndRenderer === 'function') {
-      const result = layer.ensureCameraAndRenderer();
-      camera = result.camera;
-      renderer = result.renderer;
-      
-      // Cache the results if they were found
-      if (camera && renderer) {
-        scene.userData.camera = camera;
-        scene.userData.renderer = renderer;
-      }
-    }
-  }
-  
-  // FIXED: Check if geometry was recently recreated to prevent false triggers
-  // Allow a brief grace period after geometry recreation to let vertex positions stabilize
-  if (layer.baseGeo && layer.baseGeo.userData && layer.baseGeo.userData.createdAt) {
-    const timeSinceCreation = Date.now() - layer.baseGeo.userData.createdAt;
-    const GEOMETRY_GRACE_PERIOD = 100; // 100ms grace period
-    
-    if (timeSinceCreation < GEOMETRY_GRACE_PERIOD) {
-      if (DEBUG_LOGGING) {
-        console.log(`Layer ${layer.id}: Skipping trigger detection during geometry grace period (${timeSinceCreation}ms)`);
-      }
-      return false;
-    }
-  }
-  
-  // Setup variables for tracking triggers
-  const triggeredNow = new Set();
-  const triggeredPoints = [];
-  
-  // Check how many copies we have
-  let copies = 0;
-  if (state.copies) {
-    copies = state.copies;
-  } else if (group.children) {
-    // Count real copies (excluding intersection marker groups)
-    copies = group.children.filter(child => 
-      !(child.userData && child.userData.isIntersectionGroup)
-    ).length - 1; // Subtract 1 for the debug sphere
-  }
-  
-  // Skip if no copies or zero segments
-  if (copies <= 0 || state.segments <= 0) {
-    if (DEBUG_LOGGING) console.log(`Layer ${layer.id}: Skipping trigger detection (copies=${copies}, segments=${state.segments})`);
-    return false;
-  }
-  
-  // Skip detection if angle hasn't changed enough
-  const lastAngle = layer.previousAngle || 0;
-  const angle = layer.currentAngle || 0;
-  
-  // Enhanced angle delta calculation for high BPM scenarios
-  const angleDelta = Math.abs(angle - lastAngle);
-  
-  // Dynamic minimum angle threshold based on BPM to prevent skipping at high speeds
-  const bpm = state.globalState?.bpm || state.bpm || 120;
-  const dynamicMinDelta = Math.max(0.0005, Math.min(0.01, bpm / 120000)); // Scale with BPM
-  
+  // Skip processing if angle change is too small
   if (angleDelta < dynamicMinDelta) {
     return false;
   }
   
-  // Log large angle jumps that might cause trigger skipping
-  if (angleDelta > Math.PI / 6) { // More than 30 degrees
-    if (DEBUG_LOGGING) {
-      console.log(`[TRIGGER WARNING] Large angle jump detected: ${(angleDelta * 180 / Math.PI).toFixed(1)}° at BPM ${bpm} - potential trigger skipping`);
-    }
-  }
-  
-  // Calculate angle difference for interpolation decision
+  // Determine if we need interpolation based on angle delta
   const needsInterpolation = angleDelta > MAX_ANGLE_STEP;
   
-  // Determine how many steps to use for processing
+  // Number of processing steps (more interpolation for larger angles)
   const processSteps = needsInterpolation ? INTERPOLATION_STEPS : 1;
-  if (DEBUG_LOGGING && needsInterpolation) {
-    console.log(`Layer ${layer.id}: Large angle step detected (${(angleDelta * 180 / Math.PI).toFixed(1)}°), using ${processSteps} interpolation steps`);
+  
+  // Store in layer state for access by other functions
+  layer.state.processSteps = processSteps;
+  layer.state.needsInterpolation = needsInterpolation;
+  
+  return true;
+}
+
+/**
+ * Detect intersections between the geometry's vertices and coordinate axes
+ * Enhanced with interpolation for high-precision detection across all frequencies
+ */
+function detectIntersectionTriggers(
+  copyGroup, layer, copyIndex, angle, lastAngle, tNow, audioCallback, 
+  triggeredNow, triggeredPoints, inverseRotationMatrix, rotationMatrix, 
+  isLerping
+) {
+  // Safety check to ensure we have all required objects
+  if (!copyGroup || !layer || !layer.baseGeo) return;
+  
+  // Get a reference to the geometry
+  const geometry = layer.baseGeo;
+  
+  // Get position attribute from buffer geometry
+  const positionAttribute = geometry.getAttribute('position');
+  
+  // Skip if no position attribute
+  if (!positionAttribute) {
+    if (DEBUG_LOGGING) {
+      console.warn(`[TRIGGER] No position attribute found in geometry for layer ${layer.id}`);
+    }
+    return;
   }
   
-  // FIXED: Debouncing to prevent race conditions during rapid operations
-  // Check if we're in a processing state and skip if needed
-  if (layer._triggerProcessing) {
-    if (DEBUG_LOGGING) console.log(`Layer ${layer.id}: Skipping trigger detection - already processing`);
-    return false;
+  // Get current BPM for dynamic threshold calculation
+  const bpm = layer.bpm || 120;
+  
+  // Calculate a dynamic MAX_REASONABLE_MOVEMENT based on BPM
+  const MAX_REASONABLE_MOVEMENT = 100 + (bpm * 2); // Higher threshold for high BPM
+  
+  // Process each vertex in the geometry
+  const vertexCount = positionAttribute.count;
+  const vertex = new THREE.Vector3();
+  const worldPos = new THREE.Vector3();
+  const prevWorldPos = new THREE.Vector3();
+  
+  for (let i = 0; i < vertexCount; i++) {
+    // Get vertex position from buffer attribute
+    vertex.fromBufferAttribute(positionAttribute, i);
+    
+    // Skip if vertex is not valid
+    if (isNaN(vertex.x) || isNaN(vertex.y)) continue;
+    
+    // Track if this vertex was already processed in this frame to avoid duplicates
+    const vertexKey = `${copyIndex}-${i}`;
+    if (triggeredNow.has(vertexKey)) continue;
+    
+    // Get the current world position of the vertex
+    worldPos.copy(vertex);
+    worldPos.applyMatrix4(rotationMatrix);
+    
+    // Get the previous position by applying the inverse rotation
+    prevWorldPos.copy(vertex);
+    prevWorldPos.applyMatrix4(inverseRotationMatrix);
+    
+    // Calculate movement distance between frames
+    const positionDistance = distanceBetweenPoints(
+      prevWorldPos.x, prevWorldPos.y,
+      worldPos.x, worldPos.y
+    );
+    
+    // Skip unreasonable movements (likely due to initialization or drastic changes)
+    if (positionDistance > MAX_REASONABLE_MOVEMENT) {
+      if (DEBUG_LOGGING) {
+        console.log(`[TRIGGER] Skipping unreasonable movement: ${positionDistance.toFixed(1)} > ${MAX_REASONABLE_MOVEMENT}`);
+      }
+      continue;
+    }
+    
+    // Check for axis crossings with enhanced precision
+    const crossingResult = checkEnhancedAxisCrossing(
+      prevWorldPos.x, prevWorldPos.y,
+      worldPos.x, worldPos.y
+    );
+    
+    // If no crossing, skip to next vertex
+    if (!crossingResult || !crossingResult.crossed) continue;
+    
+    // Axis crossing detected - prepare trigger information
+    const { crossed, axis, intersection } = crossingResult;
+    
+    // Verify the intersection point exists
+    if (!intersection || typeof intersection.x !== 'number' || typeof intersection.y !== 'number') continue;
+    
+    // Generate a unique ID for this trigger point
+    const triggerKey = `${copyIndex}-${i}-${axis}-${Math.floor(tNow * 1000)}`;
+    
+    // Process the trigger - no cooldown check needed with optimized system
+    // Get the precise intersection point
+    const { x: trigX, y: trigY } = intersection;
+    
+    // Generate frequency information
+    const frequencyInfo = getFrequency(trigX, trigY, layer.state);
+    
+    // Skip if frequency calculation failed
+    if (!frequencyInfo || typeof frequencyInfo.frequency !== 'number') continue;
+    
+    // Create the note object
+    const note = createNote({
+      frequency: frequencyInfo.frequency,
+      noteName: frequencyInfo.noteName,
+      x: trigX,
+      y: trigY,
+      copyIndex,
+      vertexIndex: i,
+      isIntersection: false
+    }, layer.state);
+    
+    // Mark this vertex as triggered in this frame
+    triggeredNow.add(vertexKey);
+    
+    // Mark this exact position as triggered
+    triggeredPoints.push({
+      x: trigX,
+      y: trigY,
+      copyIndex,
+      vertexIndex: i,
+      axis,
+      time: tNow
+    });
+    
+    // Create a world coordinate for the marker
+    const worldRot = new THREE.Vector2(trigX, trigY);
+    
+    // Check if we need to quantize this trigger
+    if (layer.state.useQuantization) {
+      // Handle quantization logic
+      const triggerInfo = {
+        note: {...note},
+        worldRot: angle,
+        camera: layer.group.userData.camera,
+        renderer: layer.group.userData.renderer,
+        isQuantized: true,
+        layer
+      };
+      
+      // Process quantization
+      const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(tNow, layer.state, triggerInfo);
+      
+      if (shouldTrigger) {
+        audioCallback(note);
+        
+        // Create visual marker
+        if (layer.showTriggerMarkers !== false) {
+          createMarker(
+            angle, 
+            trigX, 
+            trigY, 
+            layer.group.parent, 
+            note,
+            layer.group.userData.camera, 
+            layer.group.userData.renderer,
+            isQuantized,
+            layer
+          );
+        }
+      }
+    } else {
+      // Immediate trigger (no quantization)
+      audioCallback(note);
+      
+      // Create visual marker
+      if (layer.showTriggerMarkers !== false) {
+        createMarker(
+          angle, 
+          trigX, 
+          trigY, 
+          layer.group.parent, 
+          note,
+          layer.group.userData.camera, 
+          layer.group.userData.renderer,
+          false,
+          layer
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Detect all triggers for a single layer
+ * Enhanced for ultra-high precision across all frequencies
+ */
+export function detectLayerTriggers(layer, tNow, audioCallback) {
+  // Skip if layer is not valid or not visible
+  if (!layer || !layer.visible || layer.suspended) return [];
+  
+  // Get the group containing the geometry
+  const group = layer.group;
+  if (!group) return [];
+  
+  // Check if layer has valid geometry
+  if (!layer.baseGeo) {
+    if (DEBUG_LOGGING) {
+      console.warn(`[TRIGGER] Layer ${layer.id} has no baseGeo property`);
+    }
+    return [];
   }
   
-  // Set processing flag
-  layer._triggerProcessing = true;
+  // Track all triggered points to prevent duplicates
+  const triggeredPoints = [];
   
-  try {
-    // FIXED: Instead of modifying the actual group rotation, use matrix calculations
-    // Store the current rotation state of the group (but don't modify it)
-    const originalRotation = group.rotation.z;
-    
-    // Create transformation matrices for calculations without modifying the actual group
-    const inverseRotationMatrix = new THREE.Matrix4().makeRotationZ(-originalRotation);
-    const rotationMatrix = new THREE.Matrix4().makeRotationZ(angle);
-    
-    // Store the previous frame vertices' world positions if not available
-    if (!layer.prevWorldVertices) {
-      layer.prevWorldVertices = new Map();
-    }
-    
-    // Track if we've triggered anything in this update
-    let anyTriggers = false;
-    
-    // Process each copy
-    for (let ci = 0; ci < copies; ci++) {
-      // Find the correct child for this copy
-      let copyIndex = ci;
-      let copyGroup = null;
-      
-      // FIXED: Improved copy group finding logic
-      let foundCopyCount = 0;
-      
-      // Find the copy group, skipping non-copy groups
-      for (let i = 0; i < group.children.length; i++) {
-        const child = group.children[i];
-        // Skip debug objects and intersection groups
-        if (child.userData && child.userData.isIntersectionGroup) continue;
-        if (child.type === 'Mesh' && child.geometry && child.geometry.type === 'SphereGeometry') continue;
-        if (child.type === 'Line') continue;
-        
-        // Count this as a valid copy group
-        if (foundCopyCount === ci) {
-          copyGroup = child;
-          break;
-        }
-        
-        // Otherwise, increment our counter and continue
-        foundCopyCount++;
-      }
-      
-      // Skip if we couldn't find a valid copy group
-      if (!copyGroup || !copyGroup.children || copyGroup.children.length === 0) {
-        if (DEBUG_LOGGING) console.warn(`Could not find copy group ${ci} for layer ${layer.id}`);
-        continue;
-      }
-      
-      // The first child should be the LineLoop
-      const mesh = copyGroup.children.find(child => child.type === 'LineLoop');
-      if (!mesh) {
-        if (DEBUG_LOGGING) console.warn(`Could not find LineLoop in copy group ${ci} for layer ${layer.id}`);
-        continue;
-      }
-      
-      // FIXED: Get world matrix without modifying the actual group rotation
-      // Calculate the world matrix as if the group had no rotation applied
-      const tempWorldMatrix = new THREE.Matrix4();
-      mesh.updateMatrixWorld();
-      tempWorldMatrix.copy(mesh.matrixWorld);
-      
-      // Apply the inverse rotation to get the unrotated world positions
-      tempWorldMatrix.premultiply(inverseRotationMatrix);
-      
-      // Validate geometry and attributes
-      if (!mesh.geometry || !mesh.geometry.getAttribute('position')) {
-        if (DEBUG_LOGGING) console.warn(`Invalid geometry for copy ${ci} of layer ${layer.id}`);
-        continue;
-      }
-      
-      const positions = mesh.geometry.getAttribute('position');
-      if (!positions || !positions.count) {
-        if (DEBUG_LOGGING) console.warn(`Invalid position attribute for copy ${ci} of layer ${layer.id}`);
-        continue;
-      }
-      
-      const count = positions.count;
-      
-      // Validate base geometry
-      if (!layer.baseGeo || !layer.baseGeo.getAttribute('position') || !layer.baseGeo.getAttribute('position').array) {
-        if (DEBUG_LOGGING) console.warn(`Invalid base geometry for layer ${layer.id}`);
-        continue;
-      }
-      
-      const basePositions = layer.baseGeo.getAttribute('position').array;
-      
-      // Temp vectors for calculations
-      const worldPos = new THREE.Vector3();
-      const prevWorldPos = new THREE.Vector3();
-      
-      // Track triggers per copy to detect anomalies
-      let triggersInCopy = 0;
-      
-      // Process each vertex in this copy
-      for (let vi = 0; vi < count; vi++) {
-        // Create a unique key for this vertex
-        const key = `${layer.id}-${ci}-${vi}`;
-        
-        // Skip if already triggered in this frame
-        if (triggeredNow.has(key)) continue;
-        
-        try {
-          // Get current vertex world position (unrotated)
-          worldPos.fromBufferAttribute(positions, vi);
-          
-          // Skip invalid vertices
-          if (isNaN(worldPos.x) || isNaN(worldPos.y) || isNaN(worldPos.z)) {
-            continue;
-          }
-          
-          // Apply unrotated world matrix to get position in world space
-          worldPos.applyMatrix4(tempWorldMatrix);
-          
-          // Store original non-rotated position for frequency calculation
-          const nonRotatedPos = worldPos.clone();
-          
-          // Apply rotation manually for trigger detection
-          worldPos.applyMatrix4(rotationMatrix);
-          
-          // Get previous vertex world position
-          let hasPrevPos = false;
-          if (layer.prevWorldVertices.has(key)) {
-            prevWorldPos.copy(layer.prevWorldVertices.get(key));
-            hasPrevPos = true;
-          } else {
-            // For first frame, use current position
-            prevWorldPos.copy(worldPos);
-          }
-          
-          // Store current position for next frame (with rotation)
-          layer.prevWorldVertices.set(key, worldPos.clone());
-          
-          // FIXED: Skip trigger detection if we don't have previous positions OR if positions are too similar
-          // This prevents false triggers when geometry has just been recreated
-          if (!hasPrevPos) {
-            continue;
-          }
-          
-          // FIXED: Additional check - if the distance between previous and current position is too large,
-          // it's likely due to a geometry change, so skip this frame
-          const positionDistance = prevWorldPos.distanceTo(worldPos);
-          const MAX_REASONABLE_MOVEMENT = 50; // Maximum reasonable movement between frames
-          
-          if (positionDistance > MAX_REASONABLE_MOVEMENT) {
-            if (DEBUG_LOGGING) {
-              console.log(`Layer ${layer.id}: Skipping vertex ${vi} due to large position change (${positionDistance.toFixed(2)})`);
-            }
-            continue;
-          }
-          
-          // Unwrap position values
-          const currX = worldPos.x;
-          const currY = worldPos.y;
-          const prevX = prevWorldPos.x;
-          const prevY = prevWorldPos.y;
-          
-          // Enhanced crossing detection with interpolation support
-          const { hasCrossed, crossingFactor } = checkEnhancedAxisCrossing(prevX, prevY, currX, currY);
-          
-          // Skip if not triggered last frame
-          if (hasCrossed && !layer.lastTrig.has(key)) {
-            // Only apply rate limiting during lerping
-            if (isLerping) {
-              // Check if this vertex is in cooldown period
-              const now = performance.now();
-              const lastTriggerTime = layer._triggersTimestamps.get(key) || 0;
-              const timeSinceLastTrigger = now - lastTriggerTime;
-              
-              // Skip if we're still in the cooldown period
-              if (timeSinceLastTrigger < LERPING_TRIGGER_COOLDOWN) {
-                if (DEBUG_LOGGING && isLerping) {
-                  console.log(`Layer ${layer.id}: Skipping vertex ${vi} in copy ${ci} - in cooldown period (${timeSinceLastTrigger.toFixed(0)}ms < ${LERPING_TRIGGER_COOLDOWN}ms)`);
-                }
-                continue;
-              }
-              
-              // Update the timestamp for this vertex
-              layer._triggersTimestamps.set(key, now);
-            }
-            
-            // Check for overlap with previously triggered points
-            if (!isPointOverlapping(currX, currY, triggeredPoints)) {
-              // Add to triggered points
-              triggeredPoints.push({ x: currX, y: currY });
-              
-              // Check base geometry bounds
-              if (vi * 3 + 1 >= basePositions.length) {
-                console.warn(`Vertex index out of range: ${vi} for layer ${layer.id}`);
-                continue;
-              }
-              
-              // Get original local coordinates from the baseGeo for frequency calculation
-              const x0 = basePositions[vi * 3];
-              const y0 = basePositions[vi * 3 + 1];
-              
-              // Validate coordinates
-              if (x0 === undefined || y0 === undefined || isNaN(x0) || isNaN(y0)) {
-                console.warn(`Invalid base coordinates at ${vi} for layer ${layer.id}: x=${x0}, y=${y0}`);
-                continue;
-              }
-              
-              // Use the non-rotated position from the transformed geometry
-              // This already has all scaling factors applied (including modulus)
-              const nonRotatedX = nonRotatedPos.x;
-              const nonRotatedY = nonRotatedPos.y;
-              
-              // Calculate frequency directly from the transformed coordinates
-              // This ensures it matches exactly with the visual representation
-              const frequency = Math.hypot(nonRotatedX, nonRotatedY);
-              
-              // Calculate more accurate timing based on crossing factor
-              const adjustedTime = tNow - (1 - crossingFactor) * (1000 / 120); // Estimate time correction
-              
-              // Create note with the frequency from transformed geometry
-              const note = {
-                frequency: frequency,
-                noteName: state.useEqualTemperament ? getNoteName(frequency, state.referenceFrequency || 440) : null,
-                duration: state.maxDuration || 0.5,
-                velocity: state.maxVelocity || 0.8,
-                pan: Math.sin(angle),  // Use current angle for pan
-                x: nonRotatedX,  // Store transformed coordinates
-                y: nonRotatedY,
-                worldX: currX,  // Store world coordinates
-                worldY: currY,
-                copyIndex: ci,
-                vertexIndex: vi,
-                layerId: layer.id,
-                time: adjustedTime,
-                crossingFactor: crossingFactor // Store for debugging
-              };
-              
-              // Handle quantization
-              if (state.useQuantization) {
-                // Create trigger info
-                const triggerInfo = {
-                  note: {...note},
-                  worldRot: angle,
-                  camera,
-                  renderer,
-                  isQuantized: true,
-                  layer
-                };
-                
-                // Handle quantization
-                const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(tNow, state, triggerInfo);
-                
-                if (shouldTrigger) {
-                  // Trigger with precise time
-                  const noteCopy = {...note};
-                  noteCopy.time = triggerTime;
-                  
-                  // Trigger audio
-                  audioCallback(noteCopy);
-                  
-                  // IMPORTANT: angle is already in radians here, pass directly to createMarker
-                  createMarker(angle, currX, currY, scene, noteCopy, camera, renderer, isQuantized, layer);
-                  
-                  if (DEBUG_LOGGING) {
-                    console.log(`Layer ${layer.id}: Triggered vertex ${vi} in copy ${ci} with crossingFactor ${crossingFactor.toFixed(3)}`);
-                  }
-                  
-                  // Increment counter
-                  triggersInCopy++;
-                  anyTriggers = true;
-                }
-              } else {
-                // Regular non-quantized trigger
-                audioCallback(note);
-                
-                // IMPORTANT: angle is already in radians here, pass directly to createMarker
-                createMarker(angle, currX, currY, scene, note, camera, renderer, false, layer);
-                
-                if (DEBUG_LOGGING) {
-                  console.log(`Layer ${layer.id}: Triggered vertex ${vi} in copy ${ci} with crossingFactor ${crossingFactor.toFixed(3)}`);
-                }
-                
-                // Increment counter
-                triggersInCopy++;
-                anyTriggers = true;
-              }
-              
-              // Add to triggered set
-              triggeredNow.add(key);
-            }
-          }
-        } catch (error) {
-          console.error(`Error in trigger detection for layer ${layer.id}, copy ${ci}, vertex ${vi}:`, error);
-        }
-      }
-      
-      // After processing vertices, check for intersection triggers in this copy
-      // This will handle star cuts as well as other intersections
-      const intersectionTriggered = detectIntersectionTriggers(
-        copyGroup, layer, ci, angle, lastAngle, tNow, audioCallback,
-        triggeredNow, triggeredPoints, inverseRotationMatrix, rotationMatrix,
-        isLerping, LERPING_TRIGGER_COOLDOWN
-      );
-      
-      if (intersectionTriggered) {
-        anyTriggers = true;
-      }
-      
-      // Detect anomalies - too many triggers at once may indicate a problem
-      if (triggersInCopy > 3) {
-        console.warn(`Potential anomaly: ${triggersInCopy} triggers in one frame for layer ${layer.id}, copy ${ci}`);
-      }
-    }
-    
-    // Update the layer's last triggered set
-    layer.lastTrig = triggeredNow;
-    
-    // Cleanup old trigger timestamps to prevent memory leaks
-    // Only needed if we've been doing rate limiting (during lerping)
-    if (isLerping && layer._triggersTimestamps && layer._triggersTimestamps.size > 0) {
-      const now = performance.now();
-      
-      // More aggressive cleanup when we have a lot of entries
-      if (layer._triggersTimestamps.size > 1000) {
-        const CLEANUP_THRESHOLD = 5000; // 5 seconds
-        
-        // Remove entries older than the threshold
-        for (const [key, timestamp] of layer._triggersTimestamps.entries()) {
-          if (now - timestamp > CLEANUP_THRESHOLD) {
-            layer._triggersTimestamps.delete(key);
-          }
-        }
-      }
-    }
-    
-    // Return true if we triggered anything
-    return anyTriggers;
-  } finally {
-    // Clear processing flag
-    layer._triggerProcessing = false;
+  // Use a Set for faster lookup of already triggered vertices in this frame
+  const triggeredNow = new Set();
+  
+  // Get the current and previous angles
+  const angle = layer.state.angle || 0;
+  const lastAngle = layer.state.lastAngle || 0;
+  
+  // Skip if angles are the same (no rotation)
+  if (angle === lastAngle) return [];
+  
+  // Get current BPM for dynamic calculations
+  const bpm = layer.bpm || 120;
+  
+  // Reduce geometry grace period based on BPM for faster processing at high BPM
+  const GEOMETRY_GRACE_PERIOD = Math.max(8, 500/bpm); // Adaptive grace period in ms
+  
+  // Skip if geometry was just created (prevents initialization triggers)
+  const timeSinceCreation = tNow * 1000 - (layer.creationTime || 0);
+  if (timeSinceCreation < GEOMETRY_GRACE_PERIOD) {
+    return [];
   }
+  
+  // Check if we should process triggers based on angle change
+  if (!shouldProcessTriggers(layer, lastAngle, angle, bpm)) {
+    return [];
+  }
+  
+  // If layer is using dynamic position changes (lerping),
+  // optimize for high-frequency changes
+  const isLerping = layer.state.isLerping === true;
+  
+  // Create transformation matrices for current and previous positions
+  const rotationMatrix = new THREE.Matrix4().makeRotationZ(angle);
+  const inverseRotationMatrix = new THREE.Matrix4().makeRotationZ(lastAngle);
+  
+  // Get the number of steps needed for proper interpolation
+  const processSteps = layer.state.processSteps || 1;
+  
+  // Process each copy of the geometry
+  const copies = group.children || [];
+  for (let copyIndex = 0; copyIndex < copies.length; copyIndex++) {
+    const copyGroup = copies[copyIndex];
+    if (!copyGroup) continue;
+    
+    // Check for axis crossing triggers with interpolation if needed
+    detectIntersectionTriggers(
+      copyGroup, layer, copyIndex, angle, lastAngle, tNow, audioCallback,
+      triggeredNow, triggeredPoints, inverseRotationMatrix, rotationMatrix,
+      isLerping
+    );
+  }
+  
+  // Return the triggered points
+  return triggeredPoints;
 }
 
 /**
@@ -1531,26 +1058,12 @@ export function getRotatedPosition(x, y, rotationAngle) {
   };
 }
 
+/**
+ * Check for axis crossings with improved precision
+ */
 export function checkAxisCrossing(prevX, prevY, currX, currY) {
-  // Basic case: point crosses from right to left and is above X-axis
-  if (prevX > 0 && currX <= 0 && currY > 0) {
-    return true;
-  }
-  
-  // Handle large angle changes
-  if (currY > 0) {
-    const prevAngleFromYAxis = Math.atan2(prevX, prevY);
-    const currAngleFromYAxis = Math.atan2(currX, currY);
-    
-    if (Math.sign(prevAngleFromYAxis) > 0 && Math.sign(currAngleFromYAxis) <= 0) {
-      const angleDiff = Math.abs(prevAngleFromYAxis - currAngleFromYAxis);
-      if (angleDiff < Math.PI) {
-        return true;
-      }
-    }
-  }
-  
-  return false;
+  const result = checkEnhancedAxisCrossing(prevX, prevY, currX, currY);
+  return result.crossed;
 }
 
 export function resetGlobalSequentialIndex() {

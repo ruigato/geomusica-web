@@ -477,33 +477,69 @@ export class LayerManager {
   }
   
   /**
-   * Update all layers
-   * @param {Object} animationParams Animation parameters from main.js
+   * Update all layers in the scene
+   * @param {Object} animationParams Animation parameters or current time in seconds
+   * @param {number} dt Time delta in milliseconds (optional)
    */
-  async updateLayers(animationParams) {
-    const { 
-      scene, 
-      tNow, 
-      dt, 
-      angle, 
-      lastAngle, 
-      triggerAudioCallback,
-      activeLayerId, // This is now passed from animation.js
-      camera,        // Add camera from animation params
-      renderer       // Add renderer from animation params
-    } = animationParams;
-
-    // Ensure all layers have camera and renderer access
+  async updateLayers(animationParams, dt = 16.67) {
+    // Handle both new object format and old single parameters
+    let tNow, angle, activeLayerId, camera, renderer, triggerAudioCallback;
+    
+    // Handle either object format or separate parameters
+    if (typeof animationParams === 'object' && animationParams !== null) {
+      // Extract parameters from object
+      tNow = animationParams.tNow || 0;
+      dt = animationParams.dt || dt;
+      angle = animationParams.angle || 0;
+      activeLayerId = animationParams.activeLayerId;
+      camera = animationParams.camera;
+      renderer = animationParams.renderer;
+      triggerAudioCallback = animationParams.triggerAudioCallback;
+    } else {
+      // Legacy format - first parameter is time
+      tNow = animationParams || 0;
+      // dt was passed as second parameter
+      // Other values will be undefined
+    }
+    
+    // Get scene from the first layer's group if available
+    const scene = this.layers[0]?.group?.parent || window.mainScene;
+    
+    // Ensure camera and renderer are available
     if (camera && renderer) {
-      // Use our dedicated method to propagate camera and renderer references
+      // Set camera and renderer in all layers
       this.ensureCameraAndRendererForLayers(camera, renderer);
+      
+      // Also set in scene's userData for consistency
+      if (scene) {
+        scene.userData = scene.userData || {};
+        scene.userData.camera = camera;
+        scene.userData.renderer = renderer;
+      }
       
       // Set global window references as a fallback
       if (!window.mainCamera) window.mainCamera = camera;
       if (!window.mainRenderer) window.mainRenderer = renderer;
       if (!window.mainScene) window.mainScene = scene;
     } else {
-      console.warn("[LAYER MANAGER] Missing camera or renderer in animation parameters");
+      // Try to get camera and renderer from scene if available
+      if (scene && scene.userData) {
+        camera = scene.userData.camera || scene.mainCamera || window.mainCamera;
+        renderer = scene.userData.renderer || scene.mainRenderer || window.mainRenderer;
+        
+        // Set camera and renderer in all layers if found
+        if (camera && renderer) {
+          this.ensureCameraAndRendererForLayers(camera, renderer);
+        } else {
+          if (DEBUG_LOGGING && (!this.frameCounter || this.frameCounter % 300 === 0)) {
+            console.warn("[LAYER MANAGER] Missing camera or renderer in animation parameters");
+          }
+        }
+      } else {
+        if (DEBUG_LOGGING && (!this.frameCounter || this.frameCounter % 300 === 0)) {
+          console.warn("[LAYER MANAGER] Missing camera or renderer in animation parameters");
+        }
+      }
     }
 
     // Ensure we're working with the correct active layer
@@ -521,8 +557,32 @@ export class LayerManager {
     // This handles cases where _appState might have been reassigned elsewhere
     this.syncWindowAppState();
 
-    // Add camera update based on layer geometry
-    this.updateCameraForLayerBounds(scene, shouldLog);
+    // Add camera update based on layer geometry - only if we have a scene and camera
+    if (scene && camera) {
+      this.updateCameraForLayerBounds(scene, shouldLog);
+    }
+
+    // Get global state for angle calculation - CRITICAL FIX
+    const globalState = scene?.userData?.globalState || window._globalState;
+    
+    // CRITICAL FIX: Ensure angle is updated from globalState if available
+    if (globalState && typeof globalState.updateAngle === 'function') {
+      // Update the global angle using the global state manager
+      const angleData = globalState.updateAngle(tNow);
+      angle = (angleData.angle * Math.PI) / 180; // Convert to radians for THREE.js
+      
+      // Log rotation occasionally
+      if (shouldLog) {
+        console.log(`[ROTATION] Global angle: ${angleData.angle.toFixed(2)}° (${(angle * 180 / Math.PI).toFixed(2)}°), BPM: ${globalState.bpm}`);
+      }
+    } else {
+      // Fallback if no global state - calculate a basic rotation
+      angle = (tNow / 1000) * Math.PI; // 0.5 rotation per second
+      
+      if (shouldLog) {
+        console.warn(`[ROTATION] Using fallback rotation angle calculation: ${(angle * 180 / Math.PI).toFixed(2)}°`);
+      }
+    }
 
     // Debug log all layers' key parameters if logging is enabled
     if (shouldLog) {
@@ -656,12 +716,12 @@ export class LayerManager {
         // Otherwise fall back to the global angle
         const rotationAngle = (layer.currentAngle !== undefined) ? 
           layer.currentAngle : // This value already includes time subdivision
-          ((angle * Math.PI) / 180); // Convert from degrees to radians
+          angle; // Use the global angle (already converted to radians)
           
         layer.group.rotation.z = rotationAngle;
         
         // Occasionally log rotation info for debugging
-        if (DEBUG_LOGGING && Math.random() < 0.001) {
+        if (shouldLog) {
           const hasTimeSubdivision = state.useTimeSubdivision && state.timeSubdivisionValue !== 1;
           console.log(`[LAYER ${layerId}] Rotation: ${(rotationAngle * 180 / Math.PI).toFixed(1)}°, ` + 
                       `Time subdivision: ${hasTimeSubdivision ? state.timeSubdivisionValue + 'x' : 'disabled'}`);
@@ -701,10 +761,18 @@ export class LayerManager {
    * @param {boolean} shouldLog Whether to log debug information
    */
   updateCameraForLayerBounds(scene, shouldLog = false) {
-    // Get camera and renderer references from scene userData
-    const camera = scene.userData?.camera;
+    // Skip if scene is undefined
+    if (!scene) {
+      if (shouldLog) console.warn("Cannot update camera: No scene provided");
+      return;
+    }
+    
+    // Get camera from scene userData with fallbacks
+    const camera = scene.userData?.camera || scene.mainCamera || window.mainCamera;
+    
+    // Skip if no camera is available
     if (!camera) {
-      if (shouldLog) console.warn("Cannot update camera: No camera reference in scene userData");
+      if (shouldLog) console.warn("Cannot update camera: No camera reference available");
       return;
     }
 
@@ -763,6 +831,12 @@ export class LayerManager {
       
       // Apply updated camera distance
       camera.position.z = state.cameraDistance;
+    } else {
+      // If no state is available, just directly set the camera distance
+      camera.position.z = targetDistance;
+      if (shouldLog) {
+        console.log(`Setting camera distance directly to ${targetDistance.toFixed(0)} (no active layer state)`);
+      }
     }
   }
 
@@ -953,7 +1027,24 @@ export class LayerManager {
    * @param {THREE.WebGLRenderer} renderer Renderer instance
    */
   ensureCameraAndRendererForLayers(camera, renderer) {
-    if (!camera || !renderer) return;
+    // Safety check for missing parameters
+    if (!camera || !renderer) {
+      console.warn("[LAYER MANAGER] Cannot propagate camera/renderer: Missing values", {
+        camera: camera ? "defined" : "undefined",
+        renderer: renderer ? "defined" : "undefined"
+      });
+      return;
+    }
+    
+    // Debug validation that camera has expected properties
+    if (!camera.isPerspectiveCamera && !camera.isOrthographicCamera) {
+      console.warn("[LAYER MANAGER] Camera might not be a valid THREE.js camera:", camera);
+    }
+    
+    // Debug validation that renderer has expected properties
+    if (!renderer.domElement || typeof renderer.render !== 'function') {
+      console.warn("[LAYER MANAGER] Renderer might not be a valid THREE.js renderer:", renderer);
+    }
     
     // Store in scene userData
     if (this.scene) {
@@ -975,12 +1066,20 @@ export class LayerManager {
     
     // Store in each layer using the dedicated propagation method
     let successCount = 0;
+    let errorLayers = [];
+    
     for (const layer of this.layers) {
-      if (layer) {
+      if (!layer) continue;
+      
+      try {
         // Use the layer's propagation method if available
         if (typeof layer.propagateCameraAndRenderer === 'function') {
           const success = layer.propagateCameraAndRenderer(camera, renderer);
-          if (success) successCount++;
+          if (success) {
+            successCount++;
+          } else {
+            errorLayers.push(layer.id);
+          }
         }
         // Fallback to direct assignment
         else if (layer.group) {
@@ -988,13 +1087,33 @@ export class LayerManager {
           layer.group.userData.camera = camera;
           layer.group.userData.renderer = renderer;
           successCount++;
+        } else {
+          errorLayers.push(layer.id);
         }
+        
+        // Store a direct reference on the layer object itself
+        // This helps with systems that don't check userData
+        layer.camera = camera;
+        layer.renderer = renderer;
+        
+        // Also ensure baseGeo has references if needed
+        if (layer.baseGeo) {
+          layer.baseGeo.userData = layer.baseGeo.userData || {};
+          layer.baseGeo.userData.camera = camera;
+          layer.baseGeo.userData.renderer = renderer;
+        }
+      } catch (error) {
+        console.error(`[LAYER MANAGER] Error propagating camera/renderer to layer ${layer.id}:`, error);
+        errorLayers.push(layer.id);
       }
     }
     
-    // Log success
-    console.log(`[LAYER MANAGER] Camera and renderer references propagated to ${successCount}/${this.layers.length} layers`);
+    // Only log camera/renderer propagation when debug logging is enabled and only occasionally
+    if (DEBUG_LOGGING && (!this.frameCounter || this.frameCounter % 300 === 0)) {
+      console.log(`[LAYER MANAGER] Camera/renderer propagation: ${successCount}/${this.layers.length} layers successful` + 
+                (errorLayers.length > 0 ? `, Failed for layers: ${errorLayers.join(', ')}` : ''));
+    }
     
-    return { camera, renderer };
+    return { camera, renderer, successCount, errorLayers };
   }
 } 

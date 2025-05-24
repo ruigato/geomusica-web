@@ -649,7 +649,7 @@ function initializeApplication() {
             }
             
             // Apply color if available
-            if (layer && layerData.color && layer.setColor) {
+            if (layer && layer.color && layer.setColor) {
               const { r, g, b } = layerData.color;
               layer.setColor(new THREE.Color(r, g, b));
             }
@@ -1232,8 +1232,10 @@ if (isDOMLoaded()) {
 // Make the updateUIFromState function available globally
 window.updateUIFromState = function(state) {
   if (!uiReferences) {
-    console.error('Cannot update UI: uiReferences not initialized');
-    return false;
+    // Initialize a temporary empty object if uiReferences isn't available yet
+    // This will prevent errors but won't update UI until proper initialization
+    uiReferences = {};
+    console.warn('UI references not fully initialized yet, creating temporary placeholder');
   }
 
   // Import updateUIFromState function if needed

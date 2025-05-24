@@ -952,13 +952,36 @@ export function getVertexPositions(baseGeo, scale, rotationAngle) {
 }
 
 /**
- * Get frequency for a point
+ * Get frequency for a point with additional information based on state
  * @param {number} x - X coordinate
  * @param {number} y - Y coordinate
- * @returns {number} Frequency value
+ * @param {Object} state - Application state for additional calculations
+ * @returns {Object} Frequency information object
  */
-export function getFrequency(x, y) {
-  return Math.hypot(x, y);
+export function getFrequency(x, y, state = null) {
+  // Calculate base frequency from distance to origin
+  const frequency = Math.hypot(x, y) * 2;
+  
+  // Prepare return object
+  const result = {
+    frequency,
+    angle: Math.atan2(y, x),
+    distance: Math.hypot(x, y),
+    noteName: null
+  };
+  
+  // Apply equal temperament quantization if enabled in state
+  if (state && state.useEqualTemperament) {
+    try {
+      const refFreq = state.referenceFrequency || 440;
+      result.frequency = quantizeToEqualTemperament(frequency, refFreq);
+      result.noteName = getNoteName(result.frequency, refFreq);
+    } catch (e) {
+      console.warn('Error applying equal temperament:', e);
+    }
+  }
+  
+  return result;
 }
 
 /**
