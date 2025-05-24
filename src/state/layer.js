@@ -438,37 +438,143 @@ export class Layer {
    * Dispose of layer resources to prevent memory leaks
    */
   dispose() {
-    // Clean up Three.js objects
+    // Remove layer from parent scene properly
+    if (this.group && this.group.parent) {
+      this.group.parent.remove(this.group);
+    }
+
+    // Clean up Three.js materials and geometries in all traversed objects
+    if (this.group) {
+      this.group.traverse((child) => {
+        // Dispose of geometries
+        if (child.geometry && child.geometry.dispose) {
+          child.geometry.dispose();
+        }
+        
+        // Dispose of materials (handle both single materials and arrays)
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(material => {
+              if (material && material.dispose) {
+                // Dispose textures if present
+                if (material.map) material.map.dispose();
+                if (material.lightMap) material.lightMap.dispose();
+                if (material.bumpMap) material.bumpMap.dispose();
+                if (material.normalMap) material.normalMap.dispose();
+                if (material.specularMap) material.specularMap.dispose();
+                if (material.envMap) material.envMap.dispose();
+                
+                material.dispose();
+              }
+            });
+          } else if (child.material.dispose) {
+            // Dispose textures if present
+            if (child.material.map) child.material.map.dispose();
+            if (child.material.lightMap) child.material.lightMap.dispose();
+            if (child.material.bumpMap) child.material.bumpMap.dispose();
+            if (child.material.normalMap) child.material.normalMap.dispose();
+            if (child.material.specularMap) child.material.specularMap.dispose();
+            if (child.material.envMap) child.material.envMap.dispose();
+            
+            child.material.dispose();
+          }
+        }
+        
+        // Remove any event listeners
+        if (child.userData && child.userData.eventListeners) {
+          for (const [eventType, listener] of Object.entries(child.userData.eventListeners)) {
+            child.removeEventListener(eventType, listener);
+          }
+          child.userData.eventListeners = null;
+        }
+        
+        // Clear all userData references
+        if (child.userData) {
+          for (const key in child.userData) {
+            child.userData[key] = null;
+          }
+        }
+      });
+    }
+    
+    // Dispose base geometry if it exists
     if (this.baseGeo && this.baseGeo.dispose) {
       this.baseGeo.dispose();
     }
     
+    // Dispose material if it exists
     if (this.material && this.material.dispose) {
       this.material.dispose();
     }
     
-    if (this.group && this.group.parent) {
-      this.group.parent.remove(this.group);
+    // Clear all Map/Set collections
+    if (this.prevWorldVertices instanceof Map) {
+      this.prevWorldVertices.clear();
+      this.prevWorldVertices = null;
     }
     
-    // FIXED: Clean up references to prevent memory leaks
-    // Clear any circular references
-    if (this.group && this.group.userData) {
-      this.group.userData.state = null;
-      this.group.userData.globalState = null;
+    if (this.lastTrig instanceof Set) {
+      this.lastTrig.clear();
+      this.lastTrig = null;
+    }
+    
+    // Ensure _triggersTimestamps Map is cleared
+    if (this._triggersTimestamps instanceof Map) {
+      this._triggersTimestamps.clear();
+      this._triggersTimestamps = null;
+    }
+    
+    // Clean up state collections
+    if (this.state) {
+      if (this.state.lastTrig instanceof Set) {
+        this.state.lastTrig.clear();
+        this.state.lastTrig = null;
+      }
+      
+      if (this.state.prevWorldVertices instanceof Map) {
+        this.state.prevWorldVertices.clear();
+        this.state.prevWorldVertices = null;
+      }
+      
+      // Clear any other collections in state
+      for (const key in this.state) {
+        if (this.state[key] instanceof Map || this.state[key] instanceof Set) {
+          this.state[key].clear();
+          this.state[key] = null;
+        }
+      }
+      
+      // Clear state references that might be circular
+      this.state.layerId = null;
     }
     
     // Clear layer manager reference
     this._layerManagerRef = null;
     
-    // Clear state references that might be circular
-    if (this.state) {
-      // Don't dispose the state itself as it might be shared
-      // Just clear any potential circular references
-      this.state.layerId = null;
+    // Clear markers array
+    if (this.markers && Array.isArray(this.markers)) {
+      // Remove markers from scene if they have parents
+      this.markers.forEach(marker => {
+        if (marker.parent) {
+          marker.parent.remove(marker);
+        }
+        
+        // Dispose marker geometry and material
+        if (marker.geometry) marker.geometry.dispose();
+        if (marker.material) {
+          if (Array.isArray(marker.material)) {
+            marker.material.forEach(mat => mat.dispose());
+          } else {
+            marker.material.dispose();
+          }
+        }
+      });
+      
+      this.markers.length = 0;
+      this.markers = null;
     }
     
-    // Clear object references
+    // Clear other references that might cause circular dependencies
     this.baseGeo = null;
     this.material = null;
     this.group = null;
