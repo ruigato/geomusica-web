@@ -360,19 +360,19 @@ function quantizeToGrid(timeTicks, gridTicks) {
 }
 
 /**
- * Create a marker at the given coordinates with note information
- * @param {number} angle Current rotation angle in radians
+ * Create a visual marker at the crossing point
+ * @param {number} angle Current rotation angle
  * @param {number} worldX X coordinate in world space
  * @param {number} worldY Y coordinate in world space
  * @param {THREE.Scene} scene Scene to add marker to
- * @param {Object} note Note object with frequency, duration, velocity info
+ * @param {Object} note Note information
  * @param {THREE.Camera} camera Camera for label positioning
  * @param {THREE.WebGLRenderer} renderer Renderer for label positioning
- * @param {boolean} isQuantized Whether this is a quantized trigger
- * @param {Object} layer The layer object this marker belongs to
+ * @param {boolean} isQuantized Whether the trigger was quantized
+ * @param {Object} layer Layer object
  * @returns {Object} Created marker
  */
-function createMarker(angle, worldX, worldY, scene, note, camera = null, renderer = null, isQuantized = false, layer = null) {
+export function createMarker(angle, worldX, worldY, scene, note, camera = null, renderer = null, isQuantized = false, layer = null) {
   // Determine where to store the marker
   let markersArray = null;
   
