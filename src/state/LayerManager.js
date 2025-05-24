@@ -704,9 +704,8 @@ export class LayerManager {
       // IMPORTANT: Update the layer's angle with time subdivision applied
       // This is the fix for time subdivision not working
       if (typeof layer.updateAngle === 'function') {
-        // Current time in seconds (convert from ms)
-        const currentTimeInSeconds = tNow / 1000;
-        layer.updateAngle(currentTimeInSeconds);
+        // tNow is already in seconds from getCurrentTime()
+        layer.updateAngle(tNow);
       }
       
       // IMPORTANT: Apply the rotation using the layer's calculated angle (which includes time subdivision)

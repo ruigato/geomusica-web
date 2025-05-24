@@ -18,6 +18,22 @@ const FRAME_INTERVAL = 1000 / TARGET_FPS;
 let animationFrameId = null;
 let lastFrameTime = 0;
 
+// Track if a time reset has occurred
+let timeResetOccurred = false;
+
+// Listen for time reset events
+window.addEventListener('timeReset', (event) => {
+  console.log('[ANIMATION] Time reset detected, preparing for time discontinuity');
+  timeResetOccurred = true;
+  
+  // Reset frame counter and timing stats to avoid incorrect FPS calculations
+  frameCount = 0;
+  lastTime = 0;
+  lastFrameTimestamp = performance.now();
+  fpsStats = { min: Infinity, max: 0, avg: 0, frames: 0, total: 0 };
+  lastFrameTime = performance.now();
+});
+
 /**
  * Main animation loop with optimized timing
  * @param {Object} props Animation properties
@@ -53,6 +69,14 @@ export function animate(props) {
   // Calculate time since last frame
   const deltaTime = timestamp - lastFrameTimestamp;
   lastFrameTimestamp = timestamp;
+  
+  // Handle time reset events that occurred between frames
+  if (timeResetOccurred) {
+    console.log('[ANIMATION] Handling time reset in animation loop');
+    timeResetOccurred = false;
+    // No need to do anything else - the time handling code in GlobalStateManager 
+    // and Layer classes will handle the time discontinuity
+  }
   
   // Calculate actual FPS
   const actualFps = 1000 / deltaTime;

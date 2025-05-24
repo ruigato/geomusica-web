@@ -207,26 +207,58 @@ export class GlobalStateManager {
   
   /**
    * Update angle for animation
-   * @param {number} tNow Current time in ms
+   * @param {number} tNow Current time in seconds from getCurrentTime()
    * @returns {Object} Object with angle and lastAngle
    */
   updateAngle(tNow) {
     // If this is the first call, initialize lastTime
     if (!this.lastTime) {
       this.lastTime = tNow;
+      console.log(`[ROTATION] Initializing rotation timing system at t=${tNow.toFixed(3)}`);
       return { angle: this.lastAngle, lastAngle: this.lastAngle };
     }
     
-    const dt = Math.min(tNow - this.lastTime, 100); // Cap delta time at 100ms
+    // Calculate time delta in seconds (tNow is already in seconds)
+    let dt = tNow - this.lastTime;
     
-    // Skip tiny time steps (often happen during timing system initialization)
-    if (dt < 1) {
+    // Handle time discontinuities (like timer resets or app restarts)
+    // This happens when the time jumps backward significantly
+    if (dt < -0.1) { // If time jumps backward by more than 100ms
+      console.warn(`[ROTATION] Time discontinuity detected: negative dt=${dt.toFixed(3)}s (lastTime=${this.lastTime.toFixed(3)}, tNow=${tNow.toFixed(3)})`);
+      console.log(`[ROTATION] Time system reset detected. Restarting rotation tracking.`);
+      
+      // Instead of just resetting lastTime, also adjust the rotation to be continuous
+      // This ensures the visual rotation doesn't "jump" when time resets
+      this.lastTime = tNow;
+      
+      // Just keep using the current angle without changes
       return { angle: this.lastAngle, lastAngle: this.lastAngle };
     }
     
-    // Get time in seconds
-    const seconds = dt / 1000;
+    // Handle exceptionally large positive jumps (like browser tab becoming active again)
+    if (dt > 1.0) { // More than 1 second jump
+      console.log(`[ROTATION] Large time jump detected: dt=${dt.toFixed(3)}s. Limiting to prevent visual jumps.`);
+      // Limit the effective dt to prevent huge rotation jumps
+      dt = 0.033; // Simulate a normal frame (about 30fps)
+    }
     
+    // Detect unusually large time steps which may indicate timing problems
+    else if (dt > 0.050) { // 50ms in seconds
+      console.log(`[ROTATION] Large time step detected: dt=${(dt*1000).toFixed(3)}ms (normal range is 1-33ms)`);
+    }
+    
+    // Skip tiny time steps (less than 1ms = 0.001s)
+    if (dt < 0.001) {
+      if (Math.random() < 0.05) { // Log skipped frames occasionally
+        console.log(`[DEBUG] Skipping tiny time step: ${(dt*1000).toFixed(6)}ms`);
+      }
+      return { angle: this.lastAngle, lastAngle: this.lastAngle };
+    }
+    
+    // dt is already in seconds, no need to convert
+    const seconds = dt;
+    
+    // IMPORTANT: Framerate-independent calculation
     // Adjust calculation to make 120 BPM = 0.5 rotation per second (1 rotation per 2 seconds)
     // Formula: rotationsPerSecond = BPM / 240
     // At 60 BPM: 60/240 = 0.25 rotations per second (1 rotation takes 4 seconds)
@@ -234,7 +266,7 @@ export class GlobalStateManager {
     // At 240 BPM: 240/240 = 1 rotation per second (1 rotation takes 1 second)
     const rotationsPerSecond = this.bpm / 240;
     
-    // Calculate degrees to rotate this frame
+    // Calculate degrees to rotate this frame - multiplied by actual time elapsed
     const degreesPerSecond = rotationsPerSecond * 360;
     const angleDelta = degreesPerSecond * seconds;
     
@@ -242,9 +274,9 @@ export class GlobalStateManager {
     const lastAngle = this.lastAngle;
     const angle = (lastAngle + angleDelta) % 360;
     
-    // Debug logging periodically (about once every 5 seconds at 60fps)
-    if (Math.random() < 0.003) { // ~0.3% chance each frame
-      console.log(`[ROTATION] BPM: ${this.bpm}, Rotations/sec: ${rotationsPerSecond.toFixed(2)}, Degrees/sec: ${degreesPerSecond.toFixed(2)}, Delta: ${angleDelta.toFixed(2)}°`);
+    // Debug logging more frequently (about once every 1-2 seconds at 60fps)
+    if (Math.random() < 0.02) { // ~2% chance each frame
+      console.log(`[ROTATION] dt: ${(dt*1000).toFixed(3)}ms, seconds: ${seconds.toFixed(5)}, BPM: ${this.bpm}, Rotations/sec: ${rotationsPerSecond.toFixed(2)}, Angle Delta: ${angleDelta.toFixed(2)}°`);
     }
     
     // Store for next frame

@@ -728,6 +728,15 @@ export class Layer {
       if (this.lastBaseAngle === undefined) {
         this.lastBaseAngle = baseAngleInDegrees;
         this.accumulatedAngle = baseAngleInDegrees;
+        this.lastUpdateTime = currentTime;
+        
+        if (DEBUG_LOGGING) {
+          console.log(`[LAYER ${this.id}] Initializing angle tracking at ${baseAngleInDegrees.toFixed(2)}°`);
+        }
+        
+        // Convert to radians and store
+        this.currentAngle = (this.accumulatedAngle * Math.PI) / 180;
+        return;
       }
       
       // Calculate how much the base angle has changed since last frame
@@ -738,6 +747,17 @@ export class Layer {
         deltaAngle += 360;
       } else if (deltaAngle > 180) {
         deltaAngle -= 360;
+      }
+      
+      // Check for time discontinuities
+      const timeDelta = currentTime - this.lastUpdateTime;
+      if (timeDelta < -0.1) { // Time jumped backward (system reset)
+        if (DEBUG_LOGGING) {
+          console.warn(`[LAYER ${this.id}] Time discontinuity detected: ${timeDelta.toFixed(3)}s. Resetting angle tracking.`);
+        }
+        this.lastUpdateTime = currentTime;
+        this.lastBaseAngle = baseAngleInDegrees;
+        return;
       }
       
       // Apply time subdivision multiplier to the delta if enabled
@@ -779,9 +799,31 @@ export class Layer {
         console.warn(`[LAYER ${this.id}] No global state available for angle update`);
       }
       
+      // Check if this is the first update
+      if (this.lastUpdateTime === undefined) {
+        this.lastUpdateTime = currentTime;
+        this.currentAngle = 0;
+        return;
+      }
+      
+      // Calculate time delta in seconds
+      let deltaTime = currentTime - this.lastUpdateTime;
+      
+      // Handle time discontinuities
+      if (deltaTime < -0.1) {
+        if (DEBUG_LOGGING) {
+          console.warn(`[LAYER ${this.id}] Time discontinuity in fallback: ${deltaTime.toFixed(3)}s. Resetting.`);
+        }
+        this.lastUpdateTime = currentTime;
+        return;
+      }
+      
+      // Limit large time jumps to prevent visual glitches
+      if (deltaTime > 1.0) {
+        deltaTime = 0.033; // Cap at reasonable frame time
+      }
+      
       // Default to a slow rotation (45 degrees per second)
-      const lastUpdateTime = this.lastUpdateTime || (currentTime - 0.016);
-      const deltaTime = currentTime - lastUpdateTime;
       const rotationSpeed = Math.PI / 4; // 45 degrees per second
       
       // Check if time subdivision should be applied to this fallback

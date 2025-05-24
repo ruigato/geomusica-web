@@ -53,8 +53,33 @@ export function getCurrentTime() {
  * Reset the timer to zero
  */
 export function resetTime() {
+  // Store previous start time for logging
+  const previousStartTime = timeStartedAt;
+  const currentTime = getCurrentTime();
+  
+  // Reset the timer
   timeStartedAt = performance.now();
-  console.log("[TIMING] Timer reset to zero");
+  console.log(`[TIMING] Timer reset from ${currentTime.toFixed(3)}s to zero`);
+  
+  // Dispatch a time reset event that other systems can listen for
+  try {
+    const event = new CustomEvent('timeReset', { 
+      detail: { 
+        previousTime: currentTime,
+        previousStartTime: previousStartTime,
+        newStartTime: timeStartedAt
+      } 
+    });
+    window.dispatchEvent(event);
+    console.log('[TIMING] Dispatched timeReset event to notify other systems');
+  } catch (error) {
+    console.error('[TIMING] Failed to dispatch timeReset event:', error);
+  }
+  
+  return {
+    previousTime: currentTime,
+    newStartTime: timeStartedAt
+  };
 }
 
 /**
