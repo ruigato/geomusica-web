@@ -418,18 +418,41 @@ let updateGroupCallCounter = 0;
  * @param {THREE.BufferGeometry} baseGeo Base geometry
  * @param {THREE.Material} mat Material to use
  * @param {number} segments Number of segments
- * @param {number} angle Angle between copies in degrees
+ * @param {number} copyAngleOffset Angle between copies in degrees (RENAMED from angle for clarity)
  * @param {Object} state Application state
  * @param {boolean} isLerping Whether values are currently being lerped
  * @param {boolean} justCalculatedIntersections Whether intersections were just calculated
  */
-export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, angle = 0, state = null, isLerping = false, justCalculatedIntersections = false) {
+export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, copyAngleOffset = 0, state = null, isLerping = false, justCalculatedIntersections = false) {
   // Skip update if invalid inputs
   if (!group || !baseGeo || !mat) {
     console.error("Missing required parameters for updateGroup");
     return;
   }
-
+  
+  // CRITICAL FIX: Set up the group for proper rotation inheritance
+  // This ensures the matrices are correctly updated
+  if (group.matrixAutoUpdate === false) {
+    console.log(`[GEOMETRY] Re-enabling matrixAutoUpdate for group to ensure proper rotation inheritance`);
+    group.matrixAutoUpdate = true;
+  }
+  
+  // Ensure proper visibility
+  group.visible = true;
+  
+  // IMPORTANT: Make sure the group has the correct matrix world before creating copies
+  // This is critical for proper rotation inheritance
+  group.updateMatrix();
+  group.updateMatrixWorld(true);
+  
+  // Store current rotation for debugging
+  const currentRotation = group.rotation.z;
+  const currentWorldRotation = new THREE.Euler().setFromRotationMatrix(group.matrixWorld).z;
+  
+  if (DEBUG_LOGGING || updateGroupCallCounter % 60 === 0) {
+    console.log(`[GEOMETRY] Starting updateGroup with rotation.z=${currentRotation.toFixed(6)} (${(currentRotation * 180 / Math.PI).toFixed(2)}°), world rotation=${currentWorldRotation.toFixed(6)} (${(currentWorldRotation * 180 / Math.PI).toFixed(2)}°)`);
+  }
+  
   // Check if we're using star cuts
   const useStarCuts = state && state.useStars && state.useCuts && state.starSkip > 1;
   
@@ -571,13 +594,24 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       }
       
       // Each copy gets a cumulative angle (i * angle) in degrees
-      const cumulativeAngleDegrees = i * angle;
+      const cumulativeAngleDegrees = i * copyAngleOffset;
       
       // Convert to radians only when setting the actual Three.js rotation
       const cumulativeAngleRadians = (cumulativeAngleDegrees * Math.PI) / 180;
       
       // Create a group for this copy to hold both the lines and vertex circles
       const copyGroup = new THREE.Group();
+      
+      // CRITICAL: Set copyGroup to inherit parent transforms correctly
+      copyGroup.matrixAutoUpdate = true;
+      
+      // Name the group for easier debugging
+      copyGroup.name = `copy-${i}`;
+      
+      // Store the copy index in userData for debugging
+      copyGroup.userData = copyGroup.userData || {};
+      copyGroup.userData.copyIndex = i;
+      copyGroup.userData.angleOffset = cumulativeAngleDegrees;
       
       // Use the current geometry (may have been updated with intersections)
       // Create a modified material based on the original but with increased visibility
@@ -715,7 +749,27 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       }
       
       // Apply rotation to the copy group
+      // IMPORTANT: This is a STATIC arrangement angle, not dynamic rotation
+      // The copyAngleOffset specifies the angle between successive copies
+      // This creates a fan-like arrangement of copies
+      // The dynamic rotation is applied to the entire layer group in Layer.updateAngle()
       copyGroup.rotation.z = cumulativeAngleRadians;
+      
+      // Ensure proper matrix updates for rotation inheritance
+      copyGroup.matrixAutoUpdate = true;
+      copyGroup.updateMatrix();
+      
+      // CRITICAL DEBUG: Check if rotation is actually being applied to copy groups
+      // This will help identify if the issue is in the layer group rotation or in the copy group rotation
+      if (typeof window.__geometryRotationChecked === 'undefined') {
+        window.__geometryRotationChecked = true;
+        console.log(`[GEOMETRY DEBUG] Copy angle: ${cumulativeAngleDegrees.toFixed(2)}°, Applied rotation.z: ${copyGroup.rotation.z.toFixed(6)}`);
+        
+        // Also check if the entire layer group has correct rotation
+        if (group) {
+          console.log(`[GEOMETRY DEBUG] Parent layer group rotation.z: ${group.rotation.z.toFixed(6)}`);
+        }
+      }
       
       // Track the copy group for cleanup if needed
       newChildren.push(copyGroup);

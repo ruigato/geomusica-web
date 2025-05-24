@@ -483,7 +483,7 @@ export class LayerManager {
    */
   async updateLayers(animationParams, dt = 16.67) {
     // Handle both new object format and old single parameters
-    let tNow, angle, activeLayerId, camera, renderer, triggerAudioCallback;
+    let tNow, angle, activeLayerId, camera, renderer, triggerAudioCallback, preventDoubleRotation;
     
     // Handle either object format or separate parameters
     if (typeof animationParams === 'object' && animationParams !== null) {
@@ -495,11 +495,13 @@ export class LayerManager {
       camera = animationParams.camera;
       renderer = animationParams.renderer;
       triggerAudioCallback = animationParams.triggerAudioCallback;
+      preventDoubleRotation = animationParams.preventDoubleRotation || false;
     } else {
       // Legacy format - first parameter is time
       tNow = animationParams || 0;
       // dt was passed as second parameter
       // Other values will be undefined
+      preventDoubleRotation = false;
     }
     
     // Get scene from the first layer's group if available
@@ -562,26 +564,20 @@ export class LayerManager {
       this.updateCameraForLayerBounds(scene, shouldLog);
     }
 
-    // Get global state for angle calculation - CRITICAL FIX
-    const globalState = scene?.userData?.globalState || window._globalState;
+    // FIXED: Use the angle passed from animation
+    // The angle is now calculated in animation.js by globalState.updateAngle()
+    // and passed to us through animationParams.angle
     
-    // CRITICAL FIX: Ensure angle is updated from globalState if available
-    if (globalState && typeof globalState.updateAngle === 'function') {
-      // Update the global angle using the global state manager
-      const angleData = globalState.updateAngle(tNow);
-      angle = (angleData.angle * Math.PI) / 180; // Convert to radians for THREE.js
-      
-      // Log rotation occasionally
-      if (shouldLog) {
-        console.log(`[ROTATION] Global angle: ${angleData.angle.toFixed(2)}° (${(angle * 180 / Math.PI).toFixed(2)}°), BPM: ${globalState.bpm}`);
-      }
-    } else {
-      // Fallback if no global state - calculate a basic rotation
-      angle = (tNow / 1000) * Math.PI; // 0.5 rotation per second
-      
-      if (shouldLog) {
-        console.warn(`[ROTATION] Using fallback rotation angle calculation: ${(angle * 180 / Math.PI).toFixed(2)}°`);
-      }
+    // IMPORTANT DISTINCTION:
+    // - rotationAngle: The dynamic angle that rotates the entire layer group over time (driven by BPM)
+    // - copyAngleOffset: The fixed angle between successive copies of a polygon (set by user in UI)
+    
+    // The angle from animation.js is already converted to radians for THREE.js
+    let rotationAngle = angle;
+    
+    // Log rotation occasionally
+    if (shouldLog) {
+      console.log(`[ROTATION] Layer manager using rotation angle: ${(rotationAngle * 180 / Math.PI).toFixed(2)}° (${rotationAngle.toFixed(4)} radians)`);
     }
 
     // Debug log all layers' key parameters if logging is enabled
@@ -690,7 +686,7 @@ export class LayerManager {
           layer.baseGeo,
           layer.material,
           state.segments,
-          state.angle, // Use the fixed angle between copies, not the animation angle
+          state.copyAngleOffset, // RENAMED: Use copyAngleOffset instead of angle for clarity
           state,  // Use this specific layer's state
           state.isLerping(),
           state.justCalculatedIntersections
@@ -713,17 +709,42 @@ export class LayerManager {
       if (layer.group) {
         // If the layer has a calculated angle (from updateAngle), use it
         // Otherwise fall back to the global angle
-        const rotationAngle = (layer.currentAngle !== undefined) ? 
-          layer.currentAngle : // This value already includes time subdivision
-          angle; // Use the global angle (already converted to radians)
-          
-        layer.group.rotation.z = rotationAngle;
+        let rotationAngle;
         
-        // Occasionally log rotation info for debugging
-        if (shouldLog) {
-          const hasTimeSubdivision = state.useTimeSubdivision && state.timeSubdivisionValue !== 1;
-          console.log(`[LAYER ${layerId}] Rotation: ${(rotationAngle * 180 / Math.PI).toFixed(1)}°, ` + 
-                      `Time subdivision: ${hasTimeSubdivision ? state.timeSubdivisionValue + 'x' : 'disabled'}`);
+        if (layer.currentAngle !== undefined) {
+          // layer.currentAngle from updateAngle is already in radians
+          rotationAngle = layer.currentAngle;
+        } else {
+          // angle from animation.js is already in radians
+          rotationAngle = angle; 
+        }
+        
+        // Check if we should apply rotation here, or if it's already applied elsewhere
+        // When preventDoubleRotation is true, rotation is handled by Layer.updateAngle()
+        if (!preventDoubleRotation) {
+          // Only apply rotation here if not already handled by the Layer class
+          layer.group.rotation.z = rotationAngle;
+          
+          // Ensure matrix is updated
+          layer.group.matrixAutoUpdate = true;
+          layer.group.updateMatrix();
+          layer.group.updateMatrixWorld(true);
+          
+          // DEBUGGING: Add critical debug output
+          if (this.frameCounter % 30 === 0) {
+            console.log(`[LAYER MANAGER] Applied rotation to layer ${layerId}: ${rotationAngle.toFixed(6)} radians`);
+          }
+        } else {
+          // Skip applying rotation here as it's handled by Layer.updateAngle()
+          // Still log the value for debugging
+          if (this.frameCounter % 30 === 0) {
+            console.log(`[ROTATION] Using Layer.updateAngle() for rotation (angle: ${(rotationAngle * 180 / Math.PI).toFixed(2)}°)`);
+            
+            // Check if something in LayerManager might be overriding layer rotation
+            if (layer.currentAngle && Math.abs(layer.group.rotation.z - layer.currentAngle) > 0.0001) {
+              console.warn(`[ROTATION DISCREPANCY] Layer ${layerId} rotation.z (${layer.group.rotation.z.toFixed(6)}) doesn't match layer.currentAngle (${layer.currentAngle.toFixed(6)})`);
+            }
+          }
         }
       }
       

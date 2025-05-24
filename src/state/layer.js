@@ -710,6 +710,7 @@ export class Layer {
   /**
    * Update the layer's angle for animation and marker detection.
    * This method calculates and tracks angles with time subdivision applied if enabled.
+   * This is the CENTRAL place where rotation is applied to the layer group.
    * 
    * @param {number} currentTime Current time in seconds
    */
@@ -727,120 +728,100 @@ export class Layer {
       // Initialize tracking properties if they don't exist
       if (this.lastBaseAngle === undefined) {
         this.lastBaseAngle = baseAngleInDegrees;
-        this.accumulatedAngle = baseAngleInDegrees;
-        this.lastUpdateTime = currentTime;
-        
-        if (DEBUG_LOGGING) {
-          console.log(`[LAYER ${this.id}] Initializing angle tracking at ${baseAngleInDegrees.toFixed(2)}°`);
-        }
-        
-        // Convert to radians and store
-        this.currentAngle = (this.accumulatedAngle * Math.PI) / 180;
-        return;
+        this.lastAngleUpdateTime = currentTime;
       }
       
-      // Calculate how much the base angle has changed since last frame
-      let deltaAngle = baseAngleInDegrees - this.lastBaseAngle;
+      // Calculate angle delta since last update (in degrees)
+      const angleDelta = baseAngleInDegrees - this.lastBaseAngle;
       
-      // Handle wraparound from 359->0 degrees
-      if (deltaAngle < -180) {
-        deltaAngle += 360;
-      } else if (deltaAngle > 180) {
-        deltaAngle -= 360;
-      }
-      
-      // Check for time discontinuities
-      const timeDelta = currentTime - this.lastUpdateTime;
-      if (timeDelta < -0.1) { // Time jumped backward (system reset)
-        if (DEBUG_LOGGING) {
-          console.warn(`[LAYER ${this.id}] Time discontinuity detected: ${timeDelta.toFixed(3)}s. Resetting angle tracking.`);
-        }
-        this.lastUpdateTime = currentTime;
-        this.lastBaseAngle = baseAngleInDegrees;
-        return;
-      }
-      
-      // Apply time subdivision multiplier to the delta if enabled
-      if (this.state.useTimeSubdivision && this.state.timeSubdivisionValue !== 1) {
-        const multiplier = this.state.timeSubdivisionValue;
-        
-        // Store original delta for logging
-        const originalDelta = deltaAngle;
-        
-        // Apply the time subdivision multiplier
-        deltaAngle *= multiplier;
-        
-        // Enhanced logging for debugging time subdivision
-        if (DEBUG_LOGGING && Math.random() < 0.003) {
-          console.log(`[LAYER ${this.id}] Time subdivision: ${multiplier}x speed`);
-          console.log(`[LAYER ${this.id}] Delta angle: ${originalDelta.toFixed(2)}° → ${deltaAngle.toFixed(2)}° (${multiplier}x)`);
-          console.log(`[LAYER ${this.id}] Current accumulated angle: ${this.accumulatedAngle.toFixed(2)}°`);
-        }
-      } else if (DEBUG_LOGGING && Math.random() < 0.001) {
-        // Log when time subdivision is disabled occasionally
-        console.log(`[LAYER ${this.id}] Time subdivision disabled, normal speed (1x)`);
-      }
-      
-      // Accumulate the angle continuously
-      this.accumulatedAngle = (this.accumulatedAngle + deltaAngle) % 360;
-      if (this.accumulatedAngle < 0) this.accumulatedAngle += 360;
-      
-      // Store the current base angle for next frame's calculation
+      // Update tracking properties
       this.lastBaseAngle = baseAngleInDegrees;
+      this.lastAngleUpdateTime = currentTime;
       
-      // Convert accumulated angle from degrees to radians
-      this.currentAngle = (this.accumulatedAngle * Math.PI) / 180;
+      // Setup debug counter if not already defined
+      if (typeof window.__layerAngleDebugCounter === 'undefined') {
+        window.__layerAngleDebugCounter = 0;
+      }
+      window.__layerAngleDebugCounter++;
       
-      // IMPORTANT: DO NOT apply rotation here!
-      // LayerManager.updateLayers will handle applying rotation to the group.
-    } else {
-      // Fallback calculation if no global state is available
-      if (DEBUG_LOGGING) {
-        console.warn(`[LAYER ${this.id}] No global state available for angle update`);
+      if (window.__layerAngleDebugCounter % 30 === 0) {
+        console.log(`[ROTATION CRITICAL] Layer ${this.id} baseAngleInDegrees=${baseAngleInDegrees.toFixed(2)}°, angleDelta=${angleDelta.toFixed(4)}°`);
       }
       
-      // Check if this is the first update
-      if (this.lastUpdateTime === undefined) {
-        this.lastUpdateTime = currentTime;
-        this.currentAngle = 0;
-        return;
-      }
-      
-      // Calculate time delta in seconds
-      let deltaTime = currentTime - this.lastUpdateTime;
-      
-      // Handle time discontinuities
-      if (deltaTime < -0.1) {
-        if (DEBUG_LOGGING) {
-          console.warn(`[LAYER ${this.id}] Time discontinuity in fallback: ${deltaTime.toFixed(3)}s. Resetting.`);
-        }
-        this.lastUpdateTime = currentTime;
-        return;
-      }
-      
-      // Limit large time jumps to prevent visual glitches
-      if (deltaTime > 1.0) {
-        deltaTime = 0.033; // Cap at reasonable frame time
-      }
-      
-      // Default to a slow rotation (45 degrees per second)
-      const rotationSpeed = Math.PI / 4; // 45 degrees per second
-      
-      // Check if time subdivision should be applied to this fallback
+      // Apply time subdivision if enabled
+      let finalAngleInDegrees = baseAngleInDegrees;
       if (this.state && this.state.useTimeSubdivision && this.state.timeSubdivisionValue !== 1) {
-        const multiplier = this.state.timeSubdivisionValue;
-        this.currentAngle = (this.currentAngle || 0) + rotationSpeed * deltaTime * multiplier;
+        finalAngleInDegrees = baseAngleInDegrees * this.state.timeSubdivisionValue;
         
-        if (DEBUG_LOGGING && Math.random() < 0.003) {
-          console.log(`[LAYER ${this.id}] Applied time subdivision in fallback: ${multiplier}x`);
+        if (window.__layerAngleDebugCounter % 30 === 0) {
+          console.log(`[ROTATION CRITICAL] Layer ${this.id} time subdivision ${this.state.timeSubdivisionValue}x applied, finalAngleInDegrees=${finalAngleInDegrees.toFixed(2)}°`);
         }
-      } else {
-        this.currentAngle = (this.currentAngle || 0) + rotationSpeed * deltaTime;
+      }
+      
+      // Convert to radians for Three.js
+      this.currentAngle = (finalAngleInDegrees * Math.PI) / 180;
+      
+      // CENTRALIZED ROTATION APPLICATION:
+      // This is the ONE place where rotation should be applied to the layer group
+      if (this.group) {
+        // Record previous rotation to check if something is overriding it
+        const previousRotation = this.group.rotation.z;
+        
+        // CRITICAL FIX: Explicitly enable matrixAutoUpdate to ensure rotation propagates
+        this.group.matrixAutoUpdate = true;
+        
+        // Apply the rotation directly to the group
+        this.group.rotation.z = this.currentAngle;
+        
+        // IMPORTANT: Check every child in the group to ensure they are properly handling parent transformations
+        if (window.__layerAngleDebugCounter % 300 === 0) {
+          // Every 300 frames, do a deep check of all children
+          console.log(`[ROTATION DEEP CHECK] Layer ${this.id} has ${this.group.children.length} direct children`);
+          
+          this.group.traverse(child => {
+            if (child !== this.group) {
+              // Check if this child has matrixAutoUpdate disabled
+              if (child.matrixAutoUpdate === false) {
+                console.warn(`[ROTATION ISSUE] Child of layer ${this.id} has matrixAutoUpdate=false, enabling it`);
+                child.matrixAutoUpdate = true;
+              }
+              
+              // Log one child's world matrix to verify rotation is propagating
+              if (child.type === 'Group' && this.group.children.indexOf(child) === 0) {
+                console.log(`[ROTATION PROPAGATION] First copy group world matrix:`, 
+                  child.matrixWorld.elements.slice(0, 4).map(v => v.toFixed(3)),
+                  child.matrixWorld.elements.slice(4, 8).map(v => v.toFixed(3))
+                );
+              }
+            }
+          });
+        }
+        
+        // Force immediate matrix update
+        this.group.updateMatrix();
+        this.group.updateMatrixWorld(true);
+        
+        // Also validate by checking quaternion
+        const expectedQuaternion = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(0, 0, 1), this.currentAngle
+        );
+        
+        // Check if rotation was immediately overridden
+        if (this.group.rotation.z !== this.currentAngle) {
+          console.error(`[ROTATION OVERRIDE] Layer ${this.id} rotation was overridden immediately! Set to ${this.currentAngle.toFixed(6)} but now ${this.group.rotation.z.toFixed(6)}`);
+        }
+        
+        if (window.__layerAngleDebugCounter % 30 === 0) {
+          console.log(`[ROTATION CENTRAL] Layer ${this.id} rotation.z=${this.group.rotation.z.toFixed(6)} radians (${(this.group.rotation.z * 180 / Math.PI).toFixed(2)}°)`);
+          console.log(`[ROTATION VALIDATION] Current quaternion: [${this.group.quaternion.x.toFixed(4)}, ${this.group.quaternion.y.toFixed(4)}, ${this.group.quaternion.z.toFixed(4)}, ${this.group.quaternion.w.toFixed(4)}]`);
+          
+          // Check if rotation changed since last update
+          if (Math.abs(previousRotation - this.group.rotation.z) < 0.0001) {
+            console.warn(`[ROTATION STALLED] Layer ${this.id} rotation hasn't changed significantly!`);
+          }
+        }
       }
     }
-    
-    // Store the time for future delta calculations
-    this.lastUpdateTime = currentTime;
   }
 
   /**

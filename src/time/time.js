@@ -8,6 +8,7 @@ const SECONDS_PER_MEASURE_AT_120BPM = 2; // 4/4 time at 120 BPM = 2 seconds per 
 // Module state
 let timingDiagnosticCount = 0;
 let lastTimingSourceLog = 0;
+let lastValidNow = 0; // Track the last valid performance.now() value
 
 // Simple timing system - just use browser performance API
 let timeStartedAt = 0; // When the timer was started
@@ -17,14 +18,26 @@ let timeSystemInitialized = false;
  * Initialize the time module
  */
 export function initializeTime() {
-  // Initialize browser-based timing
-  if (!timeSystemInitialized) {
-    timeStartedAt = performance.now();
-    timeSystemInitialized = true;
-    console.log("[TIMING] Initialized with browser performance timing");
+  if (timeSystemInitialized) {
+    return;
   }
   
-  return true;
+  timeStartedAt = performance.now();
+  lastValidNow = timeStartedAt; // Initialize with the starting time
+  timeSystemInitialized = true;
+  
+  // Log initialization
+  console.log(`[TIMING] Time system initialized at ${timeStartedAt}`);
+  
+  // Dispatch initialization event
+  try {
+    const event = new CustomEvent('timeInitialized', { 
+      detail: { startTime: timeStartedAt } 
+    });
+    window.dispatchEvent(event);
+  } catch (error) {
+    console.error('[TIMING] Failed to dispatch timeInitialized event:', error);
+  }
 }
 
 /**
@@ -37,7 +50,49 @@ export function getCurrentTime() {
   }
   
   const now = performance.now();
+  
+  // CRITICAL FIX: Handle case where performance.now() might reset or jump backward
+  // This can happen when the browser tab becomes inactive or the device sleeps
+  if (now < timeStartedAt) {
+    console.warn(`[TIMING] Detected performance.now() reset: ${timeStartedAt} -> ${now}`);
+    
+    // CRITICAL FIX: Instead of resetting to 0, maintain continuity by adjusting timeStartedAt
+    // Calculate how much time had elapsed before the reset
+    const elapsedBeforeReset = (lastValidNow - timeStartedAt) / 1000.0;
+    
+    // Reset our time reference point
+    timeStartedAt = now;
+    
+    // Store this reset info
+    if (!window.__timeResetHistory) window.__timeResetHistory = [];
+    window.__timeResetHistory.push({
+      timestamp: new Date().toISOString(),
+      elapsedBeforeReset,
+      oldTimeStartedAt: timeStartedAt,
+      newTimeStartedAt: now
+    });
+    
+    // Return the previously elapsed time instead of 0
+    // This ensures rotation continues from where it left off
+    console.log(`[TIMING] Maintaining continuity: returning ${elapsedBeforeReset.toFixed(3)}s instead of resetting to 0`);
+    
+    // VERY IMPORTANT: Notify GlobalStateManager to adjust its timing but preserve angle
+    if (window._globalState && typeof window._globalState.handleTimeReset === 'function') {
+      window._globalState.handleTimeReset(elapsedBeforeReset);
+    }
+    
+    return elapsedBeforeReset;
+  }
+  
+  // Store last valid now value for handling resets
+  lastValidNow = now;
+  
   const timeInSeconds = (now - timeStartedAt) / 1000.0;
+  
+  // Sanity check for extremely large time values
+  if (timeInSeconds > 86400) { // More than 24 hours
+    console.warn(`[TIMING] Unusually large time value detected: ${timeInSeconds.toFixed(2)}s`);
+  }
   
   // Log time source periodically (not too often)
   const currentTimeMs = Date.now();
@@ -51,29 +106,44 @@ export function getCurrentTime() {
 
 /**
  * Reset the timer to zero
+ * @param {boolean} dispatchEvent Whether to dispatch a timeReset event
+ * @returns {Object} Information about the reset
  */
-export function resetTime() {
+export function resetTime(dispatchEvent = true) {
   // Store previous start time for logging
   const previousStartTime = timeStartedAt;
   const currentTime = getCurrentTime();
   
+  // Update to the current time first to ensure clean delta calculations
+  const now = performance.now();
+  
   // Reset the timer
-  timeStartedAt = performance.now();
+  timeStartedAt = now;
   console.log(`[TIMING] Timer reset from ${currentTime.toFixed(3)}s to zero`);
   
   // Dispatch a time reset event that other systems can listen for
-  try {
-    const event = new CustomEvent('timeReset', { 
-      detail: { 
-        previousTime: currentTime,
-        previousStartTime: previousStartTime,
-        newStartTime: timeStartedAt
-      } 
-    });
-    window.dispatchEvent(event);
-    console.log('[TIMING] Dispatched timeReset event to notify other systems');
-  } catch (error) {
-    console.error('[TIMING] Failed to dispatch timeReset event:', error);
+  if (dispatchEvent) {
+    try {
+      const event = new CustomEvent('timeReset', { 
+        detail: { 
+          previousTime: currentTime,
+          previousStartTime: previousStartTime,
+          newStartTime: timeStartedAt
+        } 
+      });
+      window.dispatchEvent(event);
+      console.log('[TIMING] Dispatched timeReset event to notify other systems');
+    } catch (error) {
+      console.error('[TIMING] Failed to dispatch timeReset event:', error);
+    }
+  } else {
+    console.log('[TIMING] Silent reset - no event dispatched');
+  }
+  
+  // Notify GlobalStateManager if it exists, to reset its timing state
+  if (window._globalState && typeof window._globalState.handleTimeReset === 'function') {
+    window._globalState.handleTimeReset(currentTime);
+    console.log('[TIMING] Notified GlobalStateManager of time reset');
   }
   
   return {

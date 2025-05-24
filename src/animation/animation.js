@@ -99,18 +99,118 @@ export function animate(props) {
   // Begin stats monitoring if available
   if (stats) stats.begin();
   
+  // FIXED: Calculate angle using GlobalStateManager before updating layers
+  // This ensures the angle is calculated correctly based on framerate-independent time
+  
+  // IMPORTANT DISTINCTION:
+  // - rotationAngle: The dynamic angle that rotates the entire layer group over time (driven by BPM)
+  // - copyAngleOffset: The fixed angle between successive copies of a polygon (set by user in UI)
+  //
+  // This rotationAngle is used to animate the rotation of the entire layer group
+  
+  let rotationAngle = 0; // Renamed from 'angle' for clarity
+  if (globalState && typeof globalState.updateAngle === 'function') {
+    // CRITICAL FIX: Check if BPM is zero and issue a warning
+    if (globalState.bpm === 0) {
+      // Log warning every 180 frames to avoid console spam
+      if (frameCount % 180 === 0) {
+        console.warn(`[ROTATION CRITICAL] BPM is zero! Rotation will not occur. Please set BPM > 0 to enable rotation.`);
+        
+        // Try to automatically fix it
+        if (typeof globalState.setBpm === 'function') {
+          globalState.setBpm(60); // Set to default 60 BPM
+          console.log(`[ROTATION CRITICAL] Automatically setting BPM to 60 to restore rotation.`);
+        }
+      }
+    }
+    
+    // Update the angle using global state - will use BPM and real time delta
+    // GlobalStateManager.updateAngle() returns angle in DEGREES
+    const angleData = globalState.updateAngle(currentTime);
+    
+    // IMPORTANT: Convert degrees to radians for Three.js
+    // THREE.js uses radians for all rotations
+    rotationAngle = (angleData.angle * Math.PI) / 180;
+    
+    // CRITICAL DEBUG: Log consistent debug information for angle calculation
+    // Every 30 frames, log key information about the angle
+    if (frameCount % 30 === 0) {
+      console.log(`[ROTATION CRITICAL] Animation calculated angle=${angleData.angle.toFixed(2)}° (${rotationAngle.toFixed(6)} radians)`);
+      console.log(`[ROTATION CRITICAL] Global state: BPM=${globalState.bpm}, lastAngle=${globalState.lastAngle.toFixed(2)}°`);
+      
+      // Check if the angle is actually changing over time
+      if (typeof window.__lastDebugAngle === 'undefined') {
+        window.__lastDebugAngle = angleData.angle;
+        window.__debugAngleChangeCount = 0;
+      } else if (Math.abs(window.__lastDebugAngle - angleData.angle) > 0.01) {
+        window.__lastDebugAngle = angleData.angle;
+        window.__debugAngleChangeCount++;
+        console.log(`[ROTATION CRITICAL] Angle has changed ${window.__debugAngleChangeCount} times since debugging started`);
+      } else {
+        console.log(`[ROTATION CRITICAL] WARNING: Angle has not changed since last debug check!`);
+      }
+    }
+  }
+  
   // Update all layers by delegating to the layer manager
   if (scene._layerManager) {
+    // CRITICAL FIX: We rotate the layers directly in the Layer class
+    // Each layer manages its own rotation - we don't need LayerManager to also apply rotation
+    const preventDoubleRotation = true;
+    
+    // Save current rotations for validation
+    const layerRotations = {};
+    if (scene._layerManager.layers) {
+      scene._layerManager.layers.forEach(layer => {
+        if (layer && layer.group) {
+          layerRotations[layer.id] = layer.group.rotation.z;
+        }
+      });
+    }
+    
     // Pass animation parameters to updateLayers
     scene._layerManager.updateLayers({
       tNow: currentTime,
       dt: deltaTime,
-      angle: state?.angle || 0,
+      angle: rotationAngle, // Pass the calculated angle from globalState
       activeLayerId: scene._layerManager.activeLayerId,
       camera: cam,
       renderer: renderer,
-      triggerAudioCallback: triggerAudioCallback
+      triggerAudioCallback: triggerAudioCallback,
+      preventDoubleRotation // Each layer will apply its own rotation via layer.updateAngle()
     });
+    
+    // CRITICAL: Ensure all layers have their updateAngle called directly 
+    // This ensures rotation is properly applied regardless of whether LayerManager calls it
+    if (scene._layerManager.layers) {
+      for (const layer of scene._layerManager.layers) {
+        if (layer && typeof layer.updateAngle === 'function') {
+          layer.updateAngle(currentTime);
+          
+          // CRITICAL: Check if something is resetting the rotation during/after updateAngle
+          if (layer.group && layer.currentAngle && Math.abs(layer.group.rotation.z - layer.currentAngle) > 0.0001) {
+            console.error(`[ROTATION MISMATCH] Layer ${layer.id} rotation.z (${layer.group.rotation.z.toFixed(6)}) doesn't match currentAngle (${layer.currentAngle.toFixed(6)})`);
+            
+            // Force rotation again
+            layer.group.rotation.z = layer.currentAngle;
+            layer.group.updateMatrix();
+            layer.group.updateMatrixWorld(true);
+          }
+        }
+      }
+    }
+    
+    // Validate rotations post-update (once every 60 frames)
+    if (frameCount % 60 === 0 && scene._layerManager.layers) {
+      scene._layerManager.layers.forEach(layer => {
+        if (layer && layer.group && layerRotations[layer.id] !== undefined) {
+          const delta = Math.abs(layer.group.rotation.z - layerRotations[layer.id]);
+          if (delta < 0.0001) {
+            console.warn(`[ROTATION STALLED] Layer ${layer.id} rotation didn't change during animation frame!`);
+          }
+        }
+      });
+    }
   }
   
   // Process any pending triggers (for quantized notes)
@@ -142,7 +242,7 @@ export function animate(props) {
   
   // Update last angle for next frame
   if (state) {
-    state.lastAngle = state.angle;
+    state.lastAngle = rotationAngle;
   }
   
   // Increment frame counter

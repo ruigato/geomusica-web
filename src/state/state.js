@@ -85,7 +85,9 @@ export function createAppState() {
     targetCopies: DEFAULT_VALUES.COPIES,
     segments: DEFAULT_VALUES.SEGMENTS,
     stepScale: DEFAULT_VALUES.STEP_SCALE,
-    angle: DEFAULT_VALUES.ANGLE,
+    
+    // RENAMED: angle -> copyAngleOffset to avoid confusion with rotation angle
+    copyAngleOffset: DEFAULT_VALUES.ANGLE, // The fixed angle between successive polygon copies
     
     // SYNTH parameters
     attack: 0.01,
@@ -340,7 +342,7 @@ export function createAppState() {
         this.targetAngle = newValue;
         this.parameterChanges.angle = true;
         if (!this.useLerp) {
-          this.angle = this.targetAngle;
+          this.copyAngleOffset = this.targetAngle;
         }
         this.needsIntersectionUpdate = true;
       }
@@ -881,58 +883,51 @@ export function createAppState() {
     },
     
     /**
-     * Update lerp values based on time elapsed
-     * @param {number} dt Time delta
+     * Update lerp values based on time delta
+     * @param {number} dt Time delta in seconds
      */
     updateLerp(dt) {
       if (!this.useLerp) return;
       
-      const oldRadius = this.radius;
-      const oldStepScale = this.stepScale;
-      const oldAngle = this.angle;
-      const oldAltScale = this.altScale;
-      const oldCopies = this.copies;
+      // Calculate lerp factor based on lerpTime
+      const lerpFactor = Math.min(1.0, dt / this.lerpTime);
       
-      const lerpFactor = Math.min(dt / this.lerpTime, 1.0);
+      // Lerp radius
+      if (Math.abs(this.radius - this.targetRadius) > 0.1) {
+        this.radius = this.lerp(this.radius, this.targetRadius, lerpFactor);
+        this.parameterChanges.radius = true;
+      }
       
-      // Apply lerping to main geometry parameters
-      this.radius = this.lerp(this.radius, this.targetRadius, lerpFactor);
-      this.stepScale = this.lerp(this.stepScale, this.targetStepScale, lerpFactor);
-      this.angle = this.lerp(this.angle, this.targetAngle, lerpFactor);
-      this.altScale = this.lerp(this.altScale, this.targetAltScale, lerpFactor);
+      // Lerp stepScale
+      if (Math.abs(this.stepScale - this.targetStepScale) > 0.001) {
+        this.stepScale = this.lerp(this.stepScale, this.targetStepScale, lerpFactor);
+        this.parameterChanges.stepScale = true;
+      }
       
-      // Special handling for copies parameter - needs to be an integer
-      const lerpedCopies = this.lerp(this.copies, this.targetCopies, lerpFactor);
-      // Round to nearest integer to prevent artifacts
-      const newCopies = Math.round(lerpedCopies);
+      // Lerp copyAngleOffset (RENAMED from angle)
+      if (Math.abs(this.copyAngleOffset - this.targetAngle) > 0.1) {
+        this.copyAngleOffset = this.lerp(this.copyAngleOffset, this.targetAngle, lerpFactor);
+        this.parameterChanges.angle = true;
+      }
       
-      // Only update if the rounded value actually changed
-      if (newCopies !== oldCopies) {
-        this.copies = newCopies;
-        // Explicitly mark copies parameter as changed to force geometry update
+      // Lerp copies
+      if (Math.abs(this.copies - this.targetCopies) > 0.1) {
+        this.copies = this.lerp(this.copies, this.targetCopies, lerpFactor);
+        this.copies = Math.max(0, Math.min(Math.round(this.copies), 100)); // Clamp to reasonable range
         this.parameterChanges.copies = true;
       }
       
       // Check if significant changes occurred and explicitly mark parameters as changed
-      if (Math.abs(oldRadius - this.radius) > 0.1) {
+      if (Math.abs(this.radius - this.targetRadius) > 0.1) {
         this.needsIntersectionUpdate = true;
-        this.parameterChanges.radius = true;
       }
       
-      if (Math.abs(oldStepScale - this.stepScale) > 0.001) {
+      if (Math.abs(this.stepScale - this.targetStepScale) > 0.001) {
         this.needsIntersectionUpdate = true;
-        this.parameterChanges.stepScale = true;
       }
       
-      if (Math.abs(oldAngle - this.angle) > 0.1) {
+      if (Math.abs(this.copyAngleOffset - this.targetAngle) > 0.1) {
         this.needsIntersectionUpdate = true;
-        this.parameterChanges.angle = true;
-      }
-      
-      // Check for significant alt scale changes and mark parameter as changed
-      if (Math.abs(oldAltScale - this.altScale) > 0.001 && this.useAltScale) {
-        this.needsIntersectionUpdate = true;
-        this.parameterChanges.altScale = true;
       }
     },
     

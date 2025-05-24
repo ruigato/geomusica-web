@@ -680,11 +680,36 @@ function initializeApplication() {
   }
   
   /**
-   * Create default layers if no saved state is available
+   * Create default layers for the application
    */
   function createDefaultLayers() {
-    console.log("Creating 3 default layers...");
-  
+    console.log(`[INIT] Creating default layers`);
+    
+    // Create the layer manager with 3 default layers
+    layerManager = new LayerManager(scene);
+    
+    // Attach the layer manager to the scene for easy access
+    scene._layerManager = layerManager;
+    
+    // Create the global state manager if it doesn't exist yet
+    if (!globalState) {
+      globalState = new GlobalStateManager();
+      
+      // CRITICAL FIX: Ensure the BPM is never zero to prevent rotation from stopping
+      // Set a reasonable default BPM if it's zero
+      if (globalState.bpm === 0) {
+        globalState.setBpm(60); // Default to 60 BPM (1 rotation per second)
+        console.log(`[INIT] Set default BPM to 60 to ensure rotation works`);
+      }
+      
+      // Store for global access
+      window._globalState = globalState;
+      
+      // Attach to scene for easy access
+      scene.userData = scene.userData || {};
+      scene.userData.globalState = globalState;
+    }
+    
     // Create the first layer (triangle)
     const layer0 = layerManager.createLayer({
       visible: true,
@@ -826,7 +851,9 @@ function initializeApplication() {
             get lastTime() { return layerManager.getActiveLayer()?.state.lastTime || 0; },
             set lastTime(value) { if (layerManager.getActiveLayer()) layerManager.getActiveLayer().state.lastTime = value; },
             get lastAngle() { return globalState.lastAngle; }, // lastAngle is now in global state
-            set lastAngle(value) { globalState.lastAngle = value; }
+            set lastAngle(value) { globalState.lastAngle = value; },
+            get copyAngleOffset() { return layerManager.getActiveLayer()?.state.copyAngleOffset || 0; }, // RENAMED: angle -> copyAngleOffset
+            set copyAngleOffset(value) { if (layerManager.getActiveLayer()) layerManager.getActiveLayer().state.setAngle(value); }
           },
           globalState,
           triggerAudioCallback: handleAudioTrigger
@@ -927,12 +954,16 @@ function initializeApplication() {
           renderer,
           cam: camera,
           state: {
-            get bpm() { return globalState.bpm; },
+            // Create a proxy to always get the active layer's state
+            get bpm() { return globalState.bpm; }, // BPM is now in global state
             get lastTime() { return layerManager.getActiveLayer()?.state.lastTime || 0; },
             set lastTime(value) { if (layerManager.getActiveLayer()) layerManager.getActiveLayer().state.lastTime = value; },
-            get lastAngle() { return globalState.lastAngle; },
-            set lastAngle(value) { globalState.lastAngle = value; }
+            get lastAngle() { return globalState.lastAngle; }, // lastAngle is now in global state
+            set lastAngle(value) { globalState.lastAngle = value; },
+            get copyAngleOffset() { return layerManager.getActiveLayer()?.state.copyAngleOffset || 0; }, // RENAMED: angle -> copyAngleOffset
+            set copyAngleOffset(value) { if (layerManager.getActiveLayer()) layerManager.getActiveLayer().state.setAngle(value); }
           },
+          // CRITICAL FIX: GlobalState parameter is used for framerate-independent angle calculation
           globalState,
           triggerAudioCallback: () => {}
         });
