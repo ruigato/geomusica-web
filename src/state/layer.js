@@ -806,23 +806,71 @@ export class Layer {
    * @returns {Object} Object with camera and renderer
    */
   ensureCameraAndRenderer() {
-    const scene = this.group?.parent;
+    // Try to find the scene by traversing up the hierarchy
+    let currentParent = this.group?.parent;
+    let scene = null;
     
-    if (!scene) {
-      console.warn(`[LAYER ${this.id}] Cannot find parent scene for renderer and camera access`);
-      return { camera: null, renderer: null };
+    // Traverse up to find the scene object
+    while (currentParent && !scene) {
+      if (currentParent.type === 'Scene' || currentParent.isScene) {
+        scene = currentParent;
+        break;
+      }
+      // Check if this parent has camera/renderer (might be layerContainer)
+      if (currentParent.userData?.camera && currentParent.userData?.renderer) {
+        return {
+          camera: currentParent.userData.camera,
+          renderer: currentParent.userData.renderer
+        };
+      }
+      currentParent = currentParent.parent;
     }
     
-    // Try to get camera and renderer from scene userData (set in main.js)
-    if (!scene.userData.camera || !scene.userData.renderer) {
-      console.warn(`[LAYER ${this.id}] Scene is missing camera or renderer in userData`);
-      return { camera: null, renderer: null };
+    // If we found the scene, check for camera/renderer
+    if (scene && scene.userData?.camera && scene.userData?.renderer) {
+      return {
+        camera: scene.userData.camera,
+        renderer: scene.userData.renderer
+      };
     }
     
-    return {
-      camera: scene.userData.camera,
-      renderer: scene.userData.renderer
-    };
+    // Try global window references as fallback
+    if (window.mainCamera && window.mainRenderer) {
+      console.log(`[LAYER ${this.id}] Using global camera and renderer references`);
+      return {
+        camera: window.mainCamera,
+        renderer: window.mainRenderer
+      };
+    }
+    
+    // Try scene direct properties as another fallback
+    if (scene) {
+      if (scene.mainCamera && scene.mainRenderer) {
+        console.log(`[LAYER ${this.id}] Using scene direct properties for camera and renderer`);
+        return {
+          camera: scene.mainCamera,
+          renderer: scene.mainRenderer
+        };
+      }
+      
+      // Look for camera in scene children
+      const cameraInScene = scene.children.find(child => 
+        child instanceof THREE.Camera || 
+        child.type === 'PerspectiveCamera' || 
+        child.type === 'OrthographicCamera'
+      );
+      
+      if (cameraInScene && window.mainRenderer) {
+        console.log(`[LAYER ${this.id}] Found camera in scene children, using with global renderer`);
+        return {
+          camera: cameraInScene,
+          renderer: window.mainRenderer
+        };
+      }
+    }
+    
+    console.warn(`[LAYER ${this.id}] Cannot find camera or renderer in scene hierarchy`);
+    return { camera: null, renderer: null };
   }
 
   /**
@@ -831,19 +879,103 @@ export class Layer {
    * @param {number} deltaTime Time elapsed since last frame in seconds
    */
   update(currentTime, deltaTime) {
+    // Mark initialization as complete after first update
+    this.initializationComplete = true;
+    
     // Update rotation angle based on time
     this.updateAngle(currentTime);
     
-    // Update any other time-dependent properties
-    
-    // Make sure camera and renderer are accessible through scene
-    const scene = this.group?.parent;
-    if (scene && !scene.userData.camera && !scene.userData.renderer) {
-      const { camera, renderer } = this.ensureCameraAndRenderer();
-      if (camera && renderer) {
-        scene.userData.camera = camera;
-        scene.userData.renderer = renderer;
+    // Check if we need to fix camera/renderer references
+    // Only try to fix if there's a pending check or they're missing
+    if (this.cameraPendingCheck || !this.cameraChecked) {
+      this.cameraPendingCheck = false;
+      this.cameraChecked = true;
+      
+      // Get references through the hierarchy - try group first
+      if (this.group) {
+        let cameraRef = null;
+        let rendererRef = null;
+        
+        // Check group userData first
+        if (this.group.userData?.camera && this.group.userData?.renderer) {
+          cameraRef = this.group.userData.camera;
+          rendererRef = this.group.userData.renderer;
+        } 
+        // Then check parent chain
+        else {
+          const { camera, renderer } = this.ensureCameraAndRenderer();
+          cameraRef = camera;
+          rendererRef = renderer;
+        }
+        
+        // If we found references, store them at multiple levels for redundancy
+        if (cameraRef && rendererRef) {
+          // Store at group level
+          this.group.userData = this.group.userData || {};
+          this.group.userData.camera = cameraRef;
+          this.group.userData.renderer = rendererRef;
+          
+          // Store at parent level if available
+          if (this.group.parent) {
+            this.group.parent.userData = this.group.parent.userData || {};
+            this.group.parent.userData.camera = cameraRef;
+            this.group.parent.userData.renderer = rendererRef;
+          }
+          
+          // Log success only on first setup
+          if (!this.cameraSetupLogged) {
+            console.log(`[LAYER ${this.id}] Camera and renderer references established`);
+            this.cameraSetupLogged = true;
+          }
+        }
       }
     }
+  }
+
+  /**
+   * Propagate camera and renderer references to this layer
+   * @param {THREE.Camera} camera The camera
+   * @param {THREE.Renderer} renderer The renderer
+   * @returns {boolean} True if references were successfully set
+   */
+  propagateCameraAndRenderer(camera, renderer) {
+    if (!camera || !renderer) {
+      return false;
+    }
+    
+    // Store at group level
+    if (this.group) {
+      this.group.userData = this.group.userData || {};
+      this.group.userData.camera = camera;
+      this.group.userData.renderer = renderer;
+      
+      // Also propagate to all children
+      this.group.traverse(child => {
+        if (child !== this.group) {
+          child.userData = child.userData || {};
+          child.userData.camera = camera;
+          child.userData.renderer = renderer;
+        }
+      });
+    }
+    
+    // Store at baseGeo level
+    if (this.baseGeo) {
+      this.baseGeo.userData = this.baseGeo.userData || {};
+      this.baseGeo.userData.camera = camera;
+      this.baseGeo.userData.renderer = renderer;
+    }
+    
+    // Mark as checked and set up
+    this.cameraChecked = true;
+    this.cameraPendingCheck = false;
+    
+    // Log success only on first setup
+    if (!this.cameraSetupLogged) {
+      console.log(`[LAYER ${this.id}] Camera and renderer references explicitly set`);
+      this.cameraSetupLogged = true;
+    }
+    
+    return true;
   }
 } 

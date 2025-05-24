@@ -485,6 +485,13 @@ export function createAppState() {
         // Always mark for intersection update when alt scale is being used
         if (this.useAltScale) {
           this.needsIntersectionUpdate = true;
+          
+          // Mark that geometry needs to be recreated
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+          
+          // Log the change for debugging
+          console.log("Forcing geometry update due to alt scale change");
         }
       }
     },
@@ -500,6 +507,15 @@ export function createAppState() {
         this.parameterChanges.altStepN = true;
         if (this.useAltScale) {
           this.needsIntersectionUpdate = true;
+          
+          // Force recreation of base geometry when available
+          if (this.baseGeo) {
+            console.log("Forcing geometry update due to alt step N change");
+            
+            // Set flags to signal that geometry needs recreation
+            this.segmentsChanged = true;
+            this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+          }
         }
       }
     },
@@ -514,6 +530,15 @@ export function createAppState() {
         this.useAltScale = newValue;
         this.parameterChanges.useAltScale = true;
         this.needsIntersectionUpdate = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo) {
+          console.log("Forcing geometry update due to alt scale toggle");
+          
+          // Set flags to signal that geometry needs recreation
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        }
       }
     },
     
@@ -904,7 +929,8 @@ export function createAppState() {
         this.parameterChanges.angle = true;
       }
       
-      if (Math.abs(oldAltScale - this.altScale) > 0.01) {
+      // Check for significant alt scale changes and mark parameter as changed
+      if (Math.abs(oldAltScale - this.altScale) > 0.001 && this.useAltScale) {
         this.needsIntersectionUpdate = true;
         this.parameterChanges.altScale = true;
       }

@@ -43,6 +43,24 @@ export class LayerManager {
     // IMPORTANT: Make sure the layerContainer is visible
     this.layerContainer.visible = true;
     
+    // Copy camera and renderer from scene to layerContainer
+    if (scene && scene.userData) {
+      this.layerContainer.userData = { ...this.layerContainer.userData };
+      
+      // Copy camera and renderer references if they exist
+      if (scene.userData.camera) {
+        this.layerContainer.userData.camera = scene.userData.camera;
+      }
+      if (scene.userData.renderer) {
+        this.layerContainer.userData.renderer = scene.userData.renderer;
+      }
+      if (scene.userData.globalState) {
+        this.layerContainer.userData.globalState = scene.userData.globalState;
+      }
+      
+      console.log(`Layer container initialized with camera and renderer from scene`);
+    }
+    
     // Add the container to the scene
     this.scene.add(this.layerContainer);
     
@@ -100,6 +118,19 @@ export class LayerManager {
     
     // Add the layer's group to the container
     this.layerContainer.add(layer.group);
+    
+    // Propagate camera and renderer references if available
+    if (this.scene && this.scene.userData) {
+      const camera = this.scene.userData.camera || this.layerContainer.userData?.camera;
+      const renderer = this.scene.userData.renderer || this.layerContainer.userData?.renderer;
+      
+      if (camera && renderer && typeof layer.propagateCameraAndRenderer === 'function') {
+        layer.propagateCameraAndRenderer(camera, renderer);
+        if (DEBUG_LOGGING) {
+          console.log(`[LAYER MANAGER] Propagated camera and renderer to new layer ${id}`);
+        }
+      }
+    }
     
     // Log for debugging
     if (DEBUG_LOGGING) {
@@ -464,19 +495,15 @@ export class LayerManager {
 
     // Ensure all layers have camera and renderer access
     if (camera && renderer) {
-      // Store in scene userData
-      if (scene) {
-        scene.userData.camera = camera;
-        scene.userData.renderer = renderer;
-      }
+      // Use our dedicated method to propagate camera and renderer references
+      this.ensureCameraAndRendererForLayers(camera, renderer);
       
-      // Store in each layer and its group
-      for (const layer of this.layers) {
-        if (layer && layer.group) {
-          layer.group.userData.camera = camera;
-          layer.group.userData.renderer = renderer;
-        }
-      }
+      // Set global window references as a fallback
+      if (!window.mainCamera) window.mainCamera = camera;
+      if (!window.mainRenderer) window.mainRenderer = renderer;
+      if (!window.mainScene) window.mainScene = scene;
+    } else {
+      console.warn("[LAYER MANAGER] Missing camera or renderer in animation parameters");
     }
 
     // Ensure we're working with the correct active layer
@@ -930,16 +957,44 @@ export class LayerManager {
     
     // Store in scene userData
     if (this.scene) {
+      this.scene.userData = this.scene.userData || {};
       this.scene.userData.camera = camera;
       this.scene.userData.renderer = renderer;
+      
+      // Also set direct properties on scene for older code paths
+      this.scene.mainCamera = camera;
+      this.scene.mainRenderer = renderer;
     }
     
-    // Store in each layer and its group
+    // Store in layerContainer userData
+    if (this.layerContainer) {
+      this.layerContainer.userData = this.layerContainer.userData || {};
+      this.layerContainer.userData.camera = camera;
+      this.layerContainer.userData.renderer = renderer;
+    }
+    
+    // Store in each layer using the dedicated propagation method
+    let successCount = 0;
     for (const layer of this.layers) {
-      if (layer && layer.group) {
-        layer.group.userData.camera = camera;
-        layer.group.userData.renderer = renderer;
+      if (layer) {
+        // Use the layer's propagation method if available
+        if (typeof layer.propagateCameraAndRenderer === 'function') {
+          const success = layer.propagateCameraAndRenderer(camera, renderer);
+          if (success) successCount++;
+        }
+        // Fallback to direct assignment
+        else if (layer.group) {
+          layer.group.userData = layer.group.userData || {};
+          layer.group.userData.camera = camera;
+          layer.group.userData.renderer = renderer;
+          successCount++;
+        }
       }
     }
+    
+    // Log success
+    console.log(`[LAYER MANAGER] Camera and renderer references propagated to ${successCount}/${this.layers.length} layers`);
+    
+    return { camera, renderer };
   }
 } 

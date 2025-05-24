@@ -548,10 +548,17 @@ function initializeApplication() {
   scene.mainCamera = camera;
   scene.mainRenderer = renderer;
   
+  // Add to window for emergency access by other components
+  window.mainCamera = camera;
+  window.mainRenderer = renderer;
+  window.mainScene = scene;
+  
   console.log("Camera position:", camera.position);
   console.log("Camera field of view:", camera.fov);
   console.log("Scene userData camera set:", !!scene.userData.camera);
   console.log("Scene userData renderer set:", !!scene.userData.renderer);
+  console.log("Window global camera set:", !!window.mainCamera);
+  console.log("Window global renderer set:", !!window.mainRenderer);
   
   // Add a simple ambient light to improve visibility
   const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);

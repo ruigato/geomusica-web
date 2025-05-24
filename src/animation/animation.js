@@ -178,6 +178,20 @@ export function animate(props) {
     // Apply velocity updates to markers with enhanced timing
     applyVelocityToMarkers(activeLayer, timeDelta);
     
+    // Ensure camera and renderer are set in the layer's group before updating
+    if (activeLayer.group && cam && renderer) {
+      if (!activeLayer.group.userData) activeLayer.group.userData = {};
+      activeLayer.group.userData.camera = cam;
+      activeLayer.group.userData.renderer = renderer;
+      
+      // Also ensure the scene has them
+      if (scene) {
+        scene.userData = scene.userData || {};
+        scene.userData.camera = cam;
+        scene.userData.renderer = renderer;
+      }
+    }
+    
     // Call the update method on the active layer with precise timing
     if (typeof activeLayer.update === 'function') {
       activeLayer.update(currentTime, timeDelta);
