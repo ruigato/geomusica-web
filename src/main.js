@@ -843,6 +843,33 @@ function initializeApplication() {
         // Setup UI controls and bind events
         uiReferences = setupUI(state, syncStateAcrossSystems, silentAudioTrigger);
         
+        // Process any pending UI updates now that UI references are initialized
+        if (window._pendingUIUpdates && window._pendingUIUpdates.length > 0) {
+          console.log(`Processing ${window._pendingUIUpdates.length} pending UI updates`);
+          
+          if (window._updateUIFromStateFunction) {
+            // If we already have the function loaded, use it directly
+            window._pendingUIUpdates.forEach(pendingState => {
+              window._updateUIFromStateFunction(pendingState, uiReferences);
+            });
+          } else {
+            // Otherwise load it first
+            import('./state/statePersistence.js')
+              .then(module => {
+                window._updateUIFromStateFunction = module.updateUIFromState;
+                window._pendingUIUpdates.forEach(pendingState => {
+                  window._updateUIFromStateFunction(pendingState, uiReferences);
+                });
+              })
+              .catch(err => {
+                console.error('Failed to import updateUIFromState for pending updates:', err);
+              });
+          }
+          
+          // Clear the queue
+          window._pendingUIUpdates = [];
+        }
+        
         // Setup global UI controls
         setupGlobalUI(globalState);
         
@@ -935,6 +962,34 @@ function initializeApplication() {
         
         // Setup UI
         uiReferences = setupUI(state, syncStateAcrossSystems, () => {});
+        
+        // Process any pending UI updates now that UI references are initialized
+        if (window._pendingUIUpdates && window._pendingUIUpdates.length > 0) {
+          console.log(`Processing ${window._pendingUIUpdates.length} pending UI updates (after audio failure)`);
+          
+          if (window._updateUIFromStateFunction) {
+            // If we already have the function loaded, use it directly
+            window._pendingUIUpdates.forEach(pendingState => {
+              window._updateUIFromStateFunction(pendingState, uiReferences);
+            });
+          } else {
+            // Otherwise load it first
+            import('./state/statePersistence.js')
+              .then(module => {
+                window._updateUIFromStateFunction = module.updateUIFromState;
+                window._pendingUIUpdates.forEach(pendingState => {
+                  window._updateUIFromStateFunction(pendingState, uiReferences);
+                });
+              })
+              .catch(err => {
+                console.error('Failed to import updateUIFromState for pending updates:', err);
+              });
+          }
+          
+          // Clear the queue
+          window._pendingUIUpdates = [];
+        }
+        
         setupGlobalUI(globalState);
         synthUIReferences = setupSynthUI(globalState, syncStateAcrossSystems);
         layerUIReferences = setupLayersUI(layerManager);
@@ -1183,7 +1238,14 @@ if (isDOMLoaded()) {
 // Make the updateUIFromState function available globally
 window.updateUIFromState = function(state) {
   if (!uiReferences) {
-    console.error('Cannot update UI: uiReferences not initialized');
+    console.log('UI not ready yet, queuing update for when references are available');
+    
+    // Queue the update for when uiReferences becomes available
+    if (!window._pendingUIUpdates) {
+      window._pendingUIUpdates = [];
+    }
+    
+    window._pendingUIUpdates.push(state);
     return false;
   }
 
@@ -1195,6 +1257,14 @@ window.updateUIFromState = function(state) {
         .then(module => {
           window._updateUIFromStateFunction = module.updateUIFromState;
           window._updateUIFromStateFunction(state, uiReferences);
+          
+          // Process any pending updates
+          if (window._pendingUIUpdates && window._pendingUIUpdates.length > 0) {
+            window._pendingUIUpdates.forEach(pendingState => {
+              window._updateUIFromStateFunction(pendingState, uiReferences);
+            });
+            window._pendingUIUpdates = [];
+          }
         })
         .catch(err => {
           console.error('Failed to import updateUIFromState:', err);
