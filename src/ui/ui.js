@@ -35,6 +35,129 @@ const QUANTIZATION_VALUES_FOR_RADIO_BUTTONS = [
   '1/4T', '1/8T', '1/16T', '1/32T',
 ];
 
+// FIXED: More robust helper function to get the current target state for parameter changes
+const getTargetState = (setterName) => {
+  try {
+    // Check if this is a global parameter that should be routed to globalState
+    const globalParameters = new Set([
+      'setBpm', 'setAttack', 'setDecay', 'setSustain', 'setRelease', 
+      'setBrightness', 'setVolume', 'setReferenceFrequency'
+    ]);
+    
+    const isGlobalParameter = globalParameters.has(setterName) || 
+      setterName.includes('Bpm') || 
+      setterName.includes('attack') ||
+      setterName.includes('decay') ||
+      setterName.includes('sustain') ||
+      setterName.includes('release') ||
+      setterName.includes('brightness') ||
+      setterName.includes('volume') ||
+      setterName.includes('referenceFreq');
+    
+    if (isGlobalParameter && window._globalState) {
+      return { 
+        state: window._globalState, 
+        isGlobal: true,
+        id: 'global',
+        valid: true
+      };
+    }
+    
+    // For layer-specific parameters, use a priority-based approach
+    let targetState = null;
+    let layerId = 'unknown';
+    
+    // Priority 1: Try window.getActiveState() (most reliable)
+    if (typeof window.getActiveState === 'function') {
+      try {
+        targetState = window.getActiveState();
+        if (targetState && targetState.layerId !== undefined) {
+          layerId = targetState.layerId;
+          return {
+            state: targetState,
+            isGlobal: false,
+            id: layerId,
+            valid: true
+          };
+        }
+      } catch (error) {
+        
+      }
+    }
+    
+    // Priority 2: Try layer manager approach
+    if (!targetState && window._layers && typeof window._layers.getActiveLayer === 'function') {
+      try {
+        const activeLayer = window._layers.getActiveLayer();
+        if (activeLayer && activeLayer.state) {
+          targetState = activeLayer.state;
+          layerId = activeLayer.id;
+          return { 
+            state: targetState, 
+            isGlobal: false,
+            id: layerId,
+            valid: true
+          };
+        }
+      } catch (error) {
+        
+      }
+    }
+    
+    // Priority 3: Try direct access to layer manager layers
+    if (!targetState && window._layers && window._layers.layers) {
+      try {
+        const activeLayerIndex = window._layers.activeLayerId;
+        if (activeLayerIndex !== undefined && window._layers.layers[activeLayerIndex]) {
+          const activeLayer = window._layers.layers[activeLayerIndex];
+          if (activeLayer && activeLayer.state) {
+            targetState = activeLayer.state;
+            layerId = activeLayer.id;
+            return { 
+              state: targetState, 
+              isGlobal: false,
+              id: layerId,
+              valid: true
+            };
+          }
+        }
+      } catch (error) {
+        
+      }
+    }
+    
+    // Final fallback to window._appState
+    if (!targetState && window._appState) {
+      
+      return { 
+        state: window._appState, 
+        isGlobal: false,
+        id: 'fallback',
+        valid: false // Mark as invalid to indicate this is a fallback
+      };
+    }
+    
+    // If all else fails, use the original state parameter
+    console.error(`[UI] No valid state found for ${setterName}, using original state parameter`);
+    return { 
+      state: state, 
+      isGlobal: false,
+      id: 'original',
+      valid: false
+    };
+    
+  } catch (error) {
+    console.error(`[UI] Critical error in getTargetState for ${setterName}:`, error);
+    // Return the original state as ultimate fallback
+    return { 
+      state: state, 
+      isGlobal: false,
+      id: 'error-fallback',
+      valid: false
+    };
+  }
+};
+
 // Function to set up modulus radio buttons - MOVED TO TOP OF FILE
 function setupModulusRadioButtons(container, state, type = null) {
   if (!container) return; // Null check
@@ -599,139 +722,10 @@ export function setupUI(state) {
 
   // Sync control values with the UI
   const syncPair = (rangeEl, numEl, spanEl, setter, min, max, parser = v => parseFloat(v)) => {
-    // Skip if any elements are missing
-    if (!rangeEl || !numEl || !spanEl) {
-      
-      return;
-    }
-    
-    // Initialize UI elements with state values
-    const initialValue = parser === parseFloat ? 
+    // Setup initial values
+    const initialValue = typeof spanEl.textContent === 'string' ? 
       parseFloat(spanEl.textContent) : 
       parseInt(spanEl.textContent);
-    
-    // FIXED: More robust helper function to get the current target state for parameter changes
-    const getTargetState = (setterName) => {
-      try {
-        // Check if this is a global parameter that should be routed to globalState
-        const globalParameters = new Set([
-          'setBpm', 'setAttack', 'setDecay', 'setSustain', 'setRelease', 
-          'setBrightness', 'setVolume', 'setReferenceFrequency'
-        ]);
-        
-        const isGlobalParameter = globalParameters.has(setterName) || 
-          setterName.includes('Bpm') || 
-          setterName.includes('attack') ||
-          setterName.includes('decay') ||
-          setterName.includes('sustain') ||
-          setterName.includes('release') ||
-          setterName.includes('brightness') ||
-          setterName.includes('volume') ||
-          setterName.includes('referenceFreq');
-        
-        if (isGlobalParameter && window._globalState) {
-          return { 
-            state: window._globalState, 
-            isGlobal: true,
-            id: 'global',
-            valid: true
-          };
-        }
-        
-        // For layer-specific parameters, use a priority-based approach
-        let targetState = null;
-        let layerId = 'unknown';
-        
-        // Priority 1: Try window.getActiveState() (most reliable)
-        if (typeof window.getActiveState === 'function') {
-          try {
-            targetState = window.getActiveState();
-            if (targetState && targetState.layerId !== undefined) {
-              layerId = targetState.layerId;
-              return {
-                state: targetState,
-                isGlobal: false,
-                id: layerId,
-                valid: true
-              };
-            }
-          } catch (error) {
-            
-          }
-        }
-        
-        // Priority 2: Try layer manager approach
-        if (!targetState && window._layers && typeof window._layers.getActiveLayer === 'function') {
-          try {
-            const activeLayer = window._layers.getActiveLayer();
-            if (activeLayer && activeLayer.state) {
-              targetState = activeLayer.state;
-              layerId = activeLayer.id;
-              return { 
-                state: targetState, 
-                isGlobal: false,
-                id: layerId,
-                valid: true
-              };
-            }
-          } catch (error) {
-            
-          }
-        }
-        
-        // Priority 3: Try direct access to layer manager layers
-        if (!targetState && window._layers && window._layers.layers) {
-          try {
-            const activeLayerIndex = window._layers.activeLayerId;
-            if (activeLayerIndex !== undefined && window._layers.layers[activeLayerIndex]) {
-              const activeLayer = window._layers.layers[activeLayerIndex];
-              if (activeLayer && activeLayer.state) {
-                targetState = activeLayer.state;
-                layerId = activeLayer.id;
-                return { 
-                  state: targetState, 
-                  isGlobal: false,
-                  id: layerId,
-                  valid: true
-                };
-              }
-            }
-          } catch (error) {
-            
-          }
-        }
-        
-        // Final fallback to window._appState
-        if (!targetState && window._appState) {
-          
-          return { 
-            state: window._appState, 
-            isGlobal: false,
-            id: 'fallback',
-            valid: false // Mark as invalid to indicate this is a fallback
-          };
-        }
-        
-        // If all else fails, use the original state parameter
-        console.error(`[UI] No valid state found for ${setterName}, using original state parameter`);
-        return { 
-          state: state, 
-          isGlobal: false,
-          id: 'original',
-          valid: false
-        };
-        
-      } catch (error) {
-        console.error(`[UI] Critical error in getTargetState for ${setterName}:`, error);
-        // Return the original state as ultimate fallback
-        return { 
-          state: state, 
-          isGlobal: false,
-          id: 'error-fallback',
-          valid: false
-        };
-      }
-    };
     
     // Setup event listeners
     rangeEl.addEventListener('input', e => {
