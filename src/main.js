@@ -536,7 +536,7 @@ function initializeApplication() {
   sceneInstance = scene;
   
   // Create camera with wider field of view and better positioning
-  const camera = new THREE.PerspectiveCamera(60, containerWidth / containerHeight, 0.1, 10000);
+  const camera = new THREE.PerspectiveCamera(60, containerWidth / containerHeight, 0.1, 50000);
   camera.position.z = 300; // Even closer camera position for better visibility
   
   // Store camera and renderer references in scene userData for layer manager to access
