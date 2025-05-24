@@ -25,10 +25,6 @@ const recentTriggers = new Map();
 // Store for pending triggers when using quantization
 let pendingTriggers = [];
 
-// Enhanced trigger detection constants
-const MAX_ANGLE_STEP = Math.PI / 12; // 15 degrees - maximum angle step before we need interpolation
-const INTERPOLATION_STEPS = 8; // Number of intermediate steps to check when angle is large
-
 // Singleton instance of the subframe trigger engine
 const subframeEngine = new TemporalTriggerEngine({
   resolution: 1000, // 1000Hz = 1ms resolution
@@ -71,36 +67,6 @@ function isPointOverlapping(x, y, activePoints) {
   }
   
   return false;
-}
-
-/**
- * Interpolate between two angles, handling wraparound correctly
- * @param {number} startAngle Start angle in radians
- * @param {number} endAngle End angle in radians
- * @param {number} t Interpolation factor (0-1)
- * @returns {number} Interpolated angle in radians
- */
-function interpolateAngle(startAngle, endAngle, t) {
-  // Normalize angles to [0, 2π]
-  const normalizeAngle = (angle) => {
-    while (angle < 0) angle += 2 * Math.PI;
-    while (angle >= 2 * Math.PI) angle -= 2 * Math.PI;
-    return angle;
-  };
-
-  const start = normalizeAngle(startAngle);
-  const end = normalizeAngle(endAngle);
-  
-  // Calculate the shortest path between angles
-  let diff = end - start;
-  if (diff > Math.PI) {
-    diff -= 2 * Math.PI;
-  } else if (diff < -Math.PI) {
-    diff += 2 * Math.PI;
-  }
-  
-  const result = start + diff * t;
-  return normalizeAngle(result);
 }
 
 /**
