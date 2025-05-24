@@ -694,9 +694,7 @@ export class Layer {
   }
   
   /**
-   * Update the layer's angle for animation and marker detection.
-   * This method calculates and tracks angles with time subdivision applied if enabled.
-   * 
+   * Update the layer's rotation angle with subframe precision
    * @param {number} currentTime Current time in seconds
    */
   updateAngle(currentTime) {
@@ -714,7 +712,12 @@ export class Layer {
       if (this.lastBaseAngle === undefined) {
         this.lastBaseAngle = baseAngleInDegrees;
         this.accumulatedAngle = baseAngleInDegrees;
+        this.lastUpdatePreciseTime = currentTime;
       }
+      
+      // Calculate elapsed time with high precision
+      const elapsedTime = currentTime - (this.lastUpdatePreciseTime || currentTime);
+      this.lastUpdatePreciseTime = currentTime;
       
       // Calculate how much the base angle has changed since last frame
       let deltaAngle = baseAngleInDegrees - this.lastBaseAngle;
@@ -745,6 +748,18 @@ export class Layer {
       } else if (DEBUG_LOGGING && Math.random() < 0.001) {
         // Log when time subdivision is disabled occasionally
         
+      }
+      
+      // Apply subframe precision smoothing - use elapsed time to scale the delta angle change
+      // This makes movement smoother at varying frame rates
+      const targetFrameTime = 1/60; // Target 60fps as baseline
+      const timeRatio = elapsedTime / targetFrameTime;
+      
+      // Only apply time-based scaling if we have valid time measurements
+      if (isFinite(timeRatio) && timeRatio > 0) {
+        // Scale deltaAngle by the time ratio to maintain consistent rotation speed
+        // regardless of actual frame rate
+        deltaAngle *= timeRatio;
       }
       
       // Accumulate the angle continuously

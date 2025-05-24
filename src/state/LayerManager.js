@@ -477,6 +477,9 @@ export class LayerManager {
       camera,        // Add camera from animation params
       renderer       // Add renderer from animation params
     } = animationParams;
+    
+    // Ensure we have the global previous angle for subframe precision
+    const previousAngle = animationParams.previousAngle || lastAngle;
 
     // Ensure all layers have camera and renderer access
     if (camera && renderer) {
@@ -631,6 +634,11 @@ export class LayerManager {
       if (typeof layer.updateAngle === 'function') {
         // Current time in seconds (convert from ms)
         const currentTimeInSeconds = tNow / 1000;
+        
+        // Store the previous angle before updating
+        layer.previousAngle = layer.currentAngle || 0;
+        
+        // Update with high precision timing
         layer.updateAngle(currentTimeInSeconds);
       }
       

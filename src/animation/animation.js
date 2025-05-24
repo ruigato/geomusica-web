@@ -216,7 +216,8 @@ export function animate(props) {
       tNow: currentTime * 1000, // Convert to ms for backward compatibility
       dt: timeDelta * 1000,     // Convert to ms for backward compatibility
       angle: globalState?.lastAngle || 0,
-      lastAngle: globalState?.previousAngle || 0,
+      lastAngle: globalState?.previousAngle || 0, // Use the stored previous angle
+      previousAngle: globalState?.previousAngle || 0, // Add the previous angle for subframe precision
       triggerAudioCallback,
       activeLayerId: scene._layerManager.activeLayerId,
       camera: cam,              // Pass camera reference

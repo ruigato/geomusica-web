@@ -206,17 +206,23 @@ export class GlobalStateManager {
   }
   
   /**
-   * Update angle for animation
+   * Update angle for animation with subframe precision
    * @param {number} tNow Current time in ms
    * @returns {Object} Object with angle and lastAngle
    */
   updateAngle(tNow) {
+    // Store the previous angle
+    const previousAngle = this.lastAngle;
+    
     // If this is the first call, initialize lastTime
     if (!this.lastTime) {
       this.lastTime = tNow;
+      // Initialize high precision time tracking
+      this.lastPreciseTime = tNow / 1000; // Convert to seconds for precision calculations
       return { angle: this.lastAngle, lastAngle: this.lastAngle };
     }
     
+    // Calculate time delta in milliseconds (for backward compatibility)
     const dt = Math.min(tNow - this.lastTime, 100); // Cap delta time at 100ms
     
     // Skip tiny time steps (often happen during timing system initialization)
@@ -227,6 +233,13 @@ export class GlobalStateManager {
     // Get time in seconds
     const seconds = dt / 1000;
     
+    // High precision time calculation (in seconds)
+    const currentPreciseTime = tNow / 1000;
+    const preciseDt = currentPreciseTime - (this.lastPreciseTime || currentPreciseTime);
+    
+    // Use precise time delta if available, otherwise fallback to regular calculation
+    const effectiveSeconds = (preciseDt > 0 && preciseDt < 0.1) ? preciseDt : seconds;
+    
     // Adjust calculation to make 120 BPM = 0.5 rotation per second (1 rotation per 2 seconds)
     // Formula: rotationsPerSecond = BPM / 240
     // At 60 BPM: 60/240 = 0.25 rotations per second (1 rotation takes 4 seconds)
@@ -236,7 +249,7 @@ export class GlobalStateManager {
     
     // Calculate degrees to rotate this frame
     const degreesPerSecond = rotationsPerSecond * 360;
-    const angleDelta = degreesPerSecond * seconds;
+    const angleDelta = degreesPerSecond * effectiveSeconds;
     
     // Get the last angle and calculate the new angle
     const lastAngle = this.lastAngle;
@@ -248,9 +261,11 @@ export class GlobalStateManager {
     }
     
     // Store for next frame
-    this.lastAngle = angle;
     this.lastTime = tNow;
+    this.lastPreciseTime = currentPreciseTime;
+    this.previousAngle = previousAngle;
+    this.lastAngle = angle;
     
-    return { angle, lastAngle };
+    return { angle, lastAngle, previousAngle };
   }
 } 
