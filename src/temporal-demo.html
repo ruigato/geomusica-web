@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Temporal Trigger Engine Demo</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      line-height: 1.6;
+      color: #333;
+      margin: 0;
+      padding: 20px;
+    }
+    header {
+      background-color: #f8f9fa;
+      padding: 20px;
+      border-bottom: 1px solid #e9ecef;
+      margin-bottom: 20px;
+    }
+    h1 {
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    canvas {
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      margin-top: 20px;
+    }
+    .controls {
+      margin-top: 20px;
+      padding: 20px;
+      background-color: #f8f9fa;
+      border-radius: 5px;
+    }
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .comparison-item {
+      padding: 20px;
+      background-color: #f8f9fa;
+      border-radius: 5px;
+    }
+    footer {
+      margin-top: 50px;
+      padding-top: 20px;
+      border-top: 1px solid #e9ecef;
+      text-align: center;
+      font-size: 0.9em;
+      color: #6c757d;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Temporal Trigger Engine Demo</h1>
+      <p>Frame-rate independent trigger detection with microsecond precision</p>
+    </header>
+    
+    <div class="description">
+      <h2>About This Demo</h2>
+      <p>
+        This demo shows the temporal trigger engine in action. The engine detects when rotating points cross the Y-axis,
+        with sub-frame precision regardless of the actual animation frame rate.
+      </p>
+      <p>
+        Key features demonstrated:
+      </p>
+      <ul>
+        <li>High-resolution time slicing (1000Hz internal resolution)</li>
+        <li>Sub-frame crossing detection with Bresenham-inspired algorithm</li>
+        <li>Position interpolation for accurate crossing time calculation</li>
+        <li>Configurable cooldown time that works correctly at any frame rate</li>
+        <li>Reliable detection at varying rotation speeds</li>
+      </ul>
+    </div>
+    
+    <div id="demo-container">
+      <!-- Canvas and controls will be inserted here by the JS -->
+    </div>
+    
+    <div class="comparison-grid">
+      <div class="comparison-item">
+        <h3>Frame-rate Dependent Issues (Original System)</h3>
+        <ul>
+          <li>Missed triggers at low frame rates</li>
+          <li>Fixed cooldown in milliseconds affected by frame rate</li>
+          <li>MAX_REASONABLE_MOVEMENT restrictions causing missed triggers</li>
+          <li>Debouncing logic skipping frames</li>
+          <li>Large angle jumps handled inconsistently</li>
+        </ul>
+      </div>
+      <div class="comparison-item">
+        <h3>Frame-rate Independent Solutions (Temporal Engine)</h3>
+        <ul>
+          <li>High-precision time slice simulation (1000Hz)</li>
+          <li>Continuous path sampling between frames</li>
+          <li>Proper sub-frame interpolation for all crossings</li>
+          <li>Time-based cooldown with microsecond precision</li>
+          <li>Detection of all crossings, even during large angle jumps</li>
+        </ul>
+      </div>
+    </div>
+    
+    <div class="testing-tips">
+      <h3>How to Test Different Scenarios</h3>
+      <ul>
+        <li><strong>Low Frame Rate:</strong> Set Frame Rate Limit to 15 FPS and observe consistent triggers</li>
+        <li><strong>High Rotation Speed:</strong> Increase rotation speed to 3-5 rotations/sec</li>
+        <li><strong>Cooldown Behavior:</strong> Set a cooldown of 100-300ms and observe how it works across any frame rate</li>
+        <li><strong>Frame Rate Independence:</strong> Try changing frame rate limit while keeping rotation speed constant</li>
+      </ul>
+    </div>
+    
+    <footer>
+      <p>Temporal Trigger Engine - Frame-rate Independent Trigger Detection</p>
+    </footer>
+  </div>
+
+  <!-- Debug script to check initialization -->
+  <script>
+    console.log('Page loaded, about to initialize demo');
+    window.addEventListener('error', function(e) {
+      console.error('Script error detected:', e.message, 'at', e.filename, ':', e.lineno);
+    });
+  </script>
+
+  <!-- Load the demo using Vite's module system -->
+  <script type="module">
+    console.log('Module script starting');
+    import './temporal-demo.js';
+    console.log('Module script imported');
+  </script>
+</body>
+</html> 
