@@ -1,4 +1,4 @@
-// src/SubframeTrigger.js - Frame-rate independent temporal trigger detection engine
+// src/triggers/SubframeTrigger.js - Frame-rate independent temporal trigger detection engine
 
 /**
  * Represents a high-precision trigger crossing result
