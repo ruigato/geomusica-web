@@ -1,54 +1,48 @@
-// src/triggers/triggerManager.js - Manager for coordinating different trigger detection systems
-import * as THREE from 'three';
-import { detectTemporalLayerTriggers, resetTemporalEngine, getTemporalEngine } from './temporalTriggerIntegration.js';
-import { detectLayerTriggers as originalDetectLayerTriggers, resetTriggerSystem as originalResetTriggerSystem } from './triggers.js';
-import { getCurrentTime } from '../time/time.js';
+// src/triggers/triggerManager.js - Unified trigger system management
+import { detectTriggers } from './triggers.js';
+import { TemporalTriggerEngine, createNoteFromCrossing } from './temporalTriggers.js';
+
+// Default trigger manager configuration
+const DEFAULT_CONFIG = {
+  useTemporalTriggers: false,
+  enableParallelDetection: false,
+  enableLogging: true,
+  enablePerformanceMonitoring: true,
+  cooldownTime: 0.1, // seconds
+  temporalConfig: {
+    resolution: 1000,    // Hz (1ms resolution)
+    maxMemory: 50,       // States to keep in history
+    microSteps: 10,      // Micro steps between frames 
+    useHighPrecision: true, // Use higher precision algorithms
+    trackVelocity: true,    // Track velocity for vertices
+    debugMode: false        // Enable detailed debugging
+  }
+};
+
+// Singleton instance
+let triggerManagerInstance = null;
 
 /**
- * TriggerManager - Manages different trigger detection systems and provides
- * A/B testing, performance monitoring, and comparison logging
+ * TriggerManager - Controls trigger detection strategies and feature flags
  */
 export class TriggerManager {
   /**
    * Create a new TriggerManager
-   * @param {Object} options - Configuration options
-   * @param {boolean} options.useTemporalTriggers - Whether to use temporal trigger engine (default: false)
-   * @param {boolean} options.enableParallelDetection - Run both systems in parallel for comparison (default: false)
-   * @param {boolean} options.enableLogging - Enable trigger comparison logging (default: false)
-   * @param {boolean} options.enablePerformanceMonitoring - Track performance metrics (default: false)
+   * @param {Object} config - Configuration options
    */
-  constructor(options = {}) {
+  constructor(config = {}) {
+    this.config = { ...DEFAULT_CONFIG, ...config };
+    
     // Feature flags
-    this.useTemporalTriggers = options.useTemporalTriggers || false;
-    this.enableParallelDetection = options.enableParallelDetection || false;
-    this.enableLogging = options.enableLogging || false;
-    this.enablePerformanceMonitoring = options.enablePerformanceMonitoring || false;
+    this.useTemporalTriggers = this.config.useTemporalTriggers;
+    this.enableParallelDetection = this.config.enableParallelDetection;
+    this.enableLogging = this.config.enableLogging;
+    this.enablePerformanceMonitoring = this.config.enablePerformanceMonitoring;
     
-    // Initialize performance metrics
-    this.performanceMetrics = {
-      original: {
-        totalTime: 0,
-        calls: 0,
-        avgTime: 0,
-        maxTime: 0
-      },
-      temporal: {
-        totalTime: 0,
-        calls: 0,
-        avgTime: 0,
-        maxTime: 0
-      }
-    };
+    // Create the temporal engine with configuration
+    this.temporalEngine = new TemporalTriggerEngine(this.config.temporalConfig);
     
-    // Initialize trigger comparison logs
-    this.triggerComparisonLogs = [];
-    this.maxLogEntries = options.maxLogEntries || 1000;
-    
-    // Map to track triggered points for comparison
-    this.originalTriggeredPoints = new Map();
-    this.temporalTriggeredPoints = new Map();
-    
-    // Statistics
+    // Trigger statistics
     this.triggerStats = {
       originalTriggerCount: 0,
       temporalTriggerCount: 0,
@@ -58,306 +52,507 @@ export class TriggerManager {
       timingDifferences: []
     };
     
-    // Initialize the temporal engine if we're using it
-    if (this.useTemporalTriggers || this.enableParallelDetection) {
-      getTemporalEngine();
+    // Performance metrics
+    this.performanceMetrics = {
+      original: { totalTime: 0, calls: 0, maxTime: 0 },
+      temporal: { totalTime: 0, calls: 0, maxTime: 0 }
+    };
+    
+    // Comparison logs
+    this.comparisonLogs = [];
+    
+    // Layer state tracking
+    this.layerStates = new Map();
+    
+    // Cooldown time for trigger detection in seconds
+    this.cooldownTime = this.config.cooldownTime;
+    
+    // Trigger matching window (how close in time triggers need to be to be considered a match)
+    this.triggerMatchingWindow = 0.1; // seconds
+    
+    console.log(`[TriggerManager] Initialized with config:`, {
+      useTemporalTriggers: this.useTemporalTriggers,
+      enableParallelDetection: this.enableParallelDetection,
+      cooldownTime: this.cooldownTime
+    });
+  }
+  
+  /**
+   * Reset the trigger system state
+   */
+  reset() {
+    // Clear temporal engine state
+    this.temporalEngine.clearAllHistory();
+    this.temporalEngine.resetMetrics();
+    
+    // Reset stats
+    this.triggerStats = {
+      originalTriggerCount: 0,
+      temporalTriggerCount: 0,
+      matchedTriggers: 0,
+      unmatchedOriginal: 0,
+      unmatchedTemporal: 0,
+      timingDifferences: []
+    };
+    
+    // Reset performance metrics
+    this.performanceMetrics = {
+      original: { totalTime: 0, calls: 0, maxTime: 0 },
+      temporal: { totalTime: 0, calls: 0, maxTime: 0 }
+    };
+    
+    // Clear comparison logs
+    this.comparisonLogs = [];
+    
+    // Clear layer states
+    this.layerStates.clear();
+    
+    console.log('[TriggerManager] Trigger system reset');
+  }
+  
+  /**
+   * Configure the trigger manager
+   * @param {Object} config - Configuration options
+   */
+  configure(config = {}) {
+    // Update configuration
+    this.config = { ...this.config, ...config };
+    
+    // Update feature flags
+    if (config.useTemporalTriggers !== undefined) {
+      this.useTemporalTriggers = config.useTemporalTriggers;
     }
     
-    console.log(`[TriggerManager] Initialized with mode: ${this.useTemporalTriggers ? 'Temporal' : 'Original'}`);
-    if (this.enableParallelDetection) {
-      console.log('[TriggerManager] Parallel detection enabled - both systems will run');
-    }
-  }
-  
-  /**
-   * Enable or disable the temporal trigger system
-   * @param {boolean} enabled - Whether to enable temporal triggers
-   */
-  setTemporalTriggersEnabled(enabled) {
-    this.useTemporalTriggers = enabled;
-    console.log(`[TriggerManager] ${enabled ? 'Enabled' : 'Disabled'} temporal trigger detection engine`);
-  }
-  
-  /**
-   * Check if temporal triggers are enabled
-   * @returns {boolean} Whether temporal triggers are enabled
-   */
-  isTemporalTriggersEnabled() {
-    return this.useTemporalTriggers;
-  }
-  
-  /**
-   * Enable or disable parallel detection for comparison
-   * @param {boolean} enabled - Whether to enable parallel detection
-   */
-  setParallelDetectionEnabled(enabled) {
-    this.enableParallelDetection = enabled;
-    console.log(`[TriggerManager] Parallel detection ${enabled ? 'enabled' : 'disabled'}`);
-  }
-  
-  /**
-   * Enable or disable trigger comparison logging
-   * @param {boolean} enabled - Whether to enable logging
-   */
-  setLoggingEnabled(enabled) {
-    this.enableLogging = enabled;
-    console.log(`[TriggerManager] Logging ${enabled ? 'enabled' : 'disabled'}`);
-  }
-  
-  /**
-   * Enable or disable performance monitoring
-   * @param {boolean} enabled - Whether to enable performance monitoring
-   */
-  setPerformanceMonitoringEnabled(enabled) {
-    this.enablePerformanceMonitoring = enabled;
-    console.log(`[TriggerManager] Performance monitoring ${enabled ? 'enabled' : 'disabled'}`);
-  }
-  
-  /**
-   * Main trigger detection method that routes to appropriate system
-   * @param {Object} layer - Layer to detect triggers for
-   * @param {number} tNow - Current time
-   * @param {Function} audioCallback - Callback function for triggered audio
-   * @returns {boolean} True if any triggers were detected
-   */
-  detectLayerTriggers(layer, tNow, audioCallback) {
-    if (this.enableParallelDetection) {
-      return this._detectWithBothSystems(layer, tNow, audioCallback);
+    if (config.enableParallelDetection !== undefined) {
+      this.enableParallelDetection = config.enableParallelDetection;
     }
     
+    if (config.enableLogging !== undefined) {
+      this.enableLogging = config.enableLogging;
+    }
+    
+    if (config.enablePerformanceMonitoring !== undefined) {
+      this.enablePerformanceMonitoring = config.enablePerformanceMonitoring;
+    }
+    
+    if (config.cooldownTime !== undefined) {
+      this.cooldownTime = config.cooldownTime;
+    }
+    
+    // Update temporal engine configuration if provided
+    if (config.temporalConfig) {
+      // Create a new engine with updated configuration
+      this.temporalEngine = new TemporalTriggerEngine({
+        ...this.config.temporalConfig,
+        ...config.temporalConfig
+      });
+    }
+    
+    console.log('[TriggerManager] Configuration updated:', {
+      useTemporalTriggers: this.useTemporalTriggers,
+      enableParallelDetection: this.enableParallelDetection,
+      cooldownTime: this.cooldownTime
+    });
+  }
+  
+  /**
+   * Record the current position of vertices for a layer
+   * @param {Object} layer - GeoMusica layer
+   * @param {number} timestamp - Current time in seconds
+   */
+  recordLayerState(layer, timestamp) {
+    if (!layer || !layer.group || !layer.group.visible) {
+      return;
+    }
+    
+    // Skip if the layer doesn't have a proper structure
+    if (!layer.group.children || layer.group.children.length < 2) {
+      return;
+    }
+    
+    // Get copy groups (all children except the first one)
+    const copyGroups = layer.group.children.slice(1);
+    
+    // Process each copy group
+    for (let copyIndex = 0; copyIndex < copyGroups.length; copyIndex++) {
+      const copyGroup = copyGroups[copyIndex];
+      
+      // Skip if copy group doesn't have proper structure
+      if (!copyGroup.children || copyGroup.children.length === 0) {
+        continue;
+      }
+      
+      // Find LineLoop in the copy group
+      const lineLoop = copyGroup.children.find(child => child.type === 'LineLoop');
+      
+      if (!lineLoop || !lineLoop.geometry) {
+        continue;
+      }
+      
+      // Get position attribute
+      const positionAttr = lineLoop.geometry.getAttribute('position');
+      
+      if (!positionAttr) {
+        continue;
+      }
+      
+      // Make sure lineLoop has its world matrix updated
+      lineLoop.updateMatrixWorld();
+      
+      // Record each vertex position
+      for (let i = 0; i < positionAttr.count; i++) {
+        // Get vertex position in local space
+        const vertex = new THREE.Vector3();
+        vertex.fromBufferAttribute(positionAttr, i);
+        
+        // Transform to world space
+        vertex.applyMatrix4(lineLoop.matrixWorld);
+        
+        // Create a unique ID for this vertex
+        const vertexId = TemporalTriggerEngine.createVertexId(
+          layer.id,
+          copyIndex,
+          i
+        );
+        
+        // Record the position in the temporal engine
+        this.temporalEngine.recordVertexPosition(
+          vertexId,
+          { x: vertex.x, y: vertex.y, z: vertex.z },
+          timestamp
+        );
+      }
+    }
+  }
+  
+  /**
+   * Detect triggers for a layer using the selected engine
+   * @param {Object} layer - GeoMusica layer object
+   * @param {number} timestamp - Current time in seconds
+   * @param {Function} callback - Callback function for trigger events
+   * @returns {Array} Array of detected triggers
+   */
+  detectLayerTriggers(layer, timestamp, callback) {
+    if (!layer || !layer.group || !layer.group.visible) {
+      return [];
+    }
+    
+    // Check if we should use parallel detection
+    if (this.enableParallelDetection) {
+      return this._detectWithBothSystems(layer, timestamp, callback);
+    }
+    
+    // Use selected system based on feature flag
     if (this.useTemporalTriggers) {
-      return this._detectWithTemporalSystem(layer, tNow, audioCallback);
+      return this._detectWithTemporalSystem(layer, timestamp, callback);
+    } else {
+      return this._detectWithOriginalSystem(layer, timestamp, callback);
     }
-    
-    return this._detectWithOriginalSystem(layer, tNow, audioCallback);
   }
   
   /**
-   * Detect triggers using only the original system
-   * @param {Object} layer - Layer to detect triggers for
-   * @param {number} tNow - Current time
-   * @param {Function} audioCallback - Callback function for triggered audio
-   * @returns {boolean} True if any triggers were detected
+   * Detect triggers using the original frame-based system
+   * @param {Object} layer - GeoMusica layer
+   * @param {number} timestamp - Current time in seconds
+   * @param {Function} callback - Callback function for trigger events
+   * @returns {Array} Array of detected triggers
    * @private
    */
-  _detectWithOriginalSystem(layer, tNow, audioCallback) {
+  _detectWithOriginalSystem(layer, timestamp, callback) {
     if (this.enablePerformanceMonitoring) {
       const startTime = performance.now();
       
-      // Use the original trigger detection system
-      const result = originalDetectLayerTriggers(layer, tNow, audioCallback);
+      // Run original detection
+      const triggers = detectTriggers(layer, timestamp, callback);
       
+      // Update performance metrics
       const endTime = performance.now();
-      this._updatePerformanceMetrics('original', endTime - startTime);
+      const duration = endTime - startTime;
       
-      return result;
-    }
-    
-    // Standard call without performance monitoring
-    return originalDetectLayerTriggers(layer, tNow, audioCallback);
-  }
-  
-  /**
-   * Detect triggers using only the temporal system
-   * @param {Object} layer - Layer to detect triggers for
-   * @param {number} tNow - Current time
-   * @param {Function} audioCallback - Callback function for triggered audio
-   * @returns {boolean} True if any triggers were detected
-   * @private
-   */
-  _detectWithTemporalSystem(layer, tNow, audioCallback) {
-    if (this.enablePerformanceMonitoring) {
-      const startTime = performance.now();
+      this.performanceMetrics.original.totalTime += duration;
+      this.performanceMetrics.original.calls++;
+      this.performanceMetrics.original.maxTime = 
+        Math.max(this.performanceMetrics.original.maxTime, duration);
       
-      // Use the temporal trigger detection system
-      const result = detectTemporalLayerTriggers(layer, tNow, audioCallback);
+      // Update trigger count
+      this.triggerStats.originalTriggerCount += triggers.length;
       
-      const endTime = performance.now();
-      this._updatePerformanceMetrics('temporal', endTime - startTime);
-      
-      return result;
-    }
-    
-    // Standard call without performance monitoring
-    return detectTemporalLayerTriggers(layer, tNow, audioCallback);
-  }
-  
-  /**
-   * Run both trigger detection systems in parallel and compare results
-   * Only the system specified by useTemporalTriggers will actually trigger audio
-   * @param {Object} layer - Layer to detect triggers for
-   * @param {number} tNow - Current time
-   * @param {Function} audioCallback - Callback function for triggered audio
-   * @returns {boolean} True if any triggers were detected by the active system
-   * @private
-   */
-  _detectWithBothSystems(layer, tNow, audioCallback) {
-    // Create wrapper callbacks to track triggered points
-    const originalTriggeredPoints = [];
-    const temporalTriggeredPoints = [];
-    
-    const originalWrapperCallback = (note) => {
-      // Store this trigger for comparison
-      originalTriggeredPoints.push({
-        time: tNow,
-        exactTime: note.time || tNow,
-        x: note.x,
-        y: note.y,
-        frequency: note.frequency,
-        note: { ...note }
-      });
-      
-      this.triggerStats.originalTriggerCount++;
-      
-      // Only call the actual audio callback if the original system is active
-      if (!this.useTemporalTriggers) {
-        audioCallback(note);
-      }
-    };
-    
-    const temporalWrapperCallback = (note) => {
-      // Store this trigger for comparison
-      temporalTriggeredPoints.push({
-        time: tNow,
-        exactTime: note.time || tNow,
-        x: note.x,
-        y: note.y,
-        frequency: note.frequency,
-        note: { ...note }
-      });
-      
-      this.triggerStats.temporalTriggerCount++;
-      
-      // Only call the actual audio callback if the temporal system is active
-      if (this.useTemporalTriggers) {
-        audioCallback(note);
-      }
-    };
-    
-    // Run both systems with performance monitoring if enabled
-    let originalResult = false;
-    let temporalResult = false;
-    
-    if (this.enablePerformanceMonitoring) {
-      // Measure original system
-      const originalStartTime = performance.now();
-      originalResult = originalDetectLayerTriggers(layer, tNow, originalWrapperCallback);
-      const originalEndTime = performance.now();
-      this._updatePerformanceMetrics('original', originalEndTime - originalStartTime);
-      
-      // Measure temporal system
-      const temporalStartTime = performance.now();
-      temporalResult = detectTemporalLayerTriggers(layer, tNow, temporalWrapperCallback);
-      const temporalEndTime = performance.now();
-      this._updatePerformanceMetrics('temporal', temporalEndTime - temporalStartTime);
+      return triggers;
     } else {
       // Run without performance monitoring
-      originalResult = originalDetectLayerTriggers(layer, tNow, originalWrapperCallback);
-      temporalResult = detectTemporalLayerTriggers(layer, tNow, temporalWrapperCallback);
+      const triggers = detectTriggers(layer, timestamp, callback);
+      
+      // Update trigger count
+      this.triggerStats.originalTriggerCount += triggers.length;
+      
+      return triggers;
     }
-    
-    // Compare trigger results if logging is enabled
-    if (this.enableLogging) {
-      this._compareTriggerResults(originalTriggeredPoints, temporalTriggeredPoints, tNow, layer.id);
-    }
-    
-    // Return the result from the active system
-    return this.useTemporalTriggers ? temporalResult : originalResult;
   }
   
   /**
-   * Compare trigger results between the two systems
-   * @param {Array} originalTriggers - Triggers from the original system
-   * @param {Array} temporalTriggers - Triggers from the temporal system
-   * @param {number} tNow - Current time
-   * @param {string} layerId - Layer identifier
+   * Detect triggers using the enhanced temporal system
+   * @param {Object} layer - GeoMusica layer
+   * @param {number} timestamp - Current time in seconds
+   * @param {Function} callback - Callback function for trigger events
+   * @returns {Array} Array of detected triggers
    * @private
    */
-  _compareTriggerResults(originalTriggers, temporalTriggers, tNow, layerId) {
-    const MATCH_THRESHOLD = 20; // Distance threshold for considering triggers as matching
-    const TIME_THRESHOLD = 0.1; // Time threshold for considering triggers as matching (100ms)
+  _detectWithTemporalSystem(layer, timestamp, callback) {
+    if (!layer || !layer.id) {
+      return [];
+    }
     
-    // Map of matched indices
-    const matchedOriginalIndices = new Set();
-    const matchedTemporalIndices = new Set();
+    const startTime = this.enablePerformanceMonitoring ? performance.now() : 0;
     
-    // Find matching triggers
-    for (let i = 0; i < originalTriggers.length; i++) {
-      const origTrigger = originalTriggers[i];
+    // Record the current state of this layer in the temporal engine
+    this.recordLayerState(layer, timestamp);
+    
+    // Get copy groups (all children except the first one)
+    const copyGroups = layer.group.children.slice(1);
+    const detectedTriggers = [];
+    
+    // Process each copy group
+    for (let copyIndex = 0; copyIndex < copyGroups.length; copyIndex++) {
+      const copyGroup = copyGroups[copyIndex];
       
-      for (let j = 0; j < temporalTriggers.length; j++) {
-        if (matchedTemporalIndices.has(j)) continue; // Skip already matched temporal triggers
-        
-        const tempTrigger = temporalTriggers[j];
-        
-        // Calculate spatial distance
-        const distance = Math.sqrt(
-          Math.pow(origTrigger.x - tempTrigger.x, 2) + 
-          Math.pow(origTrigger.y - tempTrigger.y, 2)
+      // Skip if copy group doesn't have proper structure
+      if (!copyGroup.children || copyGroup.children.length === 0) {
+        continue;
+      }
+      
+      // Find LineLoop in the copy group
+      const lineLoop = copyGroup.children.find(child => child.type === 'LineLoop');
+      
+      if (!lineLoop || !lineLoop.geometry) {
+        continue;
+      }
+      
+      // Get position attribute
+      const positionAttr = lineLoop.geometry.getAttribute('position');
+      
+      if (!positionAttr) {
+        continue;
+      }
+      
+      // Detect crossings for each vertex
+      for (let i = 0; i < positionAttr.count; i++) {
+        // Create a unique ID for this vertex
+        const vertexId = TemporalTriggerEngine.createVertexId(
+          layer.id,
+          copyIndex,
+          i
         );
         
-        // Calculate time difference
-        const timeDiff = Math.abs(
-          (tempTrigger.exactTime || tempTrigger.time) - 
-          (origTrigger.exactTime || origTrigger.time)
+        // Detect crossing for this vertex
+        const crossing = this.temporalEngine.detectCrossing(
+          vertexId,
+          this.cooldownTime
         );
         
-        // If they match in position and are reasonably close in time
-        if (distance < MATCH_THRESHOLD && timeDiff < TIME_THRESHOLD) {
-          matchedOriginalIndices.add(i);
-          matchedTemporalIndices.add(j);
+        // If crossing detected, create a note and trigger callback
+        if (crossing.hasCrossed) {
+          // Calculate the base frequency for this vertex
+          const baseFrequency = this._calculateVertexFrequency(layer, i);
           
-          this.triggerStats.matchedTriggers++;
-          this.triggerStats.timingDifferences.push(timeDiff);
-          
-          // Only keep the last 1000 timing differences
-          if (this.triggerStats.timingDifferences.length > 1000) {
-            this.triggerStats.timingDifferences.shift();
-          }
-          
-          // Add to comparison log
-          this._addToComparisonLog({
-            type: 'match',
-            layerId,
-            time: tNow,
-            originalTrigger: origTrigger,
-            temporalTrigger: tempTrigger,
-            distance,
-            timeDiff
+          // Create the note from crossing result
+          const note = createNoteFromCrossing(crossing, {
+            frequency: baseFrequency,
+            noteName: this._getNoteName(baseFrequency),
+            layerId: layer.id,
+            vertexIndex: i,
+            copyIndex: copyIndex
+          }, { 
+            quantizeTriggersTo: layer.state?.quantizeTriggersTo 
           });
           
-          break;
+          if (note && callback) {
+            callback(note);
+          }
+          
+          if (note) {
+            detectedTriggers.push(note);
+          }
         }
       }
     }
     
-    // Log unmatched original triggers
-    for (let i = 0; i < originalTriggers.length; i++) {
-      if (!matchedOriginalIndices.has(i)) {
-        this.triggerStats.unmatchedOriginal++;
+    // Update performance metrics if enabled
+    if (this.enablePerformanceMonitoring) {
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      
+      this.performanceMetrics.temporal.totalTime += duration;
+      this.performanceMetrics.temporal.calls++;
+      this.performanceMetrics.temporal.maxTime = 
+        Math.max(this.performanceMetrics.temporal.maxTime, duration);
+    }
+    
+    // Update trigger count
+    this.triggerStats.temporalTriggerCount += detectedTriggers.length;
+    
+    return detectedTriggers;
+  }
+  
+  /**
+   * Detect triggers using both systems in parallel for comparison
+   * @param {Object} layer - GeoMusica layer
+   * @param {number} timestamp - Current time in seconds
+   * @param {Function} callback - Callback function for trigger events
+   * @returns {Array} Array of detected triggers (from active system)
+   * @private
+   */
+  _detectWithBothSystems(layer, timestamp, callback) {
+    if (!layer || !layer.id) {
+      return [];
+    }
+    
+    // Create separate callbacks for each system that also record stats
+    const originalTriggers = [];
+    const originalCallback = (note) => {
+      note.system = 'original';
+      note.systemTime = Date.now();
+      originalTriggers.push(note);
+      
+      // Only pass to callback if original system is active
+      if (!this.useTemporalTriggers && callback) {
+        callback(note);
+      }
+    };
+    
+    const temporalTriggers = [];
+    const temporalCallback = (note) => {
+      note.system = 'temporal';
+      note.systemTime = Date.now();
+      temporalTriggers.push(note);
+      
+      // Only pass to callback if temporal system is active
+      if (this.useTemporalTriggers && callback) {
+        callback(note);
+      }
+    };
+    
+    // Detect with both systems
+    this._detectWithOriginalSystem(layer, timestamp, originalCallback);
+    this._detectWithTemporalSystem(layer, timestamp, temporalCallback);
+    
+    // Compare trigger results for logging and stats
+    if (this.enableLogging) {
+      this._compareTriggerResults(layer.id, originalTriggers, temporalTriggers, timestamp);
+    }
+    
+    // Return triggers from the active system
+    return this.useTemporalTriggers ? temporalTriggers : originalTriggers;
+  }
+  
+  /**
+   * Compare trigger results from both systems for analysis
+   * @param {string} layerId - Layer ID
+   * @param {Array} originalTriggers - Triggers from original system
+   * @param {Array} temporalTriggers - Triggers from temporal system
+   * @param {number} timestamp - Current timestamp
+   * @private
+   */
+  _compareTriggerResults(layerId, originalTriggers, temporalTriggers, timestamp) {
+    // Skip if either array is empty
+    if (originalTriggers.length === 0 && temporalTriggers.length === 0) {
+      return;
+    }
+    
+    // Create copies of the arrays to work with
+    const originals = [...originalTriggers];
+    const temporals = [...temporalTriggers];
+    
+    // Find matches (triggers that appear in both systems)
+    for (let i = 0; i < originals.length; i++) {
+      const originalTrig = originals[i];
+      
+      if (!originalTrig) continue;
+      
+      // Try to find a matching temporal trigger
+      let bestMatchIndex = -1;
+      let bestTimeDiff = this.triggerMatchingWindow;
+      let bestDistance = Infinity;
+      
+      for (let j = 0; j < temporals.length; j++) {
+        const temporalTrig = temporals[j];
         
+        if (!temporalTrig) continue;
+        
+        // Calculate time difference
+        const timeDiff = Math.abs(temporalTrig.time - originalTrig.time);
+        
+        // Skip if time difference is too large
+        if (timeDiff > this.triggerMatchingWindow) {
+          continue;
+        }
+        
+        // Calculate spatial distance
+        const distance = Math.sqrt(
+          Math.pow(temporalTrig.x - originalTrig.x, 2) +
+          Math.pow(temporalTrig.y - originalTrig.y, 2)
+        );
+        
+        // Update best match if this is better
+        if (timeDiff < bestTimeDiff || 
+            (timeDiff === bestTimeDiff && distance < bestDistance)) {
+          bestMatchIndex = j;
+          bestTimeDiff = timeDiff;
+          bestDistance = distance;
+        }
+      }
+      
+      // If we found a match
+      if (bestMatchIndex >= 0) {
+        const temporalTrig = temporals[bestMatchIndex];
+        
+        // Increment matched count
+        this.triggerStats.matchedTriggers++;
+        
+        // Record timing difference
+        this.triggerStats.timingDifferences.push(bestTimeDiff);
+        
+        // Add to comparison log
         this._addToComparisonLog({
-          type: 'unmatched_original',
+          type: 'match',
           layerId,
-          time: tNow,
-          trigger: originalTriggers[i]
+          time: timestamp,
+          originalTrigger: originalTrig,
+          temporalTrigger: temporalTrig,
+          distance: bestDistance,
+          timeDiff: bestTimeDiff
         });
+        
+        // Remove the matched trigger from the temporal array
+        temporals[bestMatchIndex] = null;
+        originals[i] = null;
       }
     }
     
-    // Log unmatched temporal triggers
-    for (let j = 0; j < temporalTriggers.length; j++) {
-      if (!matchedTemporalIndices.has(j)) {
-        this.triggerStats.unmatchedTemporal++;
-        
-        this._addToComparisonLog({
-          type: 'unmatched_temporal',
-          layerId,
-          time: tNow,
-          trigger: temporalTriggers[j]
-        });
-      }
-    }
+    // Count remaining unmatched triggers
+    const unmatchedOriginals = originals.filter(Boolean);
+    const unmatchedTemporals = temporals.filter(Boolean);
+    
+    this.triggerStats.unmatchedOriginal += unmatchedOriginals.length;
+    this.triggerStats.unmatchedTemporal += unmatchedTemporals.length;
+    
+    // Log unmatched triggers
+    unmatchedOriginals.forEach(trigger => {
+      this._addToComparisonLog({
+        type: 'unmatched_original',
+        layerId,
+        time: timestamp,
+        trigger
+      });
+    });
+    
+    unmatchedTemporals.forEach(trigger => {
+      this._addToComparisonLog({
+        type: 'unmatched_temporal',
+        layerId,
+        time: timestamp,
+        trigger
+      });
+    });
   }
   
   /**
@@ -366,201 +561,223 @@ export class TriggerManager {
    * @private
    */
   _addToComparisonLog(entry) {
-    this.triggerComparisonLogs.push({
-      ...entry,
-      timestamp: Date.now()
-    });
+    if (!this.enableLogging) return;
+    
+    // Add timestamp if not present
+    if (!entry.timestamp) {
+      entry.timestamp = Date.now();
+    }
+    
+    // Add to log
+    this.comparisonLogs.push(entry);
     
     // Limit log size
-    if (this.triggerComparisonLogs.length > this.maxLogEntries) {
-      this.triggerComparisonLogs.shift();
+    const MAX_LOG_SIZE = 1000;
+    if (this.comparisonLogs.length > MAX_LOG_SIZE) {
+      this.comparisonLogs.shift();
     }
   }
   
   /**
-   * Update performance metrics for a system
-   * @param {string} system - System name ('original' or 'temporal')
-   * @param {number} executionTime - Execution time in milliseconds
+   * Calculate the frequency for a vertex based on layer settings
+   * @param {Object} layer - GeoMusica layer
+   * @param {number} vertexIndex - Vertex index
+   * @returns {number} Frequency in Hz
    * @private
    */
-  _updatePerformanceMetrics(system, executionTime) {
-    const metrics = this.performanceMetrics[system];
+  _calculateVertexFrequency(layer, vertexIndex) {
+    if (!layer || !layer.state) {
+      return 440; // Default A4 if no layer state
+    }
     
-    metrics.totalTime += executionTime;
-    metrics.calls++;
-    metrics.avgTime = metrics.totalTime / metrics.calls;
-    metrics.maxTime = Math.max(metrics.maxTime, executionTime);
-  }
-  
-  /**
-   * Reset the trigger system
-   */
-  resetTriggerSystem() {
-    // Reset original system
-    originalResetTriggerSystem();
+    const { segments, useEqualTemperament, referenceFrequency } = layer.state;
     
-    // Reset temporal engine
-    resetTemporalEngine();
+    // Default values if not specified
+    const refFreq = referenceFrequency || 440;
+    const totalSegments = segments || 12;
     
-    // Reset comparison logs and stats
-    if (this.enableLogging) {
-      this.triggerComparisonLogs = [];
-      this.triggerStats = {
-        originalTriggerCount: 0,
-        temporalTriggerCount: 0,
-        matchedTriggers: 0,
-        unmatchedOriginal: 0,
-        unmatchedTemporal: 0,
-        timingDifferences: []
-      };
+    // For equal temperament, use semitone formula
+    if (useEqualTemperament) {
+      const semitones = (vertexIndex * 12) / totalSegments;
+      return refFreq * Math.pow(2, semitones / 12);
+    } else {
+      // For just intonation, use harmonic ratios
+      // Map vertex index to a ratio based on the harmonic series
+      const ratio = (vertexIndex + 1) / totalSegments;
+      return refFreq * ratio;
     }
   }
   
   /**
-   * Get performance metrics
-   * @returns {Object} Performance metrics for both systems
+   * Get note name from frequency
+   * @param {number} frequency - Frequency in Hz
+   * @returns {string} Note name (e.g. "A4")
+   * @private
    */
-  getPerformanceMetrics() {
-    return {
-      ...this.performanceMetrics,
-      summary: {
-        originalAvgTime: this.performanceMetrics.original.avgTime,
-        temporalAvgTime: this.performanceMetrics.temporal.avgTime,
-        difference: this.performanceMetrics.temporal.avgTime - this.performanceMetrics.original.avgTime,
-        percentageDifference: (
-          (this.performanceMetrics.temporal.avgTime - this.performanceMetrics.original.avgTime) / 
-          this.performanceMetrics.original.avgTime * 100
-        ).toFixed(2) + '%'
-      }
-    };
+  _getNoteName(frequency) {
+    if (!frequency) return "Unknown";
+    
+    // Very simple frequency to note name conversion
+    // Just for debugging purposes
+    const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    const a4 = 440;
+    const a4Index = 9 + 4 * 12; // A is 9th note, 4th octave
+    
+    // Calculate semitones from A4
+    const semitones = 12 * Math.log2(frequency / a4);
+    
+    // Calculate note index
+    const noteIndex = Math.round(semitones) + a4Index;
+    
+    // Calculate octave and note
+    const octave = Math.floor(noteIndex / 12);
+    const note = noteNames[noteIndex % 12];
+    
+    return `${note}${octave}`;
   }
   
   /**
-   * Get trigger comparison statistics
-   * @returns {Object} Trigger comparison statistics
+   * Get current trigger statistics
+   * @returns {Object} Trigger statistics with summary
    */
   getTriggerStats() {
-    const timingDiffs = this.triggerStats.timingDifferences;
-    const avgTimingDiff = timingDiffs.length > 0 
-      ? timingDiffs.reduce((sum, diff) => sum + diff, 0) / timingDiffs.length 
+    // Copy the stats
+    const stats = { ...this.triggerStats };
+    
+    // Calculate additional stats
+    const totalOriginal = stats.originalTriggerCount;
+    const totalTemporal = stats.temporalTriggerCount;
+    const matched = stats.matchedTriggers;
+    const unmatchedOriginal = stats.unmatchedOriginal;
+    const unmatchedTemporal = stats.unmatchedTemporal;
+    
+    // Calculate percentages
+    const matchPercentage = totalOriginal + totalTemporal > 0 
+      ? Math.round(matched * 200 / (totalOriginal + totalTemporal)) + '%'
+      : '0%';
+      
+    const unmatchedOriginalPercentage = totalOriginal > 0
+      ? Math.round(unmatchedOriginal * 100 / totalOriginal) + '%'
+      : '0%';
+      
+    const unmatchedTemporalPercentage = totalTemporal > 0
+      ? Math.round(unmatchedTemporal * 100 / totalTemporal) + '%'
+      : '0%';
+      
+    // Calculate average timing difference
+    const timingDiffs = stats.timingDifferences;
+    const avgTimingDiff = timingDiffs.length > 0
+      ? (timingDiffs.reduce((sum, diff) => sum + diff, 0) / timingDiffs.length).toFixed(4) + 's'
+      : 'N/A';
+    
+    // Add summary to stats
+    stats.summary = {
+      matchPercentage,
+      unmatchedOriginalPercentage,
+      unmatchedTemporalPercentage,
+      averageTimingDifference: avgTimingDiff
+    };
+    
+    return stats;
+  }
+  
+  /**
+   * Get performance metrics for both systems
+   * @returns {Object} Performance metrics with summary
+   */
+  getPerformanceMetrics() {
+    // Calculate averages
+    const origAvgTime = this.performanceMetrics.original.calls > 0
+      ? this.performanceMetrics.original.totalTime / this.performanceMetrics.original.calls
+      : 0;
+      
+    const tempAvgTime = this.performanceMetrics.temporal.calls > 0
+      ? this.performanceMetrics.temporal.totalTime / this.performanceMetrics.temporal.calls
       : 0;
     
-    return {
-      ...this.triggerStats,
-      summary: {
-        totalOriginalTriggers: this.triggerStats.originalTriggerCount,
-        totalTemporalTriggers: this.triggerStats.temporalTriggerCount,
-        triggerCountDifference: this.triggerStats.temporalTriggerCount - this.triggerStats.originalTriggerCount,
-        matchPercentage: this.triggerStats.originalTriggerCount > 0 
-          ? (this.triggerStats.matchedTriggers / this.triggerStats.originalTriggerCount * 100).toFixed(2) + '%'
-          : '0%',
-        averageTimingDifference: avgTimingDiff.toFixed(4) + 's',
-        unmatchedOriginalPercentage: this.triggerStats.originalTriggerCount > 0
-          ? (this.triggerStats.unmatchedOriginal / this.triggerStats.originalTriggerCount * 100).toFixed(2) + '%'
-          : '0%',
-        unmatchedTemporalPercentage: this.triggerStats.temporalTriggerCount > 0
-          ? (this.triggerStats.unmatchedTemporal / this.triggerStats.temporalTriggerCount * 100).toFixed(2) + '%'
-          : '0%'
+    // Create metrics object
+    const metrics = {
+      original: {
+        avgTime: origAvgTime,
+        maxTime: this.performanceMetrics.original.maxTime,
+        calls: this.performanceMetrics.original.calls
+      },
+      temporal: {
+        avgTime: tempAvgTime,
+        maxTime: this.performanceMetrics.temporal.maxTime,
+        calls: this.performanceMetrics.temporal.calls
       }
     };
+    
+    // Add summary comparing the two
+    metrics.summary = {
+      difference: tempAvgTime - origAvgTime,
+      percentageDifference: origAvgTime > 0
+        ? Math.round((tempAvgTime - origAvgTime) * 100 / origAvgTime) + '%'
+        : 'N/A'
+    };
+    
+    return metrics;
   }
   
   /**
    * Get recent comparison logs
-   * @param {number} count - Number of entries to return (default: 10)
+   * @param {number} count - Number of logs to return
    * @returns {Array} Recent comparison logs
    */
   getRecentComparisonLogs(count = 10) {
-    return this.triggerComparisonLogs.slice(-count);
+    return this.comparisonLogs.slice(-count);
   }
   
   /**
-   * Export comparison logs to JSON
-   * @returns {string} JSON string containing comparison logs
+   * Export all comparison logs as JSON
+   * @returns {string} JSON string of all logs
    */
   exportComparisonLogs() {
-    return JSON.stringify({
-      timestamp: Date.now(),
-      stats: this.getTriggerStats(),
-      performance: this.getPerformanceMetrics(),
-      logs: this.triggerComparisonLogs
-    }, null, 2);
+    // Include trigger stats and performance metrics
+    const exportData = {
+      triggerStats: this.getTriggerStats(),
+      performanceMetrics: this.getPerformanceMetrics(),
+      logs: this.comparisonLogs
+    };
+    
+    return JSON.stringify(exportData, null, 2);
+  }
+  
+  /**
+   * Get temporal engine metrics
+   * @returns {Object} Temporal engine metrics
+   */
+  getTemporalEngineMetrics() {
+    return this.temporalEngine.getMetrics();
   }
 }
 
-// Create a singleton instance
-let triggerManagerInstance = null;
-
 /**
- * Get the global TriggerManager instance
- * @param {Object} options - Configuration options
- * @returns {TriggerManager} The TriggerManager instance
+ * Get the singleton instance of TriggerManager
+ * @param {Object} config - Optional configuration for first initialization
+ * @returns {TriggerManager} Singleton TriggerManager instance
  */
-export function getTriggerManager(options = {}) {
+export function getTriggerManager(config) {
   if (!triggerManagerInstance) {
-    triggerManagerInstance = new TriggerManager(options);
+    triggerManagerInstance = new TriggerManager(config);
   }
   return triggerManagerInstance;
 }
 
 /**
- * Main trigger detection function that routes through TriggerManager
- * @param {Object} layer - Layer to detect triggers for
- * @param {number} tNow - Current time
- * @param {Function} audioCallback - Callback function for triggered audio
- * @returns {boolean} True if any triggers were detected
+ * Configure the TriggerManager singleton
+ * @param {Object} config - Configuration options
  */
-export function detectLayerTriggers(layer, tNow, audioCallback) {
+export function configureTriggerManager(config) {
   const manager = getTriggerManager();
-  return manager.detectLayerTriggers(layer, tNow, audioCallback);
+  manager.configure(config);
 }
 
 /**
- * Reset the trigger system through TriggerManager
+ * Reset the TriggerManager singleton
  */
 export function resetTriggerSystem() {
   const manager = getTriggerManager();
-  manager.resetTriggerSystem();
-}
-
-/**
- * Enable or disable temporal triggers
- * @param {boolean} enabled - Whether to enable temporal triggers
- */
-export function setTemporalTriggersEnabled(enabled) {
-  const manager = getTriggerManager();
-  manager.setTemporalTriggersEnabled(enabled);
-}
-
-/**
- * Check if temporal triggers are enabled
- * @returns {boolean} Whether temporal triggers are enabled
- */
-export function isTemporalTriggersEnabled() {
-  const manager = getTriggerManager();
-  return manager.isTemporalTriggersEnabled();
-}
-
-/**
- * Configure the TriggerManager with options
- * @param {Object} options - Configuration options
- */
-export function configureTriggerManager(options = {}) {
-  const manager = getTriggerManager();
-  
-  if (options.useTemporalTriggers !== undefined) {
-    manager.setTemporalTriggersEnabled(options.useTemporalTriggers);
-  }
-  
-  if (options.enableParallelDetection !== undefined) {
-    manager.setParallelDetectionEnabled(options.enableParallelDetection);
-  }
-  
-  if (options.enableLogging !== undefined) {
-    manager.setLoggingEnabled(options.enableLogging);
-  }
-  
-  if (options.enablePerformanceMonitoring !== undefined) {
-    manager.setPerformanceMonitoringEnabled(options.enablePerformanceMonitoring);
-  }
+  manager.reset();
 } 
