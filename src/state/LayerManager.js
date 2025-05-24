@@ -71,6 +71,17 @@ export class LayerManager {
       
       
     }
+    
+    // Make manager available globally but via WeakRef to avoid memory leaks
+    if (typeof WeakRef !== 'undefined' && typeof window !== 'undefined') {
+      // Avoid direct global reference to prevent memory leaks
+      const existingManagerRef = window._layersRef;
+      if (!existingManagerRef || !(existingManagerRef instanceof WeakRef) || !existingManagerRef.deref()) {
+        window._layersRef = new WeakRef(this);
+        // Keep a direct reference for backwards compatibility, but can be cleaned up
+        window._layers = this;
+      }
+    }
   }
   
   /**
@@ -93,7 +104,7 @@ export class LayerManager {
     
     const layer = new Layer(id, options);
     
-    // FIXED: Set layer manager reference to prevent circular dependencies
+    // Set layer manager reference using WeakRef to prevent circular dependencies
     layer.setLayerManager(this);
     
     // Set initial state values to ensure there's something to render
@@ -386,7 +397,7 @@ export class LayerManager {
   }
   
   /**
-   * Remove a layer by ID
+   * Remove a layer by ID with proper cleanup to prevent memory leaks
    * @param {number} layerId ID of the layer to remove
    */
   removeLayer(layerId) {
@@ -396,6 +407,17 @@ export class LayerManager {
     
     // Get the layer and dispose its resources
     const layer = this.layers[layerId];
+    
+    // First remove from the scene to prevent further processing
+    if (layer.group && layer.group.parent) {
+      layer.group.parent.remove(layer.group);
+    }
+    
+    // Clear any manager-specific references to this layer
+    // This must happen before layer.dispose() to break circular references
+    this.cleanupLayerReferences(layerId);
+    
+    // Now dispose the layer's resources
     layer.dispose();
     
     // Remove from array
@@ -411,8 +433,14 @@ export class LayerManager {
       
       // Update the layer ID
       this.layers[i].id = i;
+      this.layers[i].name = `Layer ${i}`;
       this.layers[i].group.name = `layer-${i}`;
       this.layers[i].group.userData.layerId = i;
+      
+      // Update the state layerId to match
+      if (this.layers[i].state) {
+        this.layers[i].state.layerId = i;
+      }
     }
     
     // Update active layer if needed
@@ -434,6 +462,54 @@ export class LayerManager {
     
     // Dispatch an event for other parts of the system to update their references
     this.dispatchLayerRemovalEvent(layerId, idRemapping);
+    
+    // Force garbage collection if supported by the browser
+    if (window.gc) {
+      try {
+        window.gc();
+      } catch (e) {
+        // Ignore errors in garbage collection
+      }
+    }
+  }
+  
+  /**
+   * Clean up any manager-specific references to a layer that is being removed
+   * @param {number} layerId ID of the layer being removed
+   * @private
+   */
+  cleanupLayerReferences(layerId) {
+    // Remove from layerReferences map if present
+    this.layerReferences.delete(layerId);
+    
+    // Clear any scene references to this layer
+    if (this.scene && this.scene.userData && this.scene.userData.layers) {
+      if (Array.isArray(this.scene.userData.layers)) {
+        const index = this.scene.userData.layers.findIndex(l => 
+          (l && l.id === layerId) || (l && l.userData && l.userData.layerId === layerId)
+        );
+        if (index >= 0) {
+          this.scene.userData.layers.splice(index, 1);
+        }
+      } else if (typeof this.scene.userData.layers === 'object') {
+        delete this.scene.userData.layers[layerId];
+      }
+    }
+    
+    // Clear any global references to this layer
+    if (window._activeLayer && window._activeLayer.id === layerId) {
+      window._activeLayer = null;
+    }
+    
+    // Update _appState if it was pointing to this layer's state
+    if (window._appState && window._appState.layerId === layerId) {
+      // Find a new layer to use for _appState
+      if (this.layers.length > 0 && this.activeLayerId !== null) {
+        window._appState = this.layers[this.activeLayerId].state;
+      } else {
+        window._appState = null;
+      }
+    }
   }
   
   /**
@@ -594,7 +670,10 @@ export class LayerManager {
       
       // Ensure group has state reference for trigger detection
       if (layer.group) {
-        layer.group.userData.state = state;
+        // Don't set state directly since it's now a getter-only property
+        // Instead, ensure stateId is set correctly for the getter to use
+        layer.group.userData.stateId = layerId;
+        
         // Also add layerId to the group's userData for trigger system to identify
         layer.group.userData.layerId = layerId;
       }

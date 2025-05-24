@@ -407,8 +407,11 @@ export function processIntersections(state, baseGeo, group) {
     
   }
   
-  // Make sure group has access to state
-  group.userData.state = state;
+  // Make sure group has access to state through the stateId
+  // Instead of setting state directly (which might be a getter property)
+  if (state && state.layerId !== undefined) {
+    group.userData.stateId = state.layerId;
+  }
   
   // Find intersections - this will now include star cut intersections
   const intersectionPoints = findAllIntersections(group);

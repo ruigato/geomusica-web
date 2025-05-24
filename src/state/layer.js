@@ -23,13 +23,11 @@ export class Layer {
     // Create a dedicated state object for this layer
     this.state = createAppState();
     
-    // FIXED: Remove circular references that could cause memory leaks
-    // Instead of storing direct references, just store the layer ID
+    // Store layer ID instead of direct reference to avoid circular references
     this.state.layerId = id;
-    // Remove this.state.layerRef = this; as it creates circular reference
+    // REMOVED: this.state.layerRef = this; // This line created circular reference
     
-    // Store a weak reference to layer manager if available
-    // This allows the layer to find itself without creating circular references
+    // Use WeakRef for layer manager reference to avoid memory retention
     this._layerManagerRef = null;
     
     // Generate a unique color for this layer based on its ID
@@ -130,9 +128,17 @@ export class Layer {
     // IMPORTANT: Ensure group is visible
     this.group.visible = true;
     
-    // IMPORTANT: Set the state reference in the group userData
-    // This fixes the "No valid state found for trigger detection" error
-    this.group.userData.state = this.state;
+    // Instead of storing a direct reference to state, store state ID
+    // This prevents circular references while allowing state lookup when needed
+    this.group.userData.stateId = this.id;
+    // Make state accessible via a getter to avoid circular references
+    Object.defineProperty(this.group.userData, 'state', {
+      get: () => {
+        // This creates a temporary reference only when needed
+        return this.state;
+      },
+      configurable: true
+    });
     
     // Set global state reference if available from window
     if (window._globalState) {
@@ -411,9 +417,13 @@ export class Layer {
     
     // Ensure the group has the state reference for trigger detection
     if (this.group) {
-      this.group.userData.state = this.state;
-      if (DEBUG_LOGGING) {
-        
+      // Don't set state directly since it's now a getter-only property
+      // Instead, ensure stateId is set correctly which the getter uses
+      this.group.userData.stateId = this.id;
+      
+      // Check if the state getter is working by reading it
+      if (DEBUG_LOGGING && this.group.userData.state !== this.state) {
+        console.warn(`[LAYER ${this.id}] State getter not working properly`);
       }
       
       // Make sure the group is visible
@@ -435,9 +445,12 @@ export class Layer {
   }
   
   /**
-   * Dispose of layer resources to prevent memory leaks
+   * Dispose of all resources and break all circular references
    */
   dispose() {
+    // Get a reference to the layer manager before we clear our reference to it
+    const layerManager = this.getLayerManager();
+    
     // Remove layer from parent scene properly
     if (this.group && this.group.parent) {
       this.group.parent.remove(this.group);
@@ -488,6 +501,22 @@ export class Layer {
           child.userData.eventListeners = null;
         }
         
+        // Break any references to the state object in userData
+        if (child.userData && child.userData.state === this.state) {
+          // If we added a getter property for state, delete it
+          if (Object.getOwnPropertyDescriptor(child.userData, 'state')?.get) {
+            delete child.userData.state;
+          } else {
+            // Otherwise just null it out
+            child.userData.state = null;
+          }
+        }
+        
+        // If stateId exists, null it out
+        if (child.userData && child.userData.stateId === this.id) {
+          child.userData.stateId = null;
+        }
+        
         // Clear all userData references
         if (child.userData) {
           for (const key in child.userData) {
@@ -526,6 +555,11 @@ export class Layer {
     
     // Clean up state collections
     if (this.state) {
+      // Remove circular references in state
+      if (this.state.layerRef) {
+        this.state.layerRef = null;
+      }
+      
       if (this.state.lastTrig instanceof Set) {
         this.state.lastTrig.clear();
         this.state.lastTrig = null;
@@ -546,9 +580,24 @@ export class Layer {
       
       // Clear state references that might be circular
       this.state.layerId = null;
+      
+      // Remove this layer's state from global _appState if it's the same
+      if (window._appState === this.state) {
+        // Try to set _appState to another layer's state if available
+        if (layerManager && layerManager.layers) {
+          const otherLayer = layerManager.layers.find(l => l !== this && l.state);
+          if (otherLayer) {
+            window._appState = otherLayer.state;
+          } else {
+            window._appState = null;
+          }
+        } else {
+          window._appState = null;
+        }
+      }
     }
     
-    // Clear layer manager reference
+    // Clear layer manager reference - must be done after the above uses of layerManager
     this._layerManagerRef = null;
     
     // Clear markers array
@@ -586,26 +635,44 @@ export class Layer {
    * @returns {LayerManager|null} Layer manager instance or null if not available
    */
   getLayerManager() {
-    // Try getting from weak reference first
+    // Try getting from WeakRef if available
     if (this._layerManagerRef) {
+      // If using WeakRef, dereference it
+      if (this._layerManagerRef instanceof WeakRef) {
+        return this._layerManagerRef.deref();
+      }
+      // If direct reference, just return it (for backward compatibility)
       return this._layerManagerRef;
     }
     
     // Try getting from global window if available
     if (window._layers) {
-      this._layerManagerRef = window._layers;
-      return this._layerManagerRef;
+      // Store a weak reference for future use
+      this._layerManagerRef = new WeakRef(window._layers);
+      return window._layers;
     }
     
     return null;
   }
   
   /**
-   * Set layer manager reference (should be called by LayerManager)
+   * Set layer manager reference using WeakRef to prevent memory leaks
    * @param {LayerManager} layerManager Layer manager instance
    */
   setLayerManager(layerManager) {
-    this._layerManagerRef = layerManager;
+    if (!layerManager) {
+      this._layerManagerRef = null;
+      return;
+    }
+    
+    // Use WeakRef if supported by the browser
+    if (typeof WeakRef !== 'undefined') {
+      this._layerManagerRef = new WeakRef(layerManager);
+    } else {
+      // Fallback for browsers without WeakRef support
+      // Just store the ID to avoid circular references
+      this._layerManagerRef = layerManager;
+    }
   }
   
   /**

@@ -146,7 +146,8 @@ function performStateSync(isLayerSwitch = false) {
     
     // Make sure all core components have access to the state
     if (sceneInstance) {
-      sceneInstance.userData.state = state;
+      // Store state ID instead of direct reference to prevent circular references
+      sceneInstance.userData.stateId = activeLayerId;
       sceneInstance.userData.globalState = globalState;
     }
     
@@ -155,7 +156,8 @@ function performStateSync(isLayerSwitch = false) {
     if (activeLayer?.group) {
       // Only update if the layer is actually active and valid
       if (activeLayer.id === activeLayerId || activeLayerId === 'fallback') {
-        activeLayer.group.userData.state = state;
+        // Update stateId instead of setting state directly to avoid circular references
+        activeLayer.group.userData.stateId = activeLayerId;
         activeLayer.group.userData.globalState = globalState;
         
         // Verify the active layer's state is correctly set
@@ -170,7 +172,8 @@ function performStateSync(isLayerSwitch = false) {
       if (!audioInstance.userData) {
         audioInstance.userData = {};
       }
-      audioInstance.userData.state = state;
+      // Use stateId instead of direct state reference
+      audioInstance.userData.stateId = activeLayerId;
       audioInstance.userData.globalState = globalState;
     }
     
