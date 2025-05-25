@@ -452,25 +452,78 @@ export function updateGroup(options = {}) {
       radius: radiusValue,
       segments: segmentCount,
       angle: angleValue,
-      stepScale: stepScaleValue
+      stepScale: stepScaleValue,
+      // Add more state parameters that affect geometry
+      useStars: state.useStars || false,
+      starSkip: state.starSkip || 1,
+      useFractal: state.useFractal || false,
+      fractalValue: state.fractalValue || 1,
+      useEuclid: state.useEuclid || false,
+      euclidValue: state.euclidValue || 3,
+      useModulus: state.useModulus || false,
+      modulusValue: state.modulusValue || 5,
+      useAltScale: state.useAltScale || false,
+      altScale: state.altScale || 1.5,
+      altStepN: state.altStepN || 2
     };
   }
   
-  // Check if any parameters have meaningfully changed - use larger thresholds to prevent
-  // floating point differences from triggering updates
+  // Use epsilon values appropriate for each parameter type
+  const EPSILON = {
+    copies: 0.01,      // Integer, so any difference > 0.01 is significant
+    radius: 0.5,       // Allow small differences in radius (0.5 units)
+    segments: 0.01,    // Integer, so any difference > 0.01 is significant
+    angle: 0.01,       // Small angle differences can be ignored (0.01 radians)
+    stepScale: 0.001,  // Very small differences in scale can be ignored
+    starSkip: 0.01,    // Integer
+    fractalValue: 0.01, // Small fractional differences
+    euclidValue: 0.01  // Integer
+  };
+  
+  // Check if any parameters have meaningfully changed using appropriate epsilons
   const hasChanges = 
-    Math.abs(group.userData.previousValues.copies - copyCount) >= 1 ||
-    Math.abs(group.userData.previousValues.radius - radiusValue) >= 1.0 ||
-    Math.abs(group.userData.previousValues.segments - segmentCount) >= 1 ||
-    Math.abs(group.userData.previousValues.angle - angleValue) >= 1.0 ||
-    Math.abs(group.userData.previousValues.stepScale - stepScaleValue) >= 0.01;
+    Math.abs(group.userData.previousValues.copies - copyCount) > EPSILON.copies ||
+    Math.abs(group.userData.previousValues.radius - radiusValue) > EPSILON.radius ||
+    Math.abs(group.userData.previousValues.segments - segmentCount) > EPSILON.segments ||
+    Math.abs(group.userData.previousValues.angle - angleValue) > EPSILON.angle ||
+    Math.abs(group.userData.previousValues.stepScale - stepScaleValue) > EPSILON.stepScale ||
+    group.userData.previousValues.useStars !== state.useStars ||
+    (state.useStars && Math.abs(group.userData.previousValues.starSkip - state.starSkip) > EPSILON.starSkip) ||
+    group.userData.previousValues.useFractal !== state.useFractal ||
+    (state.useFractal && Math.abs(group.userData.previousValues.fractalValue - state.fractalValue) > EPSILON.fractalValue) ||
+    group.userData.previousValues.useEuclid !== state.useEuclid ||
+    (state.useEuclid && Math.abs(group.userData.previousValues.euclidValue - state.euclidValue) > EPSILON.euclidValue) ||
+    group.userData.previousValues.useModulus !== state.useModulus ||
+    group.userData.previousValues.useAltScale !== state.useAltScale ||
+    (state.useAltScale && group.userData.previousValues.altScale !== state.altScale) ||
+    (state.useAltScale && group.userData.previousValues.altStepN !== state.altStepN);
+  
+  // Also check if we need to update due to a special condition
+  const needsSpecialUpdate = isLerping || state.needsIntersectionUpdate;
     
   // If nothing has changed, we can avoid a lot of unnecessary work
-  if (!hasChanges && !isLerping && !state.needsIntersectionUpdate && group.children.length > 0) {
+  if (!hasChanges && !needsSpecialUpdate && group.children.length > 0) {
     if (DEBUG_LOGGING) {
       console.log("No meaningful parameter changes detected, skipping geometry update");
     }
     return;
+  }
+  
+  if (DEBUG_LOGGING && hasChanges) {
+    // Log which specific parameters have changed
+    const changes = [];
+    if (Math.abs(group.userData.previousValues.copies - copyCount) > EPSILON.copies) 
+      changes.push(`copies: ${group.userData.previousValues.copies} -> ${copyCount}`);
+    if (Math.abs(group.userData.previousValues.radius - radiusValue) > EPSILON.radius)
+      changes.push(`radius: ${group.userData.previousValues.radius} -> ${radiusValue}`);
+    if (Math.abs(group.userData.previousValues.segments - segmentCount) > EPSILON.segments)
+      changes.push(`segments: ${group.userData.previousValues.segments} -> ${segmentCount}`);
+    if (Math.abs(group.userData.previousValues.stepScale - stepScaleValue) > EPSILON.stepScale)
+      changes.push(`stepScale: ${group.userData.previousValues.stepScale} -> ${stepScaleValue}`);
+    if (group.userData.previousValues.useStars !== state.useStars)
+      changes.push(`useStars: ${group.userData.previousValues.useStars} -> ${state.useStars}`);
+    
+    console.log(`Parameters changed: ${changes.join(', ')}`);
   }
   
   // Update the stored previous values
@@ -479,12 +532,19 @@ export function updateGroup(options = {}) {
     radius: radiusValue,
     segments: segmentCount,
     angle: angleValue,
-    stepScale: stepScaleValue
+    stepScale: stepScaleValue,
+    useStars: state.useStars || false,
+    starSkip: state.starSkip || 1,
+    useFractal: state.useFractal || false,
+    fractalValue: state.fractalValue || 1,
+    useEuclid: state.useEuclid || false,
+    euclidValue: state.euclidValue || 3,
+    useModulus: state.useModulus || false,
+    modulusValue: state.modulusValue || 5,
+    useAltScale: state.useAltScale || false,
+    altScale: state.altScale || 1.5,
+    altStepN: state.altStepN || 2
   };
-  
-  if (DEBUG_LOGGING) {
-    console.log(`Using values: copies=${copyCount}, radius=${radiusValue}, segments=${segmentCount}, angle=${angleValue}, stepScale=${stepScaleValue}`);
-  }
   
   // Process intersections if needed
   if (layer && state.needsIntersectionUpdate) {

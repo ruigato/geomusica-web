@@ -362,6 +362,13 @@ export class TemporalTriggerEngine {
     // Clear references to parent objects to avoid memory leaks
     this.parentScene = null;
     
+    // Force a full cleanup to ensure all vertex tracking is reset
+    for (const map of [this.vertexStates, this.vertexLastAccessed, this.recentCrossings]) {
+      if (map && typeof map.clear === 'function') {
+        map.clear();
+      }
+    }
+    
     // Explicitly trigger garbage collection if available
     if (typeof global !== 'undefined' && global.gc) {
       try {

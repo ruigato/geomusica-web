@@ -76,14 +76,40 @@ function setupCleanupTimer() {
 
 /**
  * Remove stale entries from recentTriggers map to prevent memory leaks
+ * and ensure triggers don't stick indefinitely
  */
 function cleanupRecentTriggers() {
   const now = getCurrentTime();
   
-  // Remove entries older than RECENT_TRIGGERS_MAX_AGE
+  // More aggressive cleanup - reduce the max age
+  const REDUCED_MAX_AGE = 3.0; // 3 seconds max age
+  
+  // Remove entries older than REDUCED_MAX_AGE
   for (const [key, data] of recentTriggers.entries()) {
-    if (now - data.time > RECENT_TRIGGERS_MAX_AGE) {
+    if (now - data.time > REDUCED_MAX_AGE) {
       recentTriggers.delete(key);
+    }
+  }
+  
+  // If map is still too large, do more aggressive cleanup
+  if (recentTriggers.size > 500) {
+    // Convert to array for sorting
+    const entries = Array.from(recentTriggers.entries());
+    
+    // Sort by time (oldest first)
+    entries.sort((a, b) => a[1].time - b[1].time);
+    
+    // Keep only the 200 most recent entries
+    const toKeep = entries.slice(-200);
+    
+    // Clear map and re-add only the entries to keep
+    recentTriggers.clear();
+    for (const [key, value] of toKeep) {
+      recentTriggers.set(key, value);
+    }
+    
+    if (DEBUG_LOGGING) {
+      console.log(`Aggressive cleanup of recentTriggers: reduced from ${entries.length} to ${recentTriggers.size}`);
     }
   }
 }
@@ -687,9 +713,18 @@ export function resetTriggerSystem() {
   pendingTriggers = [];
   lastPositionRecordTimes.clear();
   
-  // Reset the subframe engine
+  // Reset the subframe engine more thoroughly
   if (subframeEngine) {
+    // Clear all history
     subframeEngine.clearAllHistory();
+    
+    // Explicitly clear all maps in the engine to ensure complete reset
+    subframeEngine.vertexStates.clear();
+    subframeEngine.vertexLastAccessed.clear();
+    subframeEngine.recentCrossings.clear();
+    
+    // Reset the last processed time
+    subframeEngine.lastProcessedTime = subframeEngine.getCurrentTime();
   }
   
   // Reset cleanup timer
@@ -999,18 +1034,26 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
   
   // Process triggered vertices
   for (const trigger of triggeredVertices) {
-    // Create unique ID for this trigger
-    const triggerId = `${layer.id}-${trigger.copyIndex}-${trigger.vertexIndex}-${Math.floor(timestamp * 10)}`;
+    // Create unique ID for this trigger - use a consistent format without the timestamp component
+    // which was causing cleanup issues when timestamps changed
+    const triggerId = `${layer.id}-${trigger.copyIndex}-${trigger.vertexIndex}`;
     
-    // Skip if this was recently triggered
+    // Skip if this was recently triggered and still in cooldown
     if (recentTriggers.has(triggerId)) {
-      continue;
+      const lastTriggerData = recentTriggers.get(triggerId);
+      const timeSinceLastTrigger = timestamp - lastTriggerData.time;
+      
+      // Skip if still in cooldown period
+      if (timeSinceLastTrigger < cooldownTime) {
+        continue;
+      }
     }
     
-    // Mark as recently triggered
+    // Mark as recently triggered with current timestamp
     recentTriggers.set(triggerId, {
       time: timestamp,
-      position: { x: trigger.x, y: trigger.y, z: trigger.z }
+      position: { x: trigger.x, y: trigger.y, z: trigger.z },
+      layerId: layer.id // Store layer ID explicitly for easier cleanup
     });
     
     // Calculate frequency for this point
@@ -1173,16 +1216,35 @@ export function clearLayerMarkers(layer) {
         if (id.startsWith(`${layer.id}-`)) {
           subframeEngine.vertexStates.delete(id);
           subframeEngine.vertexLastAccessed.delete(id);
+        }
+      }
+      
+      // Clean up recentCrossings using the same prefix check
+      for (const [id, time] of subframeEngine.recentCrossings.entries()) {
+        if (id.startsWith(`${layer.id}-`)) {
           subframeEngine.recentCrossings.delete(id);
         }
       }
+      
+      // Log cleanup for debugging
+      if (DEBUG_LOGGING) {
+        console.log(`Cleaned up subframeEngine state for layer ${layer.id}`);
+      }
     }
     
-    // Clean recent triggers for this layer
+    // Clean recent triggers for this layer - this is more thorough by checking for any reference
+    // to the layer ID anywhere in the key, not just at the beginning
+    const layerIdStr = String(layer.id);
     for (const [key, value] of recentTriggers.entries()) {
-      if (key.startsWith(`${layer.id}-`)) {
+      // Check if key contains layer ID as a string or matches the start pattern
+      if (key.includes(layerIdStr) || key.startsWith(`${layer.id}-`)) {
         recentTriggers.delete(key);
       }
+    }
+    
+    // Log cleanup completion
+    if (DEBUG_LOGGING) {
+      console.log(`Cleaned up recent triggers for layer ${layer.id}`);
     }
   }
 }

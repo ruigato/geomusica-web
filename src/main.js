@@ -87,19 +87,65 @@ let csoundInstance = null;
  * @param {boolean} isLayerSwitch - Set to true when called from setActiveLayer to prevent geometry recreation
  */
 function syncStateAcrossSystems(isLayerSwitch = false) {
-  // FIXED: Add debouncing to prevent race conditions during rapid operations
-  if (syncStateAcrossSystems._debounceTimer) {
-    clearTimeout(syncStateAcrossSystems._debounceTimer);
+  // Track source of state sync calls for debugging
+  const caller = (new Error()).stack?.split('\n')[2]?.trim() || 'unknown';
+  
+  // IMPROVED: Add more robust debouncing with specific timeouts for different operations
+  // Layer switches get higher priority (shorter debounce) than regular updates
+  const debounceTime = isLayerSwitch ? 20 : 50;
+  
+  // Create category-specific debounce timers
+  const debounceCategory = isLayerSwitch ? 'layerSwitch' : 'regular';
+  
+  // Clear any existing timer for this category
+  if (syncStateAcrossSystems._debounceTimers?.[debounceCategory]) {
+    clearTimeout(syncStateAcrossSystems._debounceTimers[debounceCategory]);
   }
   
-  // Use immediate execution for layer switches, debounce for other changes
-  if (isLayerSwitch) {
-    performStateSync(isLayerSwitch);
-  } else {
-    syncStateAcrossSystems._debounceTimer = setTimeout(() => {
-      performStateSync(isLayerSwitch);
-    }, 10); // Short debounce to prevent rapid successive calls
+  // Initialize debounce timers object if it doesn't exist
+  if (!syncStateAcrossSystems._debounceTimers) {
+    syncStateAcrossSystems._debounceTimers = {};
   }
+  
+  // Store new timer
+  syncStateAcrossSystems._debounceTimers[debounceCategory] = setTimeout(() => {
+    // Clear the timer reference
+    syncStateAcrossSystems._debounceTimers[debounceCategory] = null;
+    
+    // Check if we're in a rapid update cycle (multiple calls within short period)
+    const now = performance.now();
+    const lastCallTime = syncStateAcrossSystems._lastCallTime || 0;
+    const timeSinceLastCall = now - lastCallTime;
+    
+    // Track total calls to detect rapid cycling
+    syncStateAcrossSystems._callCounter = (syncStateAcrossSystems._callCounter || 0) + 1;
+    
+    // If we're being called too frequently, extend the debounce
+    if (timeSinceLastCall < 100 && syncStateAcrossSystems._callCounter > 5) {
+      // We're in a rapid update cycle, extend debounce time
+      const extendedDebounceTime = 200; // Longer debounce during rapid updates
+      
+      // Clear existing timer and set a new extended one
+      syncStateAcrossSystems._debounceTimers[debounceCategory] = setTimeout(() => {
+        // Reset counter when we finally execute
+        syncStateAcrossSystems._callCounter = 0;
+        performStateSync(isLayerSwitch);
+      }, extendedDebounceTime);
+      
+      return;
+    }
+    
+    // Update last call time
+    syncStateAcrossSystems._lastCallTime = now;
+    
+    // Reset counter if calls are not rapid
+    if (timeSinceLastCall > 500) {
+      syncStateAcrossSystems._callCounter = 0;
+    }
+    
+    // Actually perform the sync operation
+    performStateSync(isLayerSwitch);
+  }, debounceTime);
 }
 
 /**
@@ -108,6 +154,24 @@ function syncStateAcrossSystems(isLayerSwitch = false) {
  */
 function performStateSync(isLayerSwitch = false) {
   try {
+    // Debug flag for state sync logging
+    const DEBUG_STATE_SYNC = false;
+    
+    if (DEBUG_STATE_SYNC) {
+      console.log(`[STATE SYNC] Starting sync${isLayerSwitch ? ' (layer switch)' : ''}`);
+    }
+    
+    // FIXED: Prevent nested state syncs that can cause cascading updates
+    if (performStateSync._isExecuting) {
+      if (DEBUG_STATE_SYNC) {
+        console.log(`[STATE SYNC] Preventing nested state sync call`);
+      }
+      return;
+    }
+    
+    // Set executing flag
+    performStateSync._isExecuting = true;
+    
     // FIXED: Use a more robust approach to get the active state
     let state = null;
     let activeLayerId = null;
@@ -118,6 +182,10 @@ function performStateSync(isLayerSwitch = false) {
       if (activeLayer && activeLayer.state) {
         state = activeLayer.state;
         activeLayerId = activeLayer.id;
+        
+        if (DEBUG_STATE_SYNC) {
+          console.log(`[STATE SYNC] Using state from layer ${activeLayerId}`);
+        }
       }
     }
     
@@ -126,21 +194,27 @@ function performStateSync(isLayerSwitch = false) {
       state = window.getActiveState();
       if (state && state.layerId !== undefined) {
         activeLayerId = state.layerId;
+        
+        if (DEBUG_STATE_SYNC) {
+          console.log(`[STATE SYNC] Using state from getActiveState() with layerId ${activeLayerId}`);
+        }
       }
     }
     
     // Final fallback to appState
     if (!state) {
-      
       state = appState;
       activeLayerId = 'fallback';
+      
+      if (DEBUG_STATE_SYNC) {
+        console.log(`[STATE SYNC] Using fallback appState`);
+      }
     }
-    
-    
     
     // FIXED: Validate state before proceeding
     if (!state) {
       console.error('[STATE SYNC] No valid state found, aborting synchronization');
+      performStateSync._isExecuting = false;
       return;
     }
     
@@ -159,11 +233,6 @@ function performStateSync(isLayerSwitch = false) {
         // Update stateId instead of setting state directly to avoid circular references
         activeLayer.group.userData.stateId = activeLayerId;
         activeLayer.group.userData.globalState = globalState;
-        
-        // Verify the active layer's state is correctly set
-        if (DEBUG_BUTTONS) {
-          
-        }
       }
     }
     
@@ -177,10 +246,14 @@ function performStateSync(isLayerSwitch = false) {
       audioInstance.userData.globalState = globalState;
     }
     
-    // FIXED: More robust UI synchronization
+    // FIXED: More robust UI synchronization - only update UI during non-layer switches
     if (state && !isLayerSwitch) {
-      // Only update UI if this is not a layer switch to prevent conflicts
+      if (DEBUG_STATE_SYNC) {
+        console.log(`[STATE SYNC] Updating UI from state (non-layer switch)`);
+      }
       updateUIFromActiveState(state);
+    } else if (isLayerSwitch && DEBUG_STATE_SYNC) {
+      console.log(`[STATE SYNC] Skipping UI update during layer switch`);
     }
     
     // Update global UI with global state
@@ -190,6 +263,17 @@ function performStateSync(isLayerSwitch = false) {
     
     // FIXED: Better handling of parameter changes during layer switches
     if (isLayerSwitch && state && typeof state.resetParameterChanges === 'function') {
+      // Track parameter changes before reset for debugging
+      if (DEBUG_STATE_SYNC && state.parameterChanges) {
+        const changedParams = Object.entries(state.parameterChanges)
+          .filter(([_, val]) => val)
+          .map(([key, _]) => key);
+          
+        if (changedParams.length > 0) {
+          console.log(`[STATE SYNC] Resetting parameters during layer switch: ${changedParams.join(', ')}`);
+        }
+      }
+      
       // Reset parameter changes to prevent unnecessary geometry recreation during layer switch
       state.resetParameterChanges();
       
@@ -198,23 +282,86 @@ function performStateSync(isLayerSwitch = false) {
       if (activeLayer) {
         activeLayer._justSwitchedTo = true;
         
+        if (DEBUG_STATE_SYNC) {
+          console.log(`[STATE SYNC] Set _justSwitchedTo flag for layer ${activeLayer.id}`);
+        }
+        
         // Clear the flag after a short delay to allow normal updates after the switch
         setTimeout(() => {
           activeLayer._justSwitchedTo = false;
-        }, 100); // 100ms grace period
+          
+          if (DEBUG_STATE_SYNC) {
+            console.log(`[STATE SYNC] Cleared _justSwitchedTo flag for layer ${activeLayer.id}`);
+          }
+        }, 200); // Extended grace period to 200ms
       }
     }
     
     // FIXED: Improved geometry update logic - skip if we're switching layers
     if (!isLayerSwitch && state && state.parameterChanges) {
-      handleGeometryUpdates(state, activeLayer);
-    } else if (isLayerSwitch) {
-      // Skip geometry updates completely during layer switches
+      // Filter out non-critical parameter changes to reduce update frequency
+      const nonCriticalParams = ['showPointsFreqLabels', 'showAxisFreqLabels', 'durationMode', 
+                                'velocityMode', 'minDuration', 'maxDuration', 'minVelocity', 
+                                'maxVelocity', 'attack', 'decay', 'sustain', 'release'];
+      
+      // Skip updates if only non-critical parameters changed
+      const hasOnlyNonCriticalChanges = Object.entries(state.parameterChanges)
+        .filter(([_, val]) => val)
+        .every(([key, _]) => nonCriticalParams.includes(key));
+      
+      if (hasOnlyNonCriticalChanges) {
+        // Just reset the parameter changes without triggering geometry updates
+        state.resetParameterChanges();
+        
+        if (DEBUG_STATE_SYNC) {
+          console.log(`[STATE SYNC] Skipping geometry update for non-critical parameter changes`);
+        }
+      } else {
+        // Check if there are any parameter changes that would require geometry updates
+        const geometryParams = ['copies', 'segments', 'radius', 'fractalValue', 
+                               'useFractal', 'starSkip', 'useStars', 'euclidValue', 
+                               'useEuclid'];
+        
+        const hasGeometryChanges = geometryParams.some(param => state.parameterChanges[param]);
+        
+        if (hasGeometryChanges) {
+          if (DEBUG_STATE_SYNC) {
+            const changedParams = Object.entries(state.parameterChanges)
+              .filter(([key, val]) => val && geometryParams.includes(key))
+              .map(([key, _]) => key);
+              
+            console.log(`[STATE SYNC] Updating geometry due to changes: ${changedParams.join(', ')}`);
+          }
+          
+          // Only update geometry if the layer is not in a transition state
+          if (activeLayer && !activeLayer._justSwitchedTo && !activeLayer._justActivated) {
+            handleGeometryUpdates(state, activeLayer);
+          } else {
+            if (DEBUG_STATE_SYNC) {
+              console.log(`[STATE SYNC] Skipping geometry update because layer is in transition state`);
+            }
+            // Still reset parameter changes
+            state.resetParameterChanges();
+          }
+        } else {
+          // Reset parameter changes if no geometry update is needed
+          state.resetParameterChanges();
+        }
+      }
+    } else if (isLayerSwitch && DEBUG_STATE_SYNC) {
+      console.log(`[STATE SYNC] Skipping geometry updates during layer switch`);
+    }
+    
+    if (DEBUG_STATE_SYNC) {
+      console.log(`[STATE SYNC] Completed state sync${isLayerSwitch ? ' (layer switch)' : ''}`);
     }
     
   } catch (error) {
     console.error('[STATE SYNC] Error during state synchronization:', error);
     // Don't rethrow to prevent cascading failures
+  } finally {
+    // Always clear the executing flag
+    performStateSync._isExecuting = false;
   }
 }
 
@@ -261,7 +408,29 @@ function updateGlobalUI(globalState) {
  * @param {Object} activeLayer - Active layer object
  */
 function handleGeometryUpdates(state, activeLayer) {
+  // Debug flag to track geometry update causes
+  const DEBUG_GEOMETRY_UPDATES = false;
+  
   try {
+    // Check if the layer was just activated/switched - if so, skip immediate updates
+    if (activeLayer && (activeLayer._justSwitchedTo || activeLayer._justActivated)) {
+      if (DEBUG_GEOMETRY_UPDATES) {
+        console.log(`[GEOMETRY] Skipping update for layer ${activeLayer.id} - recently activated`);
+      }
+      return;
+    }
+    
+    // Track which parameters are triggering updates
+    if (DEBUG_GEOMETRY_UPDATES && state.parameterChanges) {
+      const changedParams = Object.entries(state.parameterChanges)
+        .filter(([_, val]) => val)
+        .map(([key, _]) => key);
+        
+      if (changedParams.length > 0) {
+        console.log(`[GEOMETRY] Handling geometry updates for changes: ${changedParams.join(', ')}`);
+      }
+    }
+    
     // Force more immediate intersection update on critical parameter changes
     const criticalChanges = [
       'copies', 'modulus', 'useModulus', 'euclidValue', 'useEuclid',
@@ -271,6 +440,11 @@ function handleGeometryUpdates(state, activeLayer) {
     const hasCriticalChanges = criticalChanges.some(param => state.parameterChanges[param]);
     
     if (hasCriticalChanges) {
+      if (DEBUG_GEOMETRY_UPDATES) {
+        const criticalParams = criticalChanges.filter(param => state.parameterChanges[param]);
+        console.log(`[GEOMETRY] Critical parameter changes detected: ${criticalParams.join(', ')}`);
+      }
+      
       state.needsIntersectionUpdate = true;
       
       // Explicitly force a geometry update for Euclidean rhythm and Stars parameters
@@ -278,8 +452,15 @@ function handleGeometryUpdates(state, activeLayer) {
       const needsGeometryUpdate = forceGeometryUpdate.some(param => state.parameterChanges[param]);
       
       if (needsGeometryUpdate && activeLayer?.baseGeo) {
+        if (DEBUG_GEOMETRY_UPDATES) {
+          const forceParams = forceGeometryUpdate.filter(param => state.parameterChanges[param]);
+          console.log(`[GEOMETRY] Forcing geometry update for: ${forceParams.join(', ')}`);
+        }
+        
         updateLayerGeometry(activeLayer, state);
       }
+    } else if (DEBUG_GEOMETRY_UPDATES) {
+      console.log(`[GEOMETRY] No critical parameter changes, skipping geometry update`);
     }
   } catch (error) {
     console.error('[STATE SYNC] Error handling geometry updates:', error);

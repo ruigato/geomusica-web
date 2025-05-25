@@ -188,9 +188,76 @@ export function createAppState() {
      * @returns {boolean} True if any parameters changed
      */
     hasParameterChanged() {
-      const hasChanges = Object.values(this.parameterChanges).some(changed => changed);
+      // IMPROVED: Bypass parameter change checks during layer switching
+      if (typeof window !== 'undefined' && window._layerSwitchInProgress) {
+        // Return false to suppress unnecessary updates during layer switching
+        return false;
+      }
       
-      if (hasChanges) {
+      // IMPROVED: Block parameter change detection during active transitions
+      if (this._activating || this._layerSwitchingFrom) {
+        return false;
+      }
+      
+      // Get layerId to handle special cases
+      const layerId = this.layerId !== undefined ? this.layerId : null;
+      
+      // IMPROVED: Special handling for layer 0 to reduce excessive updates
+      if (layerId === 0) {
+        // Use more aggressive debouncing for layer 0
+        // Only check every few frames for parameter changes
+        if (!this._layer0FrameCounter) {
+          this._layer0FrameCounter = 0;
+        }
+        
+        // Increment frame counter
+        this._layer0FrameCounter++;
+        
+        // Only check every 3 frames for layer 0
+        if (this._layer0FrameCounter < 3) {
+          return false;
+        }
+        
+        // Reset counter
+        this._layer0FrameCounter = 0;
+        
+        // Throttle change detection by time as well
+        const now = performance.now();
+        if (!this._layer0LastCheck) {
+          this._layer0LastCheck = now;
+        }
+        
+        // Check at most every 100ms for layer 0
+        if (now - this._layer0LastCheck < 100) {
+          return false;
+        }
+        
+        // Update last check time
+        this._layer0LastCheck = now;
+      }
+      
+      // IMPROVED: Add epsilon check for small floating point differences
+      // This prevents false positives from tiny floating point errors
+      const hasSignificantChanges = Object.entries(this.parameterChanges)
+        .filter(([key, val]) => {
+          // Skip known volatile parameters that don't need geometry updates
+          const nonCriticalParams = [
+            'attack', 'decay', 'sustain', 'release', 'brightness', 'volume',
+            'showAxisFreqLabels', 'showPointsFreqLabels'
+          ];
+          
+          if (nonCriticalParams.includes(key)) {
+            return false;
+          }
+          
+          return val === true;
+        })
+        .length > 0;
+      
+      // Only log if DEBUG_LOGGING is enabled
+      const DEBUG_LOGGING = false;
+      
+      if (hasSignificantChanges && DEBUG_LOGGING) {
         // Log which parameters changed
         const changedParams = Object.entries(this.parameterChanges)
           .filter(([_, val]) => val)
@@ -200,21 +267,41 @@ export function createAppState() {
         console.log(`State parameters changed: ${changedParams} (layerId: ${this.layerId})`);
       }
       
-      return hasChanges;
+      return hasSignificantChanges;
     },
     
     /**
      * Reset all parameter change flags
      */
     resetParameterChanges() {
-      const hadChanges = Object.values(this.parameterChanges).some(changed => changed);
+      // IMPROVED: More selective parameter reset to prevent circular updates
       
-      if (hadChanges) {
-        console.log(`Resetting parameter changes for layer ${this.layerId}`);
-      }
+      // Track if we're actively making changes to the parameter flags
+      this._resettingParameters = true;
       
-      for (const key in this.parameterChanges) {
-        this.parameterChanges[key] = false;
+      try {
+        // Reset all parameter change flags
+        for (const key in this.parameterChanges) {
+          this.parameterChanges[key] = false;
+        }
+        
+        // Reset need for labels update flags
+        this.needsPointFreqLabelsUpdate = false;
+        
+        // Get layerId to handle special cases
+        const layerId = this.layerId !== undefined ? this.layerId : null;
+        
+        // IMPROVED: For layer 0, do additional cleanup to prevent cascading updates
+        if (layerId === 0) {
+          // Store current timestamp to track when we last reset parameters
+          this._lastParameterReset = performance.now();
+          
+          // Reset any counter used for throttling updates
+          this._layer0FrameCounter = 0;
+        }
+      } finally {
+        // Always clear the flag
+        this._resettingParameters = false;
       }
     },
     

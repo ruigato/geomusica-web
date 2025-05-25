@@ -245,13 +245,27 @@ export class Layer {
   }
   
   /**
-   * Recreate geometry for this layer
+   * Recreate the layer's geometry with current parameters
    * @param {boolean} force Force recreation even if no parameters changed
    * @returns {boolean} True if geometry was recreated
    */
   recreateGeometry(force = false) {
     // Skip if not active and not forced
     if (!this.active && !force) {
+      return false;
+    }
+    
+    // IMPROVED: Add rate limiting to prevent excessive recreation
+    const now = performance.now();
+    const timeSinceLastRecreation = now - (this._lastGeometryRecreation || 0);
+    const MIN_RECREATION_INTERVAL = 100; // ms
+    
+    // Skip if we recently recreated geometry (unless forced)
+    if (!force && timeSinceLastRecreation < MIN_RECREATION_INTERVAL) {
+      // Reset parameter changes to prevent buildup
+      if (this.state && typeof this.state.resetParameterChanges === 'function') {
+        this.state.resetParameterChanges();
+      }
       return false;
     }
     
@@ -263,46 +277,144 @@ export class Layer {
       return false;
     }
     
-    // Use less frequent detailed debug logging
-    if (DEBUG_LOGGING || Math.random() < 0.1) { // Only log ~10% of the time
-      console.log(`Layer ${this.id} - Recreating geometry with radius=${this.state.radius}, copies=${this.state.copies}, segments=${this.state.segments}`);
+    // IMPROVED: Identify what actually changed to be more surgical
+    let changedParams = [];
+    if (this.state.parameterChanges) {
+      changedParams = Object.entries(this.state.parameterChanges)
+        .filter(([_, val]) => val)
+        .map(([key, _]) => key);
     }
     
-    // Dispose old geometry
-    if (this.baseGeo) {
-      this.baseGeo.dispose();
+    // Only log recreations occasionally to reduce console spam
+    const DEBUG_LOGGING_PROB = 0.05; // 5% chance to log
+    if ((DEBUG_LOGGING || Math.random() < DEBUG_LOGGING_PROB) && changedParams.length > 0) {
+      console.log(`Layer ${this.id} - Recreating geometry due to changes in: ${changedParams.join(', ')}`);
     }
     
-    // Directly create geometry with current state parameters
-    this.baseGeo = createPolygonGeometry(
-      this.state.radius,
-      this.state.segments,
-      this.state // Pass entire state for configuration
-    );
+    // IMPROVED: Keep track of old geometry for proper disposal
+    const oldGeo = this.baseGeo;
     
-    // Store reference to this geometry in state
-    this.state.baseGeo = this.baseGeo;
-    
-    // Update the group to use the new geometry and current state parameters
-    if (this.group) {
-      updateGroup({
-        group: this.group,
-        state: this.state,
-        layer: this,
-        baseGeo: this.baseGeo,
-        mat: this.material,
+    try {
+      // IMPROVED: Cache key parameters to detect actual changes
+      if (!this._lastParams) {
+        this._lastParams = {
+          radius: this.state.radius,
+          segments: this.state.segments,
+          copies: this.state.copies,
+          stepScale: this.state.stepScale,
+          useStars: this.state.useStars,
+          starSkip: this.state.starSkip,
+          useFractal: this.state.useFractal,
+          fractalValue: this.state.fractalValue
+        };
+      }
+      
+      // Check if any key parameters actually changed
+      const hasKeyChanges = 
+        force || 
+        !this._lastParams ||
+        this._lastParams.radius !== this.state.radius ||
+        this._lastParams.segments !== this.state.segments ||
+        this._lastParams.copies !== this.state.copies ||
+        this._lastParams.stepScale !== this.state.stepScale ||
+        this._lastParams.useStars !== this.state.useStars ||
+        this._lastParams.starSkip !== this.state.starSkip ||
+        this._lastParams.useFractal !== this.state.useFractal ||
+        this._lastParams.fractalValue !== this.state.fractalValue;
+      
+      // If no key parameters changed, we can skip the expensive geometry creation
+      if (!hasKeyChanges && !this.state.needsIntersectionUpdate) {
+        // Still reset parameter change flags
+        this.state.resetParameterChanges();
+        
+        // Update last params
+        this._lastParams = {
+          radius: this.state.radius,
+          segments: this.state.segments,
+          copies: this.state.copies,
+          stepScale: this.state.stepScale,
+          useStars: this.state.useStars,
+          starSkip: this.state.starSkip,
+          useFractal: this.state.useFractal,
+          fractalValue: this.state.fractalValue
+        };
+        
+        return false;
+      }
+      
+      // Directly create geometry with current state parameters
+      this.baseGeo = createPolygonGeometry(
+        this.state.radius,
+        this.state.segments,
+        this.state // Pass entire state for configuration
+      );
+      
+      // Store reference to this geometry in state
+      this.state.baseGeo = this.baseGeo;
+      
+      // Update the group to use the new geometry and current state parameters
+      if (this.group) {
+        // IMPROVED: Set a flag to indicate this is a programmatic update
+        // This helps prevent feedback loops in parameter change detection
+        this._isUpdatingGroup = true;
+        
+        updateGroup({
+          group: this.group,
+          state: this.state,
+          layer: this,
+          baseGeo: this.baseGeo,
+          mat: this.material,
+          copies: this.state.copies,
+          stepScale: this.state.stepScale,
+          segments: this.state.segments,
+          angle: this.state.angle,
+          isLerping: this.state.useLerp
+        });
+        
+        this._isUpdatingGroup = false;
+      }
+      
+      // Update last params
+      this._lastParams = {
+        radius: this.state.radius,
+        segments: this.state.segments,
         copies: this.state.copies,
         stepScale: this.state.stepScale,
-        segments: this.state.segments,
-        angle: this.state.angle,
-        isLerping: this.state.useLerp
-      });
+        useStars: this.state.useStars,
+        starSkip: this.state.starSkip,
+        useFractal: this.state.useFractal,
+        fractalValue: this.state.fractalValue
+      };
+      
+      // Track last recreation time for rate limiting
+      this._lastGeometryRecreation = now;
+      
+      // Reset parameter change flags
+      this.state.resetParameterChanges();
+      
+      return true;
+    } catch (error) {
+      console.error(`Error recreating geometry for layer ${this.id}:`, error);
+      
+      // Try to recover original geometry on error
+      if (oldGeo && !this.baseGeo) {
+        this.baseGeo = oldGeo;
+      }
+      
+      return false;
+    } finally {
+      // Safely dispose old geometry if we successfully created a new one
+      if (oldGeo && this.baseGeo && oldGeo !== this.baseGeo) {
+        // Use a delayed disposal to prevent rendering glitches
+        setTimeout(() => {
+          try {
+            oldGeo.dispose();
+          } catch (e) {
+            // Silent error - just best effort cleanup
+          }
+        }, 100);
+      }
     }
-    
-    // Reset parameter change flags
-    this.state.resetParameterChanges();
-    
-    return true;
   }
   
   /**
@@ -377,34 +489,129 @@ export class Layer {
       return;
     }
     
-    // Check if any parameters have changed and recreate geometry if needed
-    if (this.state.hasParameterChanged()) {
-      // Log which specific parameters have changed
+    // IMPROVED: Only check for parameter changes at a reasonable interval
+    // This prevents excessive checks that can lead to feedback loops
+    const now = performance.now();
+    const timeSinceLastCheck = now - (this._lastParameterCheck || 0);
+    const CHECK_INTERVAL = this.id === 0 ? 100 : 50; // Special handling for layer 0
+    
+    // Track last check time
+    this._lastParameterCheck = now;
+    
+    // Check if any parameters have changed, but only at a reasonable interval
+    if (timeSinceLastCheck >= CHECK_INTERVAL && this.state.hasParameterChanged()) {
+      // Collect changed parameters
       const changedParams = Object.entries(this.state.parameterChanges)
         .filter(([_, val]) => val)
-        .map(([key, _]) => key)
-        .join(", ");
+        .map(([key, _]) => key);
       
-      // Only log occasionally to reduce console spam
-      if (Math.random() < 0.1) {
-        console.log(`Layer ${this.id} parameters changed: ${changedParams}`);
+      // Extremely low logging probability
+      const LOG_PROB = 0.01; // 1% chance to log
+      if (Math.random() < LOG_PROB) {
+        console.log(`Layer ${this.id} parameters changed: ${changedParams.join(", ")}`);
       }
       
-      // Only recreate geometry for meaningful changes that affect the shape
-      const criticalParams = ['radius', 'copies', 'segments', 'useStars', 'starSkip', 
-                              'useIntersections', 'fractalValue', 'useFractal', 
-                              'useEuclid', 'euclidValue'];
+      // IMPROVED: More selective handling of parameter changes
       
-      const hasCriticalChanges = criticalParams.some(param => changedParams.includes(param));
+      // Non-geometry parameters that don't require recreation
+      const nonGeometryParams = [
+        'attack', 'decay', 'sustain', 'release', 'brightness', 'volume',
+        'showAxisFreqLabels', 'showPointsFreqLabels', 'durationMode',
+        'velocityMode', 'minDuration', 'maxDuration', 'minVelocity', 'maxVelocity'
+      ];
+      
+      // Check if only non-geometry parameters have changed
+      const onlyNonGeometryChanged = changedParams.every(param => 
+        nonGeometryParams.includes(param)
+      );
+      
+      // If only non-geometry params changed, reset flags without recreation
+      if (onlyNonGeometryChanged) {
+        this.state.resetParameterChanges();
+        return;
+      }
+      
+      // Critical parameters that definitely require geometry recreation
+      const criticalParams = [
+        'radius', 'copies', 'segments', 'useStars', 'starSkip', 
+        'useIntersections', 'fractalValue', 'useFractal', 
+        'useEuclid', 'euclidValue'
+      ];
+      
+      // Check if any critical parameters have changed
+      const hasCriticalChanges = criticalParams.some(param => 
+        changedParams.includes(param)
+      );
+      
+      // Lerping-related parameters need special handling
+      const lerpingParams = ['useLerp', 'lerpTime', 'targetRadius', 'targetStepScale'];
+      const hasLerpingChanges = lerpingParams.some(param => 
+        changedParams.includes(param)
+      );
+      
+      // Special handling for layer 0 to avoid excessive updates
+      if (this.id === 0) {
+        // Use a higher threshold to trigger recreation for layer 0
+        const MIN_RECREATION_INTERVAL = 250; // ms
+        const timeSinceLastRecreation = now - (this._lastGeometryRecreation || 0);
+        
+        // Skip recreation if we recently did one
+        if (timeSinceLastRecreation < MIN_RECREATION_INTERVAL) {
+          // Still reset parameter changes
+          this.state.resetParameterChanges();
+          return;
+        }
+        
+        // Rate limit updates by only allowing through very significant changes
+        if (!this._significantChangeCount) {
+          this._significantChangeCount = 0;
+        }
+        
+        // Track significant changes
+        if (hasCriticalChanges) {
+          this._significantChangeCount++;
+        }
+        
+        // Only recreate every few significant changes for layer 0
+        if (this._significantChangeCount < 3) {
+          // Reset parameter changes without recreating
+          this.state.resetParameterChanges();
+          return;
+        }
+        
+        // Reset counter
+        this._significantChangeCount = 0;
+      }
       
       if (hasCriticalChanges) {
-        // Only log occasionally to reduce console spam
-        if (Math.random() < 0.1) {
-          console.log(`Layer ${this.id} - Recreating geometry due to: ${changedParams}`);
-        }
+        // Recreate geometry for critical changes
         this.recreateGeometry();
+      } else if (hasLerpingChanges) {
+        // Just update the group for lerping changes without full recreation
+        if (this.group && this.baseGeo) {
+          // Set flag to indicate this is a programmatic update
+          this._isUpdatingGroup = true;
+          
+          updateGroup({
+            group: this.group,
+            state: this.state,
+            layer: this,
+            baseGeo: this.baseGeo,
+            mat: this.material,
+            copies: this.state.copies,
+            stepScale: this.state.stepScale,
+            segments: this.state.segments,
+            angle: this.state.angle,
+            isLerping: this.state.useLerp
+          });
+          
+          this._isUpdatingGroup = false;
+          
+          // Reset parameter changes after update
+          this.state.resetParameterChanges();
+        }
       } else {
-        // Just reset parameter changes without recreating geometry for minor changes
+        // Just reset parameter changes for other parameters
         this.state.resetParameterChanges();
       }
     }
@@ -443,8 +650,8 @@ export class Layer {
     if (this.group) {
       this.group.rotation.z = this.currentAngle;
       
-      // Debug logging with normalized angle values (less frequent to reduce console spam)
-      if (Math.random() < 0.001) { // Reduced frequency (0.1% chance per frame)
+      // Debug logging with normalized angle values (extremely rare - only 0.01% chance per frame)
+      if (Math.random() < 0.0001) {
         const degrees = (this.currentAngle * 180 / Math.PI).toFixed(1);
         console.log(`Layer ${this.id} rotation: ${degrees}° (normalized), deltaTime: ${(deltaTime * 1000).toFixed(2)}ms, bpm: ${bpm}`);
       }
@@ -479,6 +686,101 @@ export class Layer {
     // Force geometry recreation if we have any state that requires it
     if (this.baseGeo && this.baseGeo.userData && this.baseGeo.userData.hasIntersections) {
       this.recreateGeometry(true);
+    }
+  }
+  
+  /**
+   * Properly dispose of all resources used by this layer
+   * This is crucial for preventing memory leaks and ensuring trigger cleanup
+   */
+  dispose() {
+    // Import the clearLayerMarkers function here to avoid circular dependencies
+    import('../triggers/triggers.js').then(triggersModule => {
+      if (triggersModule && typeof triggersModule.clearLayerMarkers === 'function') {
+        // Clean up any trigger markers
+        triggersModule.clearLayerMarkers(this);
+      }
+    }).catch(err => {
+      console.error(`Error importing triggers module for layer ${this.id} cleanup:`, err);
+    });
+
+    // Clean up markers directly if we can
+    if (this.markers && Array.isArray(this.markers)) {
+      for (const marker of this.markers) {
+        // Remove from scene
+        if (marker.parent) {
+          marker.parent.remove(marker);
+        }
+        
+        // Dispose of geometry
+        if (marker.geometry) {
+          marker.geometry.dispose();
+        }
+        
+        // Dispose of material(s)
+        if (marker.material) {
+          if (Array.isArray(marker.material)) {
+            marker.material.forEach(mat => {
+              if (mat) mat.dispose();
+            });
+          } else {
+            marker.material.dispose();
+          }
+        }
+      }
+      
+      // Clear the markers array
+      this.markers = [];
+    }
+
+    // Dispose of base geometry
+    if (this.baseGeo) {
+      this.baseGeo.dispose();
+      this.baseGeo = null;
+    }
+    
+    // Dispose of all objects in the group
+    if (this.group) {
+      this.group.traverse(object => {
+        if (object.geometry) {
+          object.geometry.dispose();
+        }
+        
+        if (object.material) {
+          if (Array.isArray(object.material)) {
+            object.material.forEach(material => {
+              if (material) {
+                material.dispose();
+              }
+            });
+          } else if (object.material) {
+            object.material.dispose();
+          }
+        }
+      });
+      
+      // Remove group from parent if attached
+      if (this.group.parent) {
+        this.group.parent.remove(this.group);
+      }
+      
+      // Clear group children
+      while (this.group.children.length > 0) {
+        this.group.remove(this.group.children[0]);
+      }
+    }
+    
+    // Dispose of material
+    if (this.material) {
+      this.material.dispose();
+      this.material = null;
+    }
+    
+    // Clear references to avoid memory leaks
+    this._layerManagerRef = null;
+    
+    if (DEBUG_LOGGING) {
+      console.log(`Layer ${this.id} - Disposed and resources released`);
     }
   }
 } 

@@ -228,36 +228,160 @@ export class LayerManager {
    * @param {number} layerId ID of the layer to make active
    */
   setActiveLayer(layerId) {
+    // Enable debug logging conditionally 
+    const DEBUG_LAYER_SWITCH = false;
+    
     // Skip if this is already the active layer
     if (this.activeLayerId === layerId) {
+      if (DEBUG_LAYER_SWITCH) {
+        console.log(`[LAYER SWITCH] Layer ${layerId} is already active, skipping`);
+      }
       return;
     }
 
-    if (DEBUG_LOGGING) {
-      console.log(`Activating layer ${layerId}`);
+    if (DEBUG_LAYER_SWITCH) {
+      console.log(`[LAYER SWITCH] Activating layer ${layerId} (previous: ${this.activeLayerId})`);
+    }
+    
+    // IMPROVED: Set a global flag to indicate layer switching is in progress
+    // This helps other components know to suppress their updates
+    if (typeof window !== 'undefined') {
+      window._layerSwitchInProgress = true;
     }
 
     // Get the layer
     const layer = this.layers[layerId];
     if (!layer) {
       console.error(`Cannot activate layer ${layerId} - not found`);
+      
+      // Clear layer switch flag
+      if (typeof window !== 'undefined') {
+        window._layerSwitchInProgress = false;
+      }
+      
       return;
     }
 
+    // Store the previous active layer before deactivating
+    const previousActiveLayer = this.activeLayerId !== null ? this.layers[this.activeLayerId] : null;
+
+    // IMPROVED: Record previous layer's state to detect if UI has unsaved changes
+    let previousStateSnapshot = null;
+    if (previousActiveLayer?.state) {
+      previousStateSnapshot = {
+        radius: previousActiveLayer.state.radius,
+        copies: previousActiveLayer.state.copies,
+        segments: previousActiveLayer.state.segments,
+        stepScale: previousActiveLayer.state.stepScale
+      };
+    }
+
     // Deactivate current active layer
-    if (this.activeLayerId !== null && this.layers[this.activeLayerId]) {
-      this.layers[this.activeLayerId].active = false;
+    if (previousActiveLayer) {
+      previousActiveLayer.active = false;
+      
+      // IMPROVED: More thorough state cleanup for previous layer
+      if (previousActiveLayer.state) {
+        // Reset all parameter changes in the previous layer
+        if (typeof previousActiveLayer.state.resetParameterChanges === 'function') {
+          if (DEBUG_LAYER_SWITCH) {
+            // Log which parameters were changing in the previous layer
+            const changedParams = Object.entries(previousActiveLayer.state.parameterChanges)
+              .filter(([_, val]) => val)
+              .map(([key, _]) => key);
+              
+            if (changedParams.length > 0) {
+              console.log(`[LAYER SWITCH] Resetting parameter changes in previous layer ${previousActiveLayer.id}: ${changedParams.join(', ')}`);
+            }
+          }
+          
+          previousActiveLayer.state.resetParameterChanges();
+        }
+        
+        // Suspend any ongoing animations or transitions
+        previousActiveLayer.state._layerSwitchingFrom = true;
+        
+        // Clear any intersection update flags
+        previousActiveLayer.state.needsIntersectionUpdate = false;
+      }
+      
+      // Add a flag to the previous layer to prevent unneeded updates
+      previousActiveLayer._deactivated = true;
+      
+      // Clear the flag after a delay
+      setTimeout(() => {
+        previousActiveLayer._deactivated = false;
+        
+        if (previousActiveLayer.state) {
+          previousActiveLayer.state._layerSwitchingFrom = false;
+        }
+        
+        if (DEBUG_LAYER_SWITCH) {
+          console.log(`[LAYER SWITCH] Cleared suspension flags for previous layer ${previousActiveLayer.id}`);
+        }
+      }, 250); // Extended delay
     }
 
     // Set new active layer
     this.activeLayerId = layerId;
     layer.active = true;
+    
+    // IMPROVED: Prepare new layer for activation
+    // Suspend parameter changes during layer activation
+    if (layer.state) {
+      layer.state._activating = true;
+      
+      // Clear any existing parameter changes
+      if (typeof layer.state.resetParameterChanges === 'function') {
+        layer.state.resetParameterChanges();
+      }
+    }
+    
+    // Add a flag to indicate this layer was just activated
+    // This helps other systems know not to trigger unnecessary updates
+    layer._justActivated = true;
+    
+    // Clear the activation flags after a longer delay
+    setTimeout(() => {
+      // Clear just activated flag
+      layer._justActivated = false;
+      
+      // Clear the activating state flag
+      if (layer.state) {
+        layer.state._activating = false;
+      }
+      
+      if (DEBUG_LAYER_SWITCH) {
+        console.log(`[LAYER SWITCH] Cleared activation flags for layer ${layerId}`);
+      }
+      
+      // Now it's safe to enable UI updates again
+      if (typeof window !== 'undefined') {
+        window._layerSwitchInProgress = false;
+      }
+    }, 300); // Extended delay for a smoother transition
 
-    // Sync state with window._appState for UI
-    this.syncWindowAppState();
+    // IMPROVED: Delay the UI sync and updates slightly to let the layer activation settle
+    setTimeout(() => {
+      // Sync state with window._appState for UI
+      this.syncWindowAppState();
 
-    // Trigger UI updates for this layer
-    this.forceUIUpdate(layerId, layer.state);
+      // Trigger UI updates for this layer - with reduced frequency during switching
+      this.forceUIUpdate(layerId, layer.state);
+      
+      if (DEBUG_LAYER_SWITCH) {
+        console.log(`[LAYER SWITCH] Layer ${layerId} activation complete`);
+      }
+      
+      // Notify the global state sync system this was a layer switch
+      if (window.syncStateAcrossSystems && typeof window.syncStateAcrossSystems === 'function') {
+        if (DEBUG_LAYER_SWITCH) {
+          console.log(`[LAYER SWITCH] Calling syncStateAcrossSystems with isLayerSwitch=true`);
+        }
+        
+        window.syncStateAcrossSystems(true);
+      }
+    }, 50); // Short delay
   }
   
   /**
