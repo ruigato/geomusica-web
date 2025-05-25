@@ -180,8 +180,8 @@ export const PARAMETER_RANGES = {
   // Note parameter ranges
   DURATION_MODE: { MIN: 'modulo', MAX: 'fixed', STEP: null },
   DURATION_MODULO: { MIN: 1, MAX: 12, STEP: 1 },
-  MIN_DURATION: { MIN: 0.1, MAX: 1.0, STEP: 0.01 },
-  MAX_DURATION: { MIN: 0.1, MAX: 2.0, STEP: 0.01 },
+  MIN_DURATION: { MIN: 0.01, MAX: 1.0, STEP: 0.01 },
+  MAX_DURATION: { MIN: 0.01, MAX: 2.0, STEP: 0.01 },
   DURATION_PHASE: { MIN: 0, MAX: 1, STEP: 0.01 },
   
   VELOCITY_MODE: { MIN: 'modulo', MAX: 'fixed', STEP: null },

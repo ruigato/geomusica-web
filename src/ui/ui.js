@@ -1040,7 +1040,7 @@ export function setupUI(state) {
           window.getActiveState() : state;
         targetState.setMinDuration(Number(value));
       },
-      0.05, 1.0,
+      0.01, 1.0,
       Number);
   }
     
@@ -1052,7 +1052,7 @@ export function setupUI(state) {
           window.getActiveState() : state;
         targetState.setMaxDuration(Number(value));
       },
-      0.1, 2.0,
+      0.01, 2.0,
       Number);
   }
     

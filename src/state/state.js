@@ -765,7 +765,7 @@ export function createAppState() {
      * @param {number} value New min duration in seconds
      */
     setMinDuration(value) {
-      const newValue = Math.max(0.05, Math.min(this.maxDuration, Number(value)));
+      const newValue = Math.max(0.01, Math.min(this.maxDuration, Number(value)));
       if (this.minDuration !== newValue) {
         this.minDuration = newValue;
         this.parameterChanges.minDuration = true;

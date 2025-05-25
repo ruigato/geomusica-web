@@ -13,6 +13,9 @@ import {
 import { createNote } from '../notes/notes.js';
 import { TemporalTriggerEngine } from './SubframeTrigger.js';
 
+const DEBUG_PHANTOM_TRIGGERS = true;
+const triggerSources = new Map();
+
 // Debug flag to control logging
 const DEBUG_LOGGING = false;
 
@@ -1151,9 +1154,18 @@ function recordLayerVertexPositions(layer, timestamp) {
     ).length - 1; // Subtract 1 for the debug sphere
   }
   
-  // Skip if no copies or zero segments
+    // Skip if no copies or zero segments
   if (copies <= 0 || state.segments <= 0) return;
-  
+
+  // Skip position recording during geometry transitions
+  if (layer.baseGeo && layer.baseGeo.userData && layer.baseGeo.userData.createdAt) {
+    const timeSinceCreation = Date.now() - layer.baseGeo.userData.createdAt;
+    if (timeSinceCreation < 200) return; // 200ms stabilization period
+  }
+
+  // Skip if group structure is inconsistent
+  if (!group.children || group.children.length === 0) return;
+
   // Get angle for rotation calculations
   const angle = layer.currentAngle || 0;
   
@@ -1578,6 +1590,23 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
                 anyTriggers = true;
               }
             } else {
+              // Debug phantom triggers
+              if (DEBUG_PHANTOM_TRIGGERS) {
+                const expectedFreq = Math.hypot(note.x, note.y);
+                const freqDiff = Math.abs(note.frequency - expectedFreq);
+                
+                if (freqDiff > 1) {
+                  console.warn('[PHANTOM TRIGGER]', {
+                    layerId, copyIndex: ci, vertexIndex: vi,
+                    actualFreq: note.frequency,
+                    expectedFreq,
+                    position: { x: note.x, y: note.y },
+                    geometryVertexCount: layer.baseGeo?.getAttribute('position')?.count,
+                    actualVertexCount: vertexCount
+                  });
+                }
+              }
+              
               // Regular non-quantized trigger
               // FIXED: Ensure layerId is set before calling audioCallback
               if (!note.layerId) note.layerId = layerId;
