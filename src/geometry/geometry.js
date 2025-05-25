@@ -8,7 +8,7 @@ import {
   INTERSECTION_POINT_COLOR,
   INTERSECTION_POINT_OPACITY
 } from '../config/constants.js';
-import { findAllIntersections, processIntersections } from './intersections.js';
+import { findAllIntersections, processIntersections, createIntersectionMarkers } from './intersections.js';
 import { createOrUpdateLabel } from '../ui/domLabels.js';
 // Import the frequency utilities at the top of geometry.js
 import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils.js';
@@ -333,10 +333,105 @@ export function createTextLabel(text, position, parent, isAxisLabel = true, came
 /**
  * Clean up intersection markers
  * @param {THREE.Scene} scene - Scene containing markers
+ * @param {Layer} [layer=null] - Optional specific layer to clean up markers for
  */
-export function cleanupIntersectionMarkers(scene) {
+export function cleanupIntersectionMarkers(scene, layer = null) {
   // Skip if scene doesn't exist
   if (!scene) return;
+  
+  // If a specific layer is provided, only clean up markers for that layer
+  if (layer) {
+    // Use the layer's clearIntersections method if available
+    if (layer.clearIntersections && typeof layer.clearIntersections === 'function') {
+      layer.clearIntersections();
+      return;
+    }
+    
+    // Otherwise, find and clean up markers with this layer's ID
+    const layerId = layer.id;
+    
+    // Clean up marker groups in the scene that belong to this layer
+    scene.traverse(object => {
+      // Check if this is an intersection marker group for the specified layer
+      if (object.userData && 
+          object.userData.isIntersectionGroup && 
+          object.userData.layerId === layerId) {
+        
+        // Remove from parent
+        if (object.parent) {
+          object.parent.remove(object);
+        }
+        
+        // Clean up resources
+        object.traverse(child => {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) {
+            if (Array.isArray(child.material)) {
+              child.material.forEach(m => m.dispose());
+            } else {
+              child.material.dispose();
+            }
+          }
+        });
+      }
+      
+      // Clean up any intersection marker groups in this object that belong to the layer
+      if (object.userData && 
+          object.userData.intersectionMarkerGroup && 
+          object.userData.intersectionMarkerGroup.userData && 
+          object.userData.intersectionMarkerGroup.userData.layerId === layerId) {
+        
+        const markerGroup = object.userData.intersectionMarkerGroup;
+        object.remove(markerGroup);
+        
+        markerGroup.traverse(obj => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach(m => m.dispose());
+            } else {
+              obj.material.dispose();
+            }
+          }
+        });
+        
+        object.userData.intersectionMarkerGroup = null;
+      }
+    });
+    
+    // Clean up individual markers for this layer if present
+    if (scene.userData && scene.userData.intersectionMarkers) {
+      // Filter out and clean up only markers for this layer
+      const markersToRemove = scene.userData.intersectionMarkers.filter(
+        marker => marker.userData && marker.userData.layerId === layerId
+      );
+      
+      for (const marker of markersToRemove) {
+        if (marker.parent) {
+          marker.parent.remove(marker);
+        } else {
+          scene.remove(marker);
+        }
+        if (marker.geometry) marker.geometry.dispose();
+        if (marker.material) {
+          if (Array.isArray(marker.material)) {
+            marker.material.forEach(m => m.dispose());
+          } else {
+            marker.material.dispose();
+          }
+        }
+      }
+      
+      // Keep markers from other layers
+      scene.userData.intersectionMarkers = scene.userData.intersectionMarkers.filter(
+        marker => !(marker.userData && marker.userData.layerId === layerId)
+      );
+    }
+    
+    return;
+  }
+  
+  // If no specific layer is provided, clean up all intersection markers
   
   // Clean up the marker group in the scene
   if (scene.userData && scene.userData.intersectionMarkerGroup) {
@@ -366,7 +461,7 @@ export function cleanupIntersectionMarkers(scene) {
   
   // Clean up any marker groups in child objects
   if (scene.children) {
-    scene.children.forEach(child => {
+    scene.traverse(child => {
       if (child.userData && child.userData.intersectionMarkerGroup) {
         const markerGroup = child.userData.intersectionMarkerGroup;
         child.remove(markerGroup);
@@ -383,6 +478,27 @@ export function cleanupIntersectionMarkers(scene) {
         });
         
         child.userData.intersectionMarkerGroup = null;
+      }
+      
+      // Also clean up groups with isIntersectionGroup flag
+      if (child.userData && child.userData.isIntersectionGroup) {
+        const parent = child.parent;
+        if (parent) {
+          parent.remove(child);
+        } else {
+          scene.remove(child);
+        }
+        
+        child.traverse(obj => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach(m => m.dispose());
+            } else {
+              obj.material.dispose();
+            }
+          }
+        });
       }
     });
   }
@@ -422,39 +538,66 @@ let updateGroupCallCounter = 0;
  * @param {Object} state Application state
  * @param {boolean} isLerping Whether values are currently being lerped
  * @param {boolean} justCalculatedIntersections Whether intersections were just calculated
+ * @param {Layer} [layer=null] The layer object this group belongs to
  */
-export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, angle = 0, state = null, isLerping = false, justCalculatedIntersections = false) {
-  // Skip update if invalid inputs
-  if (!group || !baseGeo || !mat) {
-    console.error("Missing required parameters for updateGroup");
+export function updateGroup(options = {}) {
+  const { state, group, layer, scene } = options;
+  
+  // FIXED: Extract all needed parameters from options
+  const { 
+    copies = 0, 
+    stepScale = 1, 
+    baseGeo = null, 
+    mat = null, 
+    segments = 3,
+    angle = 0,
+    isLerping = false
+  } = options;
+  
+  if (!state || !group) {
+    console.warn('Cannot update group: Invalid state or group');
     return;
   }
-
-  // Check if we're using star cuts
-  const useStarCuts = state && state.useStars && state.useCuts && state.starSkip > 1;
   
-  if (DEBUG_STAR_CUTS && useStarCuts) {
+  // Process intersections if needed
+  if (layer && state.needsIntersectionUpdate) {
+    console.log("updateGroup - Processing intersections for layer:", layer.id);
+    console.log("Layer state:", {
+      useIntersections: state.useIntersections,
+      useStars: state.useStars,
+      useCuts: state.useCuts,
+      needsIntersectionUpdate: state.needsIntersectionUpdate
+    });
     
-  }
-  
-  // Force intersection update when star cuts are enabled
-  if (useStarCuts && state) {
-    state.needsIntersectionUpdate = true;
-    // Process the intersections for star cuts
-    if (DEBUG_STAR_CUTS) {
+    // CRITICAL: Skip intersection processing entirely when copies is 0
+    if (!state.copies || state.copies <= 0) {
+      console.log(`updateGroup - Skipping intersection processing because copies is ${state.copies}`);
+      state.needsIntersectionUpdate = false;
       
+      // Clear any existing intersections
+      if (layer.clearIntersections && typeof layer.clearIntersections === 'function') {
+        layer.clearIntersections();
+      }
+    } 
+    else if (typeof processIntersections === 'function') {
+      // Process intersections for this layer
+      processIntersections(layer);
     }
-    processIntersections(state, baseGeo, group);
-    justCalculatedIntersections = true;
   }
   
-  // Get justCalculatedIntersections from group userData if it's available and not provided
-  if (!justCalculatedIntersections && group.userData && group.userData.justCalculatedIntersections) {
-    justCalculatedIntersections = group.userData.justCalculatedIntersections;
-    // Reset the flag after reading it
-    group.userData.justCalculatedIntersections = false;
+  // Get justCalculatedIntersections from layer or group userData if available and not provided
+  if (!options.justCalculatedIntersections) {
+    if (layer && layer.group && layer.group.userData) {
+      options.justCalculatedIntersections = layer.group.userData.justCalculatedIntersections || false;
+      // Reset the flag after reading it
+      layer.group.userData.justCalculatedIntersections = false;
+    } else if (group.userData && group.userData.justCalculatedIntersections) {
+      options.justCalculatedIntersections = group.userData.justCalculatedIntersections;
+      // Reset the flag after reading it
+      group.userData.justCalculatedIntersections = false;
+    }
     
-    if (DEBUG_STAR_CUTS && useStarCuts) {
+    if (DEBUG_STAR_CUTS && options.useStarCuts) {
       
     }
   }
@@ -598,10 +741,19 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       const lines = new THREE.LineLoop(baseGeo, lineMaterial);
       lines.scale.set(finalScale, finalScale, 1);
       
+      // Mark as a polygon copy for intersection detection
+      lines.userData = {
+        isCopy: true,
+        copyIndex: i,
+        layerId: state?.layerId || layer?.id || 0,
+        finalScale: finalScale,
+        angle: cumulativeAngleDegrees // Store angle for debugging
+      };
+      
       // Set renderOrder to ensure it renders on top of other objects
       lines.renderOrder = 10; // Higher render order
       
-      // Add the line geometry to the copy group
+      // Add lines to this copy's group
       copyGroup.add(lines);
       
       // Get the positions from the geometry
@@ -715,145 +867,14 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       
       // Apply rotation to the copy group
       copyGroup.rotation.z = cumulativeAngleRadians;
+      copyGroup.userData = copyGroup.userData || {};
+      copyGroup.userData.angle = cumulativeAngleDegrees; // Store angle in the group too
       
       // Track the copy group for cleanup if needed
       newChildren.push(copyGroup);
       
       // Add the whole copy group to the main group
       group.add(copyGroup);
-      
-      // FIXED: After creating a copy, add intersection markers to ALL copies, not just the first one
-      // Remove the i === 0 check to show star cuts on all copies
-      if (state && state.intersectionPoints && state.intersectionPoints.length > 0 &&
-          (state.useIntersections || useStarCuts) && !isLerping) {
-        
-        if (DEBUG_STAR_CUTS && useStarCuts) {
-          
-        }
-        
-        try {
-          // Create a group to hold the intersection markers
-          const intersectionMarkerGroup = new THREE.Group();
-          
-          // Tag this group for identification during audio triggers
-          intersectionMarkerGroup.userData.isIntersectionGroup = true;
-          
-          // Add visual representation for each intersection point
-          for (let j = 0; j < state.intersectionPoints.length; j++) {
-            const point = state.intersectionPoints[j];
-            
-            // IMPORTANT: Apply the same modulus scaling to intersection points
-            // This ensures star cuts scale with the polygon when modulus is used
-            let scaledX = point.x * finalScale;
-            let scaledY = point.y * finalScale;
-            
-            // Create trigger data for this intersection point
-            const triggerData = {
-              x: scaledX,
-              y: scaledY,
-              isIntersection: true,
-              intersectionIndex: j,
-              globalIndex: globalVertexIndex
-            };
-            
-            // Increment the global vertex index
-            globalVertexIndex++;
-            
-            // Create a note object to get duration and velocity parameters
-            const note = createNote(triggerData, state);
-            
-            // Calculate size factors for this intersection marker
-            const basePointSize = INTERSECTION_POINT_SIZE;
-            const durationScaleFactor = 0.5 + note.duration;
-            
-            // Size that remains visually consistent at different camera distances
-            // Adjust the multiplier (0.3) to make points larger or smaller overall
-            const sizeScaleFactor = (cameraDistance / 1000) * basePointSize * durationScaleFactor * 0.3;
-            
-            // Create material for intersection point
-            const intersectionMaterial = new THREE.MeshBasicMaterial({
-              // Use the layer's color with higher brightness for intersections
-              color: mat && mat.color ? mat.color.clone().multiplyScalar(1.2) : INTERSECTION_POINT_COLOR,
-              transparent: true,
-              opacity: note.velocity,
-              depthTest: false,
-              side: THREE.DoubleSide
-            });
-            
-            // FIXED: Track created materials for proper disposal
-            materialsToDispose.push(intersectionMaterial);
-            
-            // Create a mesh for the intersection point using shared geometry
-            const pointMesh = new THREE.Mesh(vertexCircleGeometry, intersectionMaterial);
-            
-            pointMesh.scale.set(sizeScaleFactor, sizeScaleFactor, 1);
-            // IMPORTANT: Use scaled coordinates for intersection points
-            pointMesh.position.set(scaledX, scaledY, 0);
-            
-            // Set renderOrder higher to ensure it renders on top
-            pointMesh.renderOrder = 1;
-            
-            // Add to the intersection marker group
-            intersectionMarkerGroup.add(pointMesh);
-            
-            // Add persistent frequency label for intersection point if enabled
-            if (shouldCreatePointLabels && camera && renderer) {
-              try {
-                // Calculate frequency for this intersection point
-                const freq = Math.hypot(scaledX, scaledY);
-                
-                // Format display text
-                let labelText;
-                if (state.useEqualTemperament && note.noteName) {
-                  labelText = `${freq.toFixed(1)}Hz (${note.noteName}) ${note.duration.toFixed(2)}s`;
-                } else {
-                  labelText = `${freq.toFixed(2)}Hz ${note.duration.toFixed(2)}s`;
-                }
-                
-                // Create a text label for this intersection point
-                const textLabel = createTextLabel(
-                  labelText, 
-                  new THREE.Vector3(scaledX, scaledY, 0), 
-                  intersectionMarkerGroup, // Parent is not really used for DOM labels
-                  false, // Not an axis label
-                  camera,
-                  renderer
-                );
-                
-                // Update the label immediately
-                textLabel.update(camera, renderer);
-                
-                // Store reference for cleanup
-                const labelInfo = {
-                  label: textLabel,
-                  isIntersection: true,
-                  position: new THREE.Vector3(scaledX, scaledY, 0)
-                };
-                
-                state.pointFreqLabels.push(labelInfo);
-                pointFreqLabelsCreated.push(labelInfo);
-              } catch (labelError) {
-                
-                // Continue processing other intersection points
-              }
-            }
-          }
-          
-          // Add the whole marker group to the copy group to apply proper rotation
-          copyGroup.add(intersectionMarkerGroup);
-          
-          // Store reference to the intersection marker group
-          copyGroup.userData.intersectionMarkerGroup = intersectionMarkerGroup;
-          
-          if (DEBUG_STAR_CUTS && useStarCuts) {
-            
-            
-          }
-        } catch (intersectionError) {
-          console.error("Error creating intersection markers:", intersectionError);
-          // Continue execution even if intersection markers fail
-        }
-      }
     }
     
     // After all copies are created, restore debug objects

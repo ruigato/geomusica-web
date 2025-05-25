@@ -65,6 +65,14 @@ export class LayerManager {
     // Add the container to the scene
     this.scene.add(this.layerContainer);
     
+    // Initialize intersection tracking
+    // DISABLED: Inter-layer intersections are disabled for performance reasons
+    this.enableInterLayerIntersections = false; // Explicitly disabled - do not enable
+    this.interLayerIntersections = {}; // Map layerId -> array of intersections with other layers
+    
+    // Track last time intersection calculations were performed
+    this.lastIntersectionUpdate = 0;
+    
     // Ensure the container is added to the scene and visible
     if (DEBUG_LOGGING) {
       
@@ -201,18 +209,21 @@ export class LayerManager {
     }
     
     // Initialize the group with the geometry
-    updateGroup(
-      layer.group,
-      state.copies,
-      state.stepScale,
-      layer.baseGeo,
-      layer.material,
-      state.segments,
-      state.angle,
-      state,  // Use this specific layer's state
-      false,
-      true  // Force intersection recalculation
-    );
+    // IMPORTANT: Using the object parameter pattern for updateGroup - all params must be passed in an options object
+    updateGroup({
+      group: layer.group,
+      state: state,
+      layer: layer,
+      scene: this.scene,
+      baseGeo: layer.baseGeo,
+      mat: layer.material,
+      copies: state.copies,
+      stepScale: state.stepScale,
+      segments: state.segments,
+      angle: state.angle,
+      isLerping: false,
+      justCalculatedIntersections: true
+    });
     
     if (DEBUG_LOGGING) {
       
@@ -397,7 +408,7 @@ export class LayerManager {
   }
   
   /**
-   * Remove a layer by ID with proper cleanup to prevent memory leaks
+   * Remove a layer by ID
    * @param {number} layerId ID of the layer to remove
    */
   removeLayer(layerId) {
@@ -411,6 +422,39 @@ export class LayerManager {
     // First remove from the scene to prevent further processing
     if (layer.group && layer.group.parent) {
       layer.group.parent.remove(layer.group);
+    }
+    
+    // Clear intersection data before disposing the layer
+    if (typeof layer.clearIntersections === 'function') {
+      layer.clearIntersections();
+    }
+    
+    // Clean up any intersection-related data in the scene
+    if (this.scene) {
+      // Remove intersection markers associated with this layer
+      const layerIdStr = layerId.toString();
+      this.scene.traverse(object => {
+        // Check for intersection marker groups for this layer
+        if (object.userData && 
+            (object.userData.isIntersectionGroup || object.userData.isIntersectionMarker) && 
+            object.userData.layerId === layerId) {
+          
+          // Dispose of resources
+          if (object.geometry) object.geometry.dispose();
+          if (object.material) {
+            if (Array.isArray(object.material)) {
+              object.material.forEach(m => m && m.dispose && m.dispose());
+            } else if (object.material && object.material.dispose) {
+              object.material.dispose();
+            }
+          }
+          
+          // Remove from parent
+          if (object.parent) {
+            object.parent.remove(object);
+          }
+        }
+      });
     }
     
     // Clear any manager-specific references to this layer
@@ -462,6 +506,9 @@ export class LayerManager {
     
     // Dispatch an event for other parts of the system to update their references
     this.dispatchLayerRemovalEvent(layerId, idRemapping);
+    
+    // Reset the trigger system to prevent false triggers
+    resetTriggerSystem();
     
     // Force garbage collection if supported by the browser
     if (window.gc) {
@@ -598,6 +645,9 @@ export class LayerManager {
 
     // Track which layer's geometry was updated this frame for debugging
     const updatedGeometryForLayers = [];
+    
+    // Track layers that need intersection updates
+    const layersNeedingIntersectionUpdates = [];
 
     // Process each layer
     for (let layerId = 0; layerId < this.layers.length; layerId++) {
@@ -641,6 +691,25 @@ export class LayerManager {
       // Check if any parameters have changed
       const hasParameterChanges = state.hasParameterChanged();
       
+      // Check if we need to update intersections based on parameter changes
+      // that would affect geometry (radius, segments, copies, etc.)
+      if (hasParameterChanges) {
+        // Parameters that affect intersection calculation
+        const intersectionRelevantParams = [
+          'radius', 'segments', 'copies', 'stepScale', 'angle',
+          'useStars', 'starSkip', 'useCuts'
+        ];
+        
+        // Check if any of these parameters changed
+        const needsIntersectionUpdate = Object.entries(state.parameterChanges)
+          .some(([param, changed]) => changed && intersectionRelevantParams.includes(param));
+        
+        if (needsIntersectionUpdate) {
+          layer.needsIntersectionUpdate = true;
+          layersNeedingIntersectionUpdates.push(layerId);
+        }
+      }
+      
       // CRITICAL FIX: Create geometry ONLY for this layer when it's needed
       // This ensures we're updating the correct layer's geometry
       if (!layer.baseGeo || hasParameterChanges) {
@@ -683,24 +752,37 @@ export class LayerManager {
         hasParameterChanges || 
         state.isLerping() || 
         state.justCalculatedIntersections ||
+        layer.needsIntersectionUpdate || // Add check for layer-specific intersection updates
         this.frameCounter < 10 || // Always update during first few frames for stability
         // Force update if angle is different from target
         (state.useLerp && Math.abs(state.angle - state.targetAngle) > 0.01);
       
       if (shouldUpdateGroup) {
         // Update the group with current parameters - angle here is for cumulative angle between copies
-        updateGroup(
-          layer.group,
-          state.copies,
-          state.stepScale,
-          layer.baseGeo,
-          layer.material,
-          state.segments,
-          state.angle, // Use the fixed angle between copies, not the animation angle
-          state,  // Use this specific layer's state
-          state.isLerping(),
-          state.justCalculatedIntersections
-        );
+        // IMPORTANT: Using the object parameter pattern for updateGroup - all params must be passed in an options object
+        updateGroup({
+          group: layer.group,
+          state: state,
+          layer: layer,
+          scene: this.scene,
+          baseGeo: layer.baseGeo,
+          mat: layer.material,
+          copies: state.copies,
+          stepScale: state.stepScale,
+          segments: state.segments,
+          angle: state.angle, // Use the fixed angle between copies, not the animation angle
+          isLerping: state.isLerping && typeof state.isLerping === 'function' ? state.isLerping() : false,
+          justCalculatedIntersections: state.justCalculatedIntersections
+        });
+        
+        // Check if the layer still needs intersection updates after the updateGroup call
+        // If the updateGroup handled the intersections, we can remove it from the pending list
+        if (!layer.needsIntersectionUpdate) {
+          const index = layersNeedingIntersectionUpdates.indexOf(layerId);
+          if (index !== -1) {
+            layersNeedingIntersectionUpdates.splice(index, 1);
+          }
+        }
         
         if ((shouldLog || hasParameterChanges) && DEBUG_LOGGING) {
           
@@ -757,6 +839,32 @@ export class LayerManager {
       
       // Reset parameter change flags
       state.resetParameterChanges();
+      
+      // Update the layer's lastUpdateTime
+      layer.lastUpdateTime = tNow / 1000;
+    }
+    
+    // Process any remaining layers that need intersection updates
+    // This is done separately to avoid blocking the main layer update loop
+    if (layersNeedingIntersectionUpdates.length > 0) {
+      // Use a small delay to avoid blocking the main thread
+      setTimeout(() => {
+        for (const layerId of layersNeedingIntersectionUpdates) {
+          const layer = this.getLayerById(layerId);
+          if (layer && layer.needsIntersectionUpdate) {
+            this.updateLayerIntersections(layerId);
+          }
+        }
+      }, 0);
+    }
+    
+    // Optional: Calculate inter-layer intersections if needed
+    // This is a more advanced feature and might be computationally expensive
+    // DISABLED: Inter-layer intersections are explicitly disabled for performance reasons
+    // To re-enable, set this.enableInterLayerIntersections to true in the constructor
+    if (false && this.enableInterLayerIntersections && this.frameCounter % 30 === 0) {
+      // Only calculate every 30 frames to avoid performance impact
+      this.detectInterLayerIntersections();
     }
     
     // Log which layers had geometry updates in this frame (if any)
@@ -1068,5 +1176,133 @@ export class LayerManager {
     
     
     return { camera, renderer };
+  }
+
+  /**
+   * Update intersections for a specific layer
+   * @param {number} layerId ID of the layer to update intersections for
+   * @returns {boolean} True if the update was successful
+   */
+  updateLayerIntersections(layerId) {
+    console.log(`[LAYER MANAGER] updateLayerIntersections called for layer ${layerId}`);
+    
+    // Find the layer
+    const layer = this.getLayerById(layerId);
+    if (!layer) {
+      console.warn(`[LAYER MANAGER] Layer ${layerId} not found for intersection update`);
+      return false;
+    }
+    
+    // Trigger intersection update
+    if (typeof layer.updateIntersections === 'function') {
+      console.log(`[LAYER MANAGER] Calling updateIntersections on layer ${layerId}`);
+      layer.updateIntersections();
+      
+      // For star cuts, ensure the state's needsIntersectionUpdate flag is set
+      if (layer.state && layer.state.useStars && layer.state.useCuts && layer.state.starSkip > 1) {
+        layer.state.needsIntersectionUpdate = true;
+        console.log(`[LAYER MANAGER] Set needsIntersectionUpdate for star cuts on layer ${layerId}`);
+      }
+      
+      return true;
+    }
+    
+    console.warn(`[LAYER MANAGER] Layer ${layerId} does not have updateIntersections method`);
+    return false;
+  }
+  
+  /**
+   * Clear intersections for all layers
+   */
+  clearAllIntersections() {
+    for (const layer of this.layers) {
+      if (layer && typeof layer.clearIntersections === 'function') {
+        layer.clearIntersections();
+      }
+      
+      // Reset state flags if present
+      if (layer.state) {
+        layer.state.needsIntersectionUpdate = false;
+        layer.state.justCalculatedIntersections = false;
+      }
+    }
+  }
+  
+  /**
+   * Get intersection points for a specific layer
+   * @param {number} layerId ID of the layer to get intersections for
+   * @returns {Array<Object>|null} Array of intersection points or null if layer not found
+   */
+  getLayerIntersections(layerId) {
+    const layer = this.getLayerById(layerId);
+    if (!layer) {
+      return null;
+    }
+    
+    // Return a copy of the intersections array to prevent unintended modifications
+    return layer.intersectionPoints ? [...layer.intersectionPoints] : [];
+  }
+  
+  /**
+   * Find layer by ID
+   * @param {number} id Layer ID to find
+   * @returns {Layer|null} Layer object or null if not found
+   */
+  getLayerById(id) {
+    return this.layers.find(layer => layer.id === id) || null;
+  }
+  
+  /**
+   * Detect and calculate intersections between layers
+   * @param {Array<number>} layerIds IDs of layers to find intersections between (defaults to all visible layers)
+   * @returns {Object} Object mapping layer IDs to arrays of intersection points with other layers
+   */
+  detectInterLayerIntersections(layerIds = null) {
+    // If no layer IDs provided, use all visible layers
+    const targetLayers = layerIds 
+      ? layerIds.map(id => this.getLayerById(id)).filter(layer => layer && layer.visible)
+      : this.layers.filter(layer => layer && layer.visible);
+    
+    // Early return if we don't have at least 2 layers to check
+    if (targetLayers.length < 2) {
+      return {};
+    }
+    
+    const interLayerIntersections = {};
+    
+    // Initialize result object
+    for (const layer of targetLayers) {
+      interLayerIntersections[layer.id] = [];
+    }
+    
+    // For each pair of layers, find intersections
+    for (let i = 0; i < targetLayers.length; i++) {
+      const layerA = targetLayers[i];
+      
+      for (let j = i + 1; j < targetLayers.length; j++) {
+        const layerB = targetLayers[j];
+        
+        // Skip if either layer doesn't have geometry
+        if (!layerA.baseGeo || !layerB.baseGeo) {
+          continue;
+        }
+        
+        // In a real implementation, we would calculate actual intersections between the layers here
+        // For now, we just create placeholder code that would be filled in with actual intersection detection
+        
+        // Store that these layers were processed
+        if (!interLayerIntersections[layerA.id]) {
+          interLayerIntersections[layerA.id] = [];
+        }
+        if (!interLayerIntersections[layerB.id]) {
+          interLayerIntersections[layerB.id] = [];
+        }
+        
+        // The actual intersection calculation would happen here
+        // This would analyze the geometry of both layers and find intersection points
+      }
+    }
+    
+    return interLayerIntersections;
   }
 } 

@@ -152,16 +152,38 @@ export function animate(props) {
     
     // Update markers (dots) based on intersections
     if (activeLayer.state.needsIntersectionUpdate) {
-      // Only detect intersections if they're enabled
-      const useIntersections = activeLayer.state.useIntersections === true;
-      const useStarCuts = activeLayer.state.useStars === true && activeLayer.state.useCuts === true;
+      // Skip intersection processing if lerping is active to improve performance
+      const isLerping = activeLayer.state.isLerping && typeof activeLayer.state.isLerping === 'function' && activeLayer.state.isLerping();
       
-      if (useIntersections || useStarCuts) {
-        detectIntersections(activeLayer);
+      if (isLerping) {
+        // During lerping, just mark as processed without doing the work
+        activeLayer.state.needsIntersectionUpdate = false;
+        if (frameCount % 120 === 0) { // Log occasionally to avoid spam
+          console.log(`Skipping intersection update during lerping for layer ${activeLayer.id}`);
+        }
+      } else {
+        // Only detect intersections if they're enabled and we're not lerping
+        const useIntersections = activeLayer.state.useIntersections === true;
+        const useStarCuts = activeLayer.state.useStars === true && activeLayer.state.useCuts === true;
+        
+        if (useIntersections || useStarCuts) {
+          detectIntersections(activeLayer);
+        } else {
+          // If intersections are disabled, just clean up any existing markers
+          // and clear the needsIntersectionUpdate flag to prevent continuous checking
+          if (typeof clearLayerMarkers === 'function') {
+            clearLayerMarkers(activeLayer);
+          }
+          
+          // Force a call to clearIntersections when intersections are disabled but flag is set
+          if (activeLayer.clearIntersections && typeof activeLayer.clearIntersections === 'function') {
+            activeLayer.clearIntersections();
+          }
+        }
+        
+        // Always reset the flag regardless of whether intersections are enabled
+        activeLayer.state.needsIntersectionUpdate = false;
       }
-      
-      // Always reset the flag regardless
-      activeLayer.state.needsIntersectionUpdate = false;
     }
     
     // Apply velocity updates to markers with enhanced timing

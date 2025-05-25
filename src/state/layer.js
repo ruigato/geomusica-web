@@ -49,6 +49,11 @@ export class Layer {
     // IMPORTANT: Initialize markers array for trigger markers
     this.markers = [];
     
+    // Intersection-specific properties
+    this.intersectionPoints = [];
+    this.needsIntersectionUpdate = false;
+    this.lastIntersectionUpdate = 0;
+    
     // Last time this layer was updated
     this.lastUpdateTime = 0;
     
@@ -81,6 +86,7 @@ export class Layer {
       if (DEBUG_LOGGING) {
         
       }
+      this.needsIntersectionUpdate = true;
       return originalSetRadius.call(this.state, value);
     };
     
@@ -89,6 +95,7 @@ export class Layer {
       if (DEBUG_LOGGING) {
         
       }
+      this.needsIntersectionUpdate = true;
       return originalSetSegments.call(this.state, value);
     };
     
@@ -97,6 +104,7 @@ export class Layer {
       if (DEBUG_LOGGING) {
         
       }
+      this.needsIntersectionUpdate = true;
       return originalSetCopies.call(this.state, value);
     };
     
@@ -602,6 +610,12 @@ export class Layer {
       this._triggersTimestamps = null;
     }
     
+    // Clean up intersection-specific properties
+    this.clearIntersections();
+    this.intersectionPoints = null;
+    this.needsIntersectionUpdate = false;
+    this.lastIntersectionUpdate = null;
+    
     // Clean up state collections
     if (this.state) {
       // Remove circular references in state
@@ -843,15 +857,25 @@ export class Layer {
         depthTest: false
       });
       debugSphere = new THREE.Mesh(sphereGeo, sphereMat);
+      // Mark debug sphere as a helper so it's not counted for intersections
+      debugSphere.userData = {
+        isHelper: true,
+        isDebugSphere: true,
+        layerId: this.id
+      };
       this.group.add(debugSphere);
+    } else if (!debugSphere.userData.isHelper) {
+      // Make sure existing debug spheres have the helper flag
+      debugSphere.userData.isHelper = true;
+      debugSphere.userData.isDebugSphere = true;
     }
     
     if (DEBUG_LOGGING) {
       
     }
     
-    // Force the state to update the group
-    this.state.needsIntersectionUpdate = true;
+    // Force intersection update when geometry changes
+    this.needsIntersectionUpdate = true;
     
     // Log that geometry was recreated
     if (DEBUG_LOGGING) {
@@ -1102,6 +1126,18 @@ export class Layer {
         }
       }
     }
+    
+    // Check if intersections need to be updated
+    if (this.needsIntersectionUpdate) {
+      // In a real implementation, we would calculate intersections here
+      // For now, just record that we processed the update request
+      this.lastIntersectionUpdate = currentTime;
+      this.needsIntersectionUpdate = false;
+      
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Processed intersection update at time ${currentTime}`);
+      }
+    }
   }
 
   /**
@@ -1149,5 +1185,152 @@ export class Layer {
     }
     
     return true;
+  }
+
+  /**
+   * Update the layer's intersections with other layers
+   * This triggers a recalculation of intersection points
+   * @returns {Layer} This layer for method chaining
+   */
+  updateIntersections() {
+    console.log(`[LAYER ${this.id}] updateIntersections called`);
+    
+    // IMPORTANT: Only set needsIntersectionUpdate to true when intersections are actually enabled
+    // and we have at least 2 copies (needed for intersections)
+    const useIntersections = this.state?.useIntersections === true;
+    const useStarCuts = this.state?.useStars === true && this.state?.useCuts === true && this.state?.starSkip > 1;
+    const hasSufficientCopies = this.state?.copies > 1;
+    
+    if ((useIntersections || useStarCuts) && hasSufficientCopies) {
+      this.needsIntersectionUpdate = true;
+      this.lastIntersectionUpdate = Date.now();
+      
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Requesting intersection update`);
+      }
+    } else if (!hasSufficientCopies) {
+      console.log(`[LAYER ${this.id}] Skipping intersection update - insufficient copies: ${this.state?.copies}`);
+      
+      // Reset flag and clear any existing intersections
+      this.needsIntersectionUpdate = false;
+      this.clearIntersections();
+    } else {
+      // Case when intersections are disabled but we have sufficient copies
+      console.log(`[LAYER ${this.id}] Skipping intersection update - intersections are disabled`);
+      this.needsIntersectionUpdate = false;
+      
+      // Clear any existing markers
+      this.clearIntersections();
+    }
+    
+    console.log(`[LAYER ${this.id}] State useIntersections:`, this.state.useIntersections);
+    
+    // Check if the layer group is properly attached to the scene
+    if (this.group) {
+      const isInScene = !!this.group.parent;
+      console.log(`[LAYER ${this.id}] Layer group is ${isInScene ? 'attached to scene' : 'NOT attached to scene'}`);
+      console.log(`[LAYER ${this.id}] Layer group has ${this.group.children.length} children`);
+      console.log(`[LAYER ${this.id}] Layer group visible: ${this.group.visible}`);
+    }
+    
+    return this;
+  }
+  
+  /**
+   * Clear all intersection points and markers for this layer
+   * @returns {Layer} This layer for method chaining
+   */
+  clearIntersections() {
+    console.log(`[LAYER ${this.id}] clearIntersections called`);
+    // REMOVED: Don't clear intersection points here as they're needed for creating markers
+    // this.intersectionPoints = [];
+    
+    // Remove any intersection markers from the scene
+    if (!this.group) {
+      console.log(`[LAYER ${this.id}] No group found to clear markers from`);
+      return this;
+    }
+    
+    // First try using the direct markersGroup reference we added
+    if (this.markersGroup) {
+      console.log(`[LAYER ${this.id}] Found markerGroup via direct reference with ${this.markersGroup.children.length} markers`);
+      
+      // Dispose of all marker geometries and materials
+      this.markersGroup.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(m => m.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      });
+      
+      // Remove from parent
+      const parent = this.markersGroup.parent;
+      if (parent) {
+        parent.remove(this.markersGroup);
+        console.log(`[LAYER ${this.id}] Removed markersGroup from its parent`);
+      } else {
+        console.warn(`[LAYER ${this.id}] markersGroup has no parent to remove from`);
+      }
+      
+      // Clear the reference
+      this.markersGroup = null;
+      return this;
+    }
+    
+    // Fallback: Find and remove intersection marker group if it exists
+    console.log(`[LAYER ${this.id}] No direct markersGroup reference, searching among ${this.group.children.length} children`);
+    
+    // List all children types for debugging
+    const childTypes = this.group.children.map(child => {
+      return {
+        type: child.type,
+        isIntersectionGroup: child.userData?.isIntersectionGroup || false,
+        name: child.name || 'unnamed'
+      };
+    });
+    console.log(`[LAYER ${this.id}] Child types:`, JSON.stringify(childTypes));
+    
+    const intersectionGroup = this.group.children.find(
+      child => child.userData && child.userData.isIntersectionGroup
+    );
+    
+    if (intersectionGroup) {
+      console.log(`[LAYER ${this.id}] Found and removing intersection group with ${intersectionGroup.children.length} markers`);
+      
+      // Dispose of all marker geometries and materials
+      intersectionGroup.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(m => m.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      });
+      
+      // Remove from parent
+      this.group.remove(intersectionGroup);
+    } else {
+      console.log(`[LAYER ${this.id}] No intersection group found to clear`);
+    }
+    
+    if (DEBUG_LOGGING) {
+      console.log(`[LAYER ${this.id}] Cleared all intersections`);
+    }
+    
+    return this;
+  }
+  
+  /**
+   * Check if this layer has any intersection points
+   * @returns {boolean} True if there are intersection points
+   */
+  hasIntersections() {
+    return this.intersectionPoints && this.intersectionPoints.length > 0;
   }
 } 

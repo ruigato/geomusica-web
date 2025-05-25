@@ -257,21 +257,34 @@ export function createAppState() {
      * @param {number} value New radius value
      */
     setRadius(value) {
-      const newValue = Number(value);
+      // Validate
+      const newValue = Math.max(10, Number(value));
+      
+      // Check against targetRadius to handle lerping correctly
       if (this.targetRadius !== newValue) {
         this.targetRadius = newValue;
         this.parameterChanges.radius = true;
         
-        // If lerping is off, update the actual value immediately
+        // If lerping is disabled, update the actual value immediately
         if (!this.useLerp) {
-          this.radius = newValue;
+          this.radius = this.targetRadius;
         }
         
-        this.needsIntersectionUpdate = true;
+        // Only update intersections when radius changes if not suspended
+        if (!this._intersectionUpdateSuspended) {
+          this.needsIntersectionUpdate = true;
+          
+          // Add extra debug when intersections are enabled
+          if (this.useIntersections || (this.useStars && this.useCuts)) {
+            console.log("setRadius triggered intersection update");
+          }
+        }
         
         // FIXED: Reset trigger state when radius changes to prevent false triggers
         this.resetTriggerState();
       }
+      
+      return this;
     },
     
     /**
@@ -279,13 +292,17 @@ export function createAppState() {
      * @param {number} value New copies value
      */
     setCopies(value) {
-      const newValue = Number(value);
-      // Make sure both targetCopies and copies are properly set
-      if (this.targetCopies !== newValue || this.copies !== newValue) {
-        this.targetCopies = newValue;
-        this.copies = newValue; // Always update copies immediately, even when lerping
+      const newValue = Math.max(0, Math.round(value));
+      
+      if (newValue !== this.copies) {
+        this.copies = newValue;
         this.parameterChanges.copies = true;
-        this.needsIntersectionUpdate = true;
+        
+        // IMPORTANT: Also force intersection update if intersections are enabled
+        if (this.useIntersections || (this.useStars && this.useCuts)) {
+          this.needsIntersectionUpdate = true;
+          console.log("setCopies triggered intersection update");
+        }
         
         // FIXED: Reset trigger state when copies change to prevent false triggers
         this.resetTriggerState();
@@ -297,11 +314,21 @@ export function createAppState() {
      * @param {number} value New segments value
      */
     setSegments(value) {
-      const newValue = Math.round(Number(value));
-      if (this.segments !== newValue) {
+      const newValue = Math.max(2, Math.round(value));
+      
+      if (newValue !== this.segments) {
         this.segments = newValue;
         this.parameterChanges.segments = true;
-        this.needsIntersectionUpdate = true;
+        
+        // Only update intersections when segments change if not suspended
+        if (!this._intersectionUpdateSuspended) {
+          this.needsIntersectionUpdate = true;
+          
+          // Add extra debug when intersections are enabled
+          if (this.useIntersections || (this.useStars && this.useCuts)) {
+            console.log("setSegments triggered intersection update");
+          }
+        }
         
         // FIXED: Reset trigger state when segments change to prevent false triggers
         this.resetTriggerState();
@@ -313,18 +340,34 @@ export function createAppState() {
      * @param {number} value New step scale value
      */
     setStepScale(value) {
-      const newValue = Number(value);
+      // Validate
+      const newValue = Math.max(0.1, Math.min(2, Number(value)));
+      
+      // Check against targetStepScale to handle lerping correctly
       if (this.targetStepScale !== newValue) {
         this.targetStepScale = newValue;
         this.parameterChanges.stepScale = true;
+        
+        // If lerping is disabled, update the actual value immediately
         if (!this.useLerp) {
           this.stepScale = this.targetStepScale;
         }
-        this.needsIntersectionUpdate = true;
+        
+        // Only update intersections when step scale changes if not suspended
+        if (!this._intersectionUpdateSuspended) {
+          this.needsIntersectionUpdate = true;
+          
+          // Add extra debug when intersections are enabled
+          if (this.useIntersections || (this.useStars && this.useCuts)) {
+            console.log("setStepScale triggered intersection update");
+          }
+        }
         
         // FIXED: Reset trigger state when step scale changes to prevent false triggers
         this.resetTriggerState();
       }
+      
+      return this;
     },
     
     /**
@@ -332,15 +375,31 @@ export function createAppState() {
      * @param {number} value New angle value
      */
     setAngle(value) {
+      // Validate
       const newValue = Number(value);
+      
+      // Check against targetAngle to handle lerping correctly
       if (this.targetAngle !== newValue) {
         this.targetAngle = newValue;
         this.parameterChanges.angle = true;
+        
+        // If lerping is disabled, update the actual value immediately
         if (!this.useLerp) {
           this.angle = this.targetAngle;
         }
-        this.needsIntersectionUpdate = true;
+        
+        // Only update intersections when angle changes if not suspended
+        if (!this._intersectionUpdateSuspended) {
+          this.needsIntersectionUpdate = true;
+          
+          // Add extra debug when intersections are enabled
+          if (this.useIntersections || (this.useStars && this.useCuts)) {
+            console.log("setAngle triggered intersection update");
+          }
+        }
       }
+      
+      return this;
     },
     
     /**
@@ -544,8 +603,75 @@ export function createAppState() {
      * @param {boolean} value Enable/disable intersections
      */
     setUseIntersections(value) {
-      this.useIntersections = Boolean(value);
-      this.needsIntersectionUpdate = true;
+      const enabled = !!value;
+      
+      if (this.useIntersections !== enabled) {
+        this.useIntersections = enabled;
+        this.parameterChanges.useIntersections = true;
+        
+        console.log("setUseIntersections called with value:", enabled);
+        
+        // Different behavior based on whether we're enabling or disabling
+        if (enabled) {
+          // When enabling, set flag to recalculate
+          this.needsIntersectionUpdate = true;
+          
+          // Try to force more immediate update for UI responsiveness
+          const layerId = this.layerId;
+          
+          // Try to access the layer through window._layers if available
+          if (window._layers && typeof window._layers.getLayerById === 'function') {
+            const layer = window._layers.getLayerById(layerId);
+            if (layer) {
+              // CRITICAL: Skip processing if copies is 0 or less
+              if (!layer.state.copies || layer.state.copies <= 0) {
+                console.log(`Skipping intersection update for layer ${layerId} because copies is ${layer.state.copies}`);
+                return this;
+              }
+              
+              // Force immediate update of intersections
+              layer.updateIntersections();
+              
+              // If we have a scene reference, immediately create the markers
+              if (layer.group && layer.group.parent) {
+                const scene = layer.group.parent;
+                
+                // Import the intersection functions dynamically if needed
+                import('../geometry/intersections.js').then(module => {
+                  // CRITICAL: Double-check copies before proceeding
+                  if (!layer.state.copies || layer.state.copies <= 0) {
+                    console.log(`Skipping intersection markers for layer ${layerId} because copies is ${layer.state.copies}`);
+                    return;
+                  }
+                  
+                  // Process intersections and create markers
+                  module.processIntersections(layer);
+                  module.createIntersectionMarkers(scene, layer);
+                }).catch(err => {
+                  console.error("Error importing intersection modules:", err);
+                });
+              }
+            }
+          }
+        } else {
+          // When disabling, make sure we clear any existing intersections
+          this.needsIntersectionUpdate = false; // Don't need to recalculate when disabling
+          
+          // Clear any existing markers
+          const layerId = this.layerId;
+          if (window._layers && typeof window._layers.getLayerById === 'function') {
+            const layer = window._layers.getLayerById(layerId);
+            if (layer && typeof layer.clearIntersections === 'function') {
+              console.log(`Clearing intersections for layer ${layerId} because intersections were disabled`);
+              layer.clearIntersections();
+            }
+          }
+        }
+        
+        console.log("State updated - useIntersections:", this.useIntersections, "needsIntersectionUpdate:", this.needsIntersectionUpdate);
+      }
+      
+      return this;
     },
     
     /**
@@ -574,6 +700,11 @@ export function createAppState() {
         if (layerRef) {
           layerRef._lerpingStartedAt = performance.now();
         }
+        
+        // When starting lerp, temporarily suspend intersection updates
+        // This improves performance during transitions
+        this._intersectionUpdateSuspended = true;
+        console.log("Lerping enabled - temporarily suspending intersection updates");
       }
       
       if (!this.useLerp) {
@@ -583,7 +714,17 @@ export function createAppState() {
         this.angle = this.targetAngle;
         this.altScale = this.targetAltScale;
         // Copies already set directly, no need to update here
-        this.needsIntersectionUpdate = true;
+        
+        // When lerping completes, resume intersection updates if needed
+        if (this._intersectionUpdateSuspended) {
+          this._intersectionUpdateSuspended = false;
+          
+          // Only trigger intersection update if they were enabled
+          if (this.useIntersections) {
+            this.needsIntersectionUpdate = true;
+            console.log("Lerping disabled - resuming intersection updates");
+          }
+        }
       }
     },
     
@@ -901,24 +1042,37 @@ export function createAppState() {
       
       // Check if significant changes occurred and explicitly mark parameters as changed
       if (Math.abs(oldRadius - this.radius) > 0.1) {
-        this.needsIntersectionUpdate = true;
         this.parameterChanges.radius = true;
       }
       
       if (Math.abs(oldStepScale - this.stepScale) > 0.001) {
-        this.needsIntersectionUpdate = true;
         this.parameterChanges.stepScale = true;
       }
       
       if (Math.abs(oldAngle - this.angle) > 0.1) {
-        this.needsIntersectionUpdate = true;
         this.parameterChanges.angle = true;
       }
       
       // Check for significant alt scale changes and mark parameter as changed
       if (Math.abs(oldAltScale - this.altScale) > 0.001 && this.useAltScale) {
-        this.needsIntersectionUpdate = true;
         this.parameterChanges.altScale = true;
+      }
+      
+      // Check if lerping is nearly complete to resume intersection calculations
+      const isNearlyComplete = 
+        Math.abs(this.radius - this.targetRadius) < 0.5 &&
+        Math.abs(this.stepScale - this.targetStepScale) < 0.005 &&
+        Math.abs(this.angle - this.targetAngle) < 0.5 &&
+        Math.abs(this.altScale - this.targetAltScale) < 0.005;
+      
+      if (isNearlyComplete && this._intersectionUpdateSuspended) {
+        this._intersectionUpdateSuspended = false;
+        
+        // Only trigger intersection update if they were enabled
+        if (this.useIntersections) {
+          this.needsIntersectionUpdate = true;
+          console.log("Lerping nearly complete - resuming intersection updates");
+        }
       }
     },
     

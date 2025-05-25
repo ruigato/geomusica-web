@@ -426,17 +426,17 @@ function quantizeToGrid(timeTicks, gridTicks) {
 }
 
 /**
- * Create a visual marker at the crossing point
- * @param {number} angle Current rotation angle
+ * Create a visual marker for a triggered point
+ * @param {number} angle Rotation angle
  * @param {number} worldX X coordinate in world space
  * @param {number} worldY Y coordinate in world space
  * @param {THREE.Scene} scene Scene to add marker to
- * @param {Object} note Note information
- * @param {THREE.Camera} camera Camera for label positioning
- * @param {THREE.WebGLRenderer} renderer Renderer for label positioning
- * @param {boolean} isQuantized Whether the trigger was quantized
- * @param {Object} layer Layer object
- * @returns {Object} Created marker
+ * @param {Object} note Note object with frequency and duration
+ * @param {THREE.Camera} camera Camera for positioning labels
+ * @param {THREE.WebGLRenderer} renderer Renderer for positioning labels
+ * @param {boolean} isQuantized Whether this is a quantized trigger
+ * @param {Layer} layer Layer this marker belongs to
+ * @returns {Object} Created marker object
  */
 export function createMarker(angle, worldX, worldY, scene, note, camera = null, renderer = null, isQuantized = false, layer = null) {
   // Determine where to store the marker
@@ -475,20 +475,30 @@ export function createMarker(angle, worldX, worldY, scene, note, camera = null, 
   // Create the marker
   const markerGeom = new THREE.SphereGeometry(8, 8, 8);
   
-  // Create a semi-transparent material for the marker
-  // Use a different color for quantized triggers to provide visual feedback
+  // Determine the color to use for this marker
   let markerColor;
+  
+  // Use layer-specific color if available
   if (layer && layer.color) {
-    // Use the layer's color, potentially brightened for quantized triggers
     if (isQuantized) {
       // Create a brighter version of the layer color for quantized triggers
       markerColor = layer.color.clone().multiplyScalar(1.5);
+    } else if (note.isIntersection) {
+      // Use a slightly different color for intersection points
+      markerColor = layer.color.clone().multiplyScalar(1.3);
     } else {
+      // Use layer color for regular markers
       markerColor = layer.color;
     }
   } else {
-    // Fallback to default colors if no layer or layer has no color
-    markerColor = isQuantized ? 0x00ff00 : 0xff00ff;
+    // Fallback colors if no layer or layer has no color
+    if (isQuantized) {
+      markerColor = 0x00ff00; // Green for quantized
+    } else if (note.isIntersection) {
+      markerColor = 0xff00ff; // Magenta for intersections
+    } else {
+      markerColor = 0xffff00; // Yellow for normal
+    }
   }
   
   // Scale marker size based on duration
@@ -549,12 +559,14 @@ export function createMarker(angle, worldX, worldY, scene, note, camera = null, 
       if (layer.state.useEqualTemperament && note.noteName) {
         // Add a "Q" prefix for quantized triggers for visual feedback
         const qPrefix = isQuantized ? "Q " : "";
-        displayText = `${qPrefix}${frequency.toFixed(1)}Hz (${note.noteName}) ${duration.toFixed(2)}s`;
+        const intersectionPrefix = note.isIntersection ? "I " : "";
+        displayText = `${qPrefix}${intersectionPrefix}${frequency.toFixed(1)}Hz (${note.noteName}) ${duration.toFixed(2)}s`;
       } else {
         // Just show frequency in free temperament mode
         // Add a "Q" prefix for quantized triggers
         const qPrefix = isQuantized ? "Q " : "";
-        displayText = `${qPrefix}${frequency.toFixed(2)}Hz ${duration.toFixed(2)}s`;
+        const intersectionPrefix = note.isIntersection ? "I " : "";
+        displayText = `${qPrefix}${intersectionPrefix}${frequency.toFixed(2)}Hz ${duration.toFixed(2)}s`;
       }
       
       // Create a unique ID for this temporary label
@@ -579,6 +591,7 @@ export function createMarker(angle, worldX, worldY, scene, note, camera = null, 
     originalLife: MARK_LIFE,
     animState: ANIMATION_STATES.IDLE,
     isQuantized: isQuantized,
+    isIntersection: note.isIntersection || false,
     noteInfo: {
       frequency,
       duration,
@@ -711,6 +724,14 @@ function detectIntersectionTriggers(
   
   // Check if this copy group has intersection markers
   if (!copyGroup || !copyGroup.userData) {
+    if (DEBUG_STAR_CUTS) {
+      
+    }
+    return false;
+  }
+  
+  // Check if layer has intersections
+  if (layer && typeof layer.hasIntersections === 'function' && !layer.hasIntersections()) {
     if (DEBUG_STAR_CUTS) {
       
     }
@@ -924,6 +945,7 @@ function detectIntersectionTriggers(
             intersectionIndex: i,
             copyIndex: copyIndex,
             frequency: frequency,
+            layerId: layer.id // Include layer ID in the note data
           }, state);
           
           // Update time information
@@ -949,47 +971,69 @@ function detectIntersectionTriggers(
               const noteCopy = {...note};
               noteCopy.time = triggerTime;
               
-              // Trigger audio
+              // Create visual marker at the crossing point
+              createMarker(
+                angle,
+                currX,
+                currY,
+                scene,
+                noteCopy,
+                camera,
+                renderer,
+                isQuantized,
+                layer // Pass layer to createMarker for layer-specific styling
+              );
+              
+              // Trigger audio callback
               audioCallback(noteCopy);
               
-              // Create marker
-              createMarker(angle, currX, currY, scene, noteCopy, camera, renderer, isQuantized, layer);
+              // Mark as triggered this frame
+              triggeredNow.add(key);
+              layer.lastTrig.add(key);
               
-              if (DEBUG_STAR_CUTS) {
-                
-              }
-              
-              // Increment counter
-              triggersCount++;
               anyTriggers = true;
+              triggersCount++;
             }
           } else {
-            // Regular non-quantized trigger
+            // Simple trigger without quantization
+            // Create visual marker at the crossing point
+            createMarker(
+              angle,
+              currX,
+              currY,
+              scene,
+              note,
+              camera,
+              renderer,
+              false,
+              layer // Pass layer to createMarker for layer-specific styling
+            );
+            
+            // Trigger audio callback
             audioCallback(note);
             
-            // Create marker
-            createMarker(angle, currX, currY, scene, note, camera, renderer, false, layer);
+            // Mark as triggered this frame
+            triggeredNow.add(key);
+            layer.lastTrig.add(key);
             
-            if (DEBUG_STAR_CUTS) {
-              
-            }
-            
-            // Increment counter
-            triggersCount++;
             anyTriggers = true;
+            triggersCount++;
           }
-          
-          // Add to triggered set
-          triggeredNow.add(key);
         }
       }
     } catch (error) {
-      console.error(`Error in intersection trigger detection for layer ${layer.id}, intersection ${i}:`, error);
+      console.error(`Error processing intersection ${i} in copy ${copyIndex} of layer ${layer.id}:`, error);
     }
   }
   
-  // Log summary if any triggers occurred
-  if (anyTriggers && DEBUG_STAR_CUTS) {
+  // Clear the lastTrig set in the next frame
+  if (anyTriggers) {
+    window.requestAnimationFrame(() => {
+      layer.lastTrig.clear();
+    });
+  }
+  
+  if (DEBUG_STAR_CUTS && triggersCount > 0) {
     
   }
   
@@ -1260,15 +1304,20 @@ function recordLayerVertexPositions(layer, timestamp) {
 
 /**
  * Record intersection points for subframe detection
- * @param {Object} copyGroup Copy group containing intersections
- * @param {Object} layer Layer object
+ * @param {THREE.Group} copyGroup Group containing intersection markers
+ * @param {Layer} layer Layer object that owns this copy
  * @param {number} ci Copy index
  * @param {number} angle Current rotation angle
- * @param {number} timestamp Current time
+ * @param {number} timestamp Current time in seconds
  * @param {THREE.Matrix4} inverseRotationMatrix Matrix to remove rotation
  * @param {THREE.Matrix4} rotationMatrix Matrix to apply rotation
  */
 function recordIntersectionPoints(copyGroup, layer, ci, angle, timestamp, inverseRotationMatrix, rotationMatrix) {
+  // Skip if layer has no intersections
+  if (typeof layer.hasIntersections === 'function' && !layer.hasIntersections()) {
+    return;
+  }
+  
   // Improved detection of intersection marker group
   let intersectionGroup = null;
   
@@ -1301,6 +1350,9 @@ function recordIntersectionPoints(copyGroup, layer, ci, angle, timestamp, invers
   // Temp vector for calculations
   const worldPos = new THREE.Vector3();
   
+  // Get layer's intersection points array if available
+  const intersectionPoints = layer.intersectionPoints || [];
+  
   // Process each intersection marker
   for (let i = 0; i < intersectionGroup.children.length; i++) {
     const marker = intersectionGroup.children[i];
@@ -1325,6 +1377,21 @@ function recordIntersectionPoints(copyGroup, layer, ci, angle, timestamp, invers
       // Apply unrotated world matrix to get position in world space
       worldPos.applyMatrix4(tempWorldMatrix);
       
+      // Store the position in layer's intersectionPoints array if it doesn't exist
+      if (i >= intersectionPoints.length) {
+        // Ensure layer has intersectionPoints array
+        if (!layer.intersectionPoints) {
+          layer.intersectionPoints = [];
+        }
+        
+        // Add the point to the layer's intersectionPoints
+        layer.intersectionPoints.push({
+          x: worldPos.x,
+          y: worldPos.y,
+          z: worldPos.z
+        });
+      }
+      
       // Apply rotation for trigger detection
       const rotatedPos = worldPos.clone().applyMatrix4(rotationMatrix);
       
@@ -1341,6 +1408,13 @@ function recordIntersectionPoints(copyGroup, layer, ci, angle, timestamp, invers
     } catch (error) {
       console.error(`Error recording intersection position for layer ${layer.id}, copy ${ci}, intersection ${i}:`, error);
     }
+  }
+  
+  // Update the last intersection update timestamp
+  if (typeof layer.updateLastIntersectionTime === 'function') {
+    layer.updateLastIntersectionTime();
+  } else {
+    layer.lastIntersectionUpdate = timestamp;
   }
 }
 
@@ -1558,12 +1632,13 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
           }
         }
       } catch (error) {
+        // Log error but continue processing other vertices
         console.error(`Error processing vertex trigger for layer ${layerId}, copy ${ci}, vertex ${vi}:`, error);
       }
     }
     
     // Process intersection triggers for this copy if we have more than one copy
-    if (copies > 1 && state.useIntersections) {
+    if (copies > 1 && state.useIntersections === true) {
       const isIntersectionTriggered = detectIntersectionSubframeTriggers(
         layer, ci, angle, timestamp, audioCallback, 
         triggeredNow, triggeredPoints, camera, renderer, scene, cooldownTime
@@ -1579,13 +1654,13 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
 }
 
 /**
- * Detect intersection triggers using subframe precision
- * @param {Object} layer Layer object
+ * Detect intersection triggers with subframe precision
+ * @param {Layer} layer Layer to detect triggers for
  * @param {number} ci Copy index
  * @param {number} angle Current rotation angle
- * @param {number} timestamp Current time
- * @param {Function} audioCallback Audio callback function
- * @param {Set} triggeredNow Set of already triggered points
+ * @param {number} timestamp Current time in seconds
+ * @param {Function} audioCallback Callback for triggered audio
+ * @param {Set} triggeredNow Set of already triggered points in this frame
  * @param {Array} triggeredPoints Array of triggered point positions
  * @param {THREE.Camera} camera Camera for visual feedback
  * @param {THREE.WebGLRenderer} renderer Renderer for visual feedback
@@ -1601,13 +1676,22 @@ function detectIntersectionSubframeTriggers(
   
   const state = layer.state;
   
+  // Skip if layer has no intersections
+  if (typeof layer.hasIntersections === 'function' && !layer.hasIntersections()) {
+    return false;
+  }
+  
   // Determine if these are star cut intersections
   const isStarCuts = state.useStars && state.useCuts && state.starSkip > 1;
   
   let anyTriggers = false;
   
+  // Get intersection points directly from the layer
+  const intersectionPoints = layer.intersectionPoints || [];
+  const maxIntersections = Math.min(intersectionPoints.length, 100); // Use reasonable upper limit
+  
   // Process each intersection point
-  for (let i = 0; i < 100; i++) { // Use a reasonable upper limit
+  for (let i = 0; i < maxIntersections; i++) {
     // Create a unique vertex ID for the intersection point
     const vertexId = `${layer.id}-intersection-${ci}-${i}`;
     
@@ -1648,15 +1732,22 @@ function detectIntersectionSubframeTriggers(
             }
           });
           
+          // Get intersection data from layer if available
+          const intersectionPoint = intersectionPoints[i] || {
+            x: crossingResult.position.x,
+            y: crossingResult.position.y
+          };
+          
           // Create note based on intersection properties
           const note = createNote({
-            x: crossingResult.position.x,
-            y: crossingResult.position.y,
+            x: intersectionPoint.x,
+            y: intersectionPoint.y,
             isIntersection: true,
             isStarCut: isStarCuts,
             intersectionIndex: i,
             copyIndex: ci,
-            frequency: Math.hypot(crossingResult.position.x, crossingResult.position.y) * 2,
+            frequency: Math.hypot(intersectionPoint.x, intersectionPoint.y) * 2,
+            layerId: layer.id // Include layer ID in the note data
           }, state);
           
           // Add subframe-specific properties
@@ -1698,10 +1789,11 @@ function detectIntersectionSubframeTriggers(
                 camera, 
                 renderer, 
                 isQuantized, 
-                layer
+                layer // Pass layer for layer-specific styling
               );
               
-              // Set as triggered
+              // Mark as triggered
+              triggeredNow.add(vertexId);
               anyTriggers = true;
             }
           } else {
@@ -1718,21 +1810,18 @@ function detectIntersectionSubframeTriggers(
               camera, 
               renderer, 
               false, // not quantized
-              layer
+              layer // Pass layer for layer-specific styling
             );
             
-            // Set as triggered
+            // Mark as triggered
+            triggeredNow.add(vertexId);
             anyTriggers = true;
           }
-          
-          // Add to triggered set
-          triggeredNow.add(vertexId);
         }
       }
     } catch (error) {
-      // If we get an error, likely we've reached the end of intersection points
-      // No need to process further
-      break;
+      // Log error but continue processing other intersections
+      console.error(`Error processing intersection ${i} in copy ${ci} of layer ${layer.id}:`, error);
     }
   }
   
