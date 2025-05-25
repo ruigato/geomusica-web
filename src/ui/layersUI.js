@@ -94,7 +94,15 @@ export function setupLayersUI(layerManager) {
   const layerColorPicker = document.createElement('input');
   layerColorPicker.type = 'color';
   layerColorPicker.id = 'layerColorPicker';
-  layerColorPicker.value = '#ff0000';
+  
+  // Set the color picker to the active layer's color
+  const activeLayer = layerManager.getActiveLayer();
+  if (activeLayer && activeLayer.color) {
+    layerColorPicker.value = '#' + activeLayer.color.getHexString();
+  } else {
+    layerColorPicker.value = '#ff0000'; // Fallback to red if no active layer
+  }
+  
   layerColorPicker.addEventListener('change', (e) => {
     const activeLayer = layerManager.getActiveLayer();
     if (activeLayer) {
