@@ -254,7 +254,7 @@ export class Layer {
   }
   
   /**
-   * Activate this layer (make it the current editing target)
+   * Activate this layer (make it the current active layer)
    */
   activate() {
     this.active = true;
@@ -314,8 +314,57 @@ export class Layer {
       }
     }
     
-    // Ensure this layer has valid geometry for trigger detection when activated
-    this.ensureValidGeometry();
+    // FIXED: Initialize timing variables from centralized timing system
+    // This prevents timing jumps when switching between layers
+    const globalState = this.group?.userData?.globalState;
+    if (globalState) {
+      // Get the time subdivision multiplier for this layer
+      const timeSubdivisionMultiplier = this.state.useTimeSubdivision ? 
+        (this.state.timeSubdivisionValue || 1) : 1;
+      
+      // FIXED: Only initialize angle if not already set to prevent jumps when switching
+      // Use existing values if available, only get new ones if this is first activation
+      if (this.currentAngle === undefined) {
+        // Use the global timing system to get initial angle data for this layer
+        const angleData = globalState.getLayerAngleData(
+          this.id,
+          timeSubdivisionMultiplier,
+          performance.now() / 1000 // Current time in seconds
+        );
+        
+        // Use the angle data directly
+        this.currentAngle = angleData.angleRadians;
+        this.previousAngle = this.currentAngle;
+        this.accumulatedAngle = angleData.angleDegrees;
+        this.lastUpdateTime = angleData.lastUpdateTime;
+      }
+      
+      // Just update the multiplier in the global timing system
+      // without changing the angle or timing
+      globalState.getLayerAngleData(
+        this.id,
+        timeSubdivisionMultiplier,
+        this.lastUpdateTime || (performance.now() / 1000)
+      );
+    }
+    
+    // FIXED: Don't recreate geometry when activating a layer - only check if it's completely missing
+    // Only call ensureValidGeometry if the layer has no geometry at all
+    if (!this.baseGeo || !this.group || this.group.children.length === 0) {
+      this.ensureValidGeometry();
+    } else {
+      // Just ensure the layer and group are visible
+      this.visible = true;
+      if (this.group) {
+        this.group.visible = true;
+      }
+      
+      // Ensure the baseGeo has proper userData for trigger detection
+      if (this.baseGeo && !this.baseGeo.userData.layerId) {
+        this.baseGeo.userData.layerId = this.id;
+        this.baseGeo.userData.vertexCount = this.state.segments;
+      }
+    }
     
     // Trigger UI updates for this layer
     this.forceUIUpdate();
@@ -676,145 +725,140 @@ export class Layer {
   }
   
   /**
-   * Force recreation of layer geometry with current parameters
+   * Recreate the geometry for this layer
+   * This is used when geometry parameters change
    */
   recreateGeometry() {
-    // FIXED: Get layer manager reference at the start for use throughout the function
-    const layerManager = this.getLayerManager();
+    // FIXED: Skip recreation if we just switched to this layer
+    if (this._justSwitchedTo) {
+      if (DEBUG_LOGGING) {
+        console.log(`[LAYER ${this.id}] Skipping geometry recreation after layer switch`);
+      }
+      return;
+    }
     
-    // FIXED: Enhanced geometry disposal with reference checking
-    let oldGeometry = null;
+    // Reset the trigger set to avoid false positives
+    if (this.state.lastTrig) {
+      this.state.lastTrig.clear();
+    }
+    
+    // Create a dedicated THREE.Group for this layer if it doesn't exist
+    if (!this.group) {
+      this.group = new THREE.Group();
+      this.group.name = `layer-${this.id}`;
+      this.group.userData.layerId = this.id;
+      
+      // Set up state access via getter to avoid circular references
+      this.group.userData.stateId = this.id;
+      Object.defineProperty(this.group.userData, 'state', {
+        get: () => this.state,
+        configurable: true
+      });
+    }
+    
+    // Check for existing baseGeo and dispose if it exists
     if (this.baseGeo) {
-      oldGeometry = this.baseGeo;
-      
-      // Check if the old geometry is still in use by other objects
-      let isGeometryInUse = false;
-      
-      // Check if the geometry is being used by any children in the group
-      if (this.group) {
-        this.group.traverse((child) => {
-          if (child.geometry === oldGeometry) {
-            isGeometryInUse = true;
-          }
-        });
+      if (this.baseGeo.dispose) {
+        this.baseGeo.dispose();
       }
-      
-      // Check if other layers might be using this geometry
-      if (layerManager && layerManager.layers) {
-        for (const layer of layerManager.layers) {
-          if (layer !== this && layer.baseGeo === oldGeometry) {
-            isGeometryInUse = true;
-            break;
-          }
-          
-          // Check if any of the layer's group children use this geometry
-          if (layer.group) {
-            layer.group.traverse((child) => {
-              if (child.geometry === oldGeometry) {
-                isGeometryInUse = true;
-              }
-            });
-          }
-          
-          if (isGeometryInUse) break;
-        }
-      }
-      
-      // Only dispose if not in use
-      if (!isGeometryInUse && oldGeometry.dispose) {
-        if (DEBUG_LOGGING) {
-          
-        }
-        oldGeometry.dispose();
-      } else if (isGeometryInUse && DEBUG_LOGGING) {
-        
-      }
+      this.baseGeo = null;
     }
     
-    // FIXED: Clear previous vertex positions to prevent false triggers after geometry changes
-    // This prevents false positive axis crossings when comparing old vertex positions with new ones
-    if (this.prevWorldVertices) {
-      this.prevWorldVertices.clear();
-      if (DEBUG_LOGGING) {
-        
-      }
+    // Ensure we have a material for this layer
+    if (!this.material) {
+      this.material = new THREE.LineBasicMaterial({
+        color: this.color,
+        transparent: true,
+        opacity: 1.0,
+        depthTest: false,
+        depthWrite: false,
+        linewidth: 2
+      });
     }
     
-    // FIXED: Clear last triggered set to prevent stale trigger state
-    if (this.lastTrig) {
-      this.lastTrig.clear();
-      if (DEBUG_LOGGING) {
-        
-      }
-    }
+    // Create new geometry
+    this.baseGeo = createPolygonGeometry(
+      this.state.radius,
+      this.state.segments,
+      this.state
+    );
     
-    try {
-      // Create new geometry with current parameters
-      this.baseGeo = createPolygonGeometry(
-        this.state.radius,
-        this.state.segments,
-        this.state
-      );
-      
-      // FIXED: Ensure the new geometry has proper metadata
-      if (this.baseGeo) {
-        this.baseGeo.userData = this.baseGeo.userData || {};
-        this.baseGeo.userData.layerId = this.id;
-        this.baseGeo.userData.vertexCount = this.state.segments;
-        this.baseGeo.userData.createdAt = Date.now();
-        
-        if (DEBUG_LOGGING) {
-          
+    // Store creation timestamp and layer ID in geometry userData
+    this.baseGeo.userData = {
+      createdAt: Date.now(),
+      layerId: this.id,
+      vertexCount: this.state.segments
+    };
+    
+    // Clean up old geometry children from group
+    if (this.group.children.length > 0) {
+      // Store children we want to keep (not line objects)
+      const childrenToKeep = this.group.children.filter(child => {
+        // Keep specialized marker objects
+        if (child.userData && (
+          child.userData.isMarker ||
+          child.userData.isIntersectionGroup ||
+          child.userData.isAxisLabel
+        )) {
+          return true;
         }
-      }
-      
-      // FIXED: Force parameter changes to ensure render update with validation
-      if (this.state && this.state.parameterChanges) {
-        this.state.parameterChanges.radius = true;
-        this.state.parameterChanges.segments = true;
-        this.state.parameterChanges.copies = true;
         
-        // FIXED: Ensure state synchronization across all systems
-        // Update UI elements to reflect the active state
-        if (this.active && window.updateUIFromState) {
-          try {
-            window.updateUIFromState(this.state);
-          } catch (uiError) {
-            
+        // Keep any other special objects (camera, lights, etc.)
+        if (child.type !== 'Line' && 
+            child.type !== 'LineLoop' && 
+            child.type !== 'LineSegments') {
+          return true;
+        }
+        
+        // Otherwise dispose and remove
+        if (child.geometry) {
+          child.geometry.dispose();
+        }
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(m => m.dispose());
+          } else {
+            child.material.dispose();
           }
         }
-        
-        // FIXED: Trigger a more robust approach to get the active state
-        if (layerManager && layerManager.activeLayerId === this.id) {
-          // Ensure the layer manager knows about the geometry change
-          if (layerManager.onActiveLayerGeometryChanged) {
-            try {
-              layerManager.onActiveLayerGeometryChanged(this);
-            } catch (managerError) {
-              
-            }
-          }
-        }
-      }
+        return false;
+      });
       
-      if (DEBUG_LOGGING) {
-        
-      }
-      
-    } catch (error) {
-      console.error(`[LAYER ${this.id}] Error creating new geometry:`, error);
-      
-      // FIXED: Fallback - restore old geometry if new creation fails
-      if (oldGeometry && !this.baseGeo) {
-        
-        this.baseGeo = oldGeometry;
-      }
-      
-      // Re-throw to let calling code handle the error
-      throw error;
+      // Replace group children with filtered list
+      this.group.children.length = 0;
+      childrenToKeep.forEach(child => this.group.add(child));
     }
     
-    return this.baseGeo;
+    // Add debug sphere at center
+    let debugSphere = this.group.children.find(
+      child => child.type === 'Mesh' && child.geometry && child.geometry.type === 'SphereGeometry'
+    );
+    
+    if (!debugSphere) {
+      const sphereGeo = new THREE.SphereGeometry(5, 8, 8);
+      const sphereMat = new THREE.MeshBasicMaterial({
+        color: this.color,
+        transparent: true,
+        opacity: 0.5,
+        depthTest: false
+      });
+      debugSphere = new THREE.Mesh(sphereGeo, sphereMat);
+      this.group.add(debugSphere);
+    }
+    
+    if (DEBUG_LOGGING) {
+      
+    }
+    
+    // Force the state to update the group
+    this.state.needsIntersectionUpdate = true;
+    
+    // Log that geometry was recreated
+    if (DEBUG_LOGGING) {
+      
+    }
+    
+    return this;
   }
   
   /**
@@ -867,86 +911,44 @@ export class Layer {
   }
   
   /**
-   * Update the layer's rotation angle with subframe precision
+   * Update the rotation angle for this layer
    * @param {number} currentTime Current time in seconds
    */
   updateAngle(currentTime) {
+    // FIXED: Ensure we have a previous angle for continuity
+    if (this.currentAngle === undefined) {
+      this.currentAngle = 0;
+    }
+    
     // Store previous angle for marker hit detection
-    this.previousAngle = this.currentAngle || 0;
+    this.previousAngle = this.currentAngle;
     
     // Get global state manager (which should be attached to the group)
     const globalState = this.group?.userData?.globalState;
     
     if (globalState) {
-      // Get base angle from global state (in degrees)
-      const baseAngleInDegrees = globalState.lastAngle || 0;
+      // FIXED: Use the centralized timing system instead of our own calculations
+      // Get the time subdivision multiplier for this layer
+      const timeSubdivisionMultiplier = this.state.useTimeSubdivision ? 
+        (this.state.timeSubdivisionValue || 1) : 1;
       
-      // Initialize tracking properties if they don't exist
-      if (this.lastBaseAngle === undefined) {
-        this.lastBaseAngle = baseAngleInDegrees;
-        this.accumulatedAngle = baseAngleInDegrees;
-        this.lastUpdatePreciseTime = currentTime;
+      // FIXED: Ensure we have a valid lastUpdateTime for continuous motion
+      if (this.lastUpdateTime === undefined) {
+        this.lastUpdateTime = currentTime - 0.016; // Add a small delta to ensure motion
       }
       
-      // Calculate elapsed time with high precision
-      const elapsedTime = currentTime - (this.lastUpdatePreciseTime || currentTime);
-      this.lastUpdatePreciseTime = currentTime;
+      // Use the global timing system to get angle data for this layer
+      const angleData = globalState.getLayerAngleData(
+        this.id,
+        timeSubdivisionMultiplier,
+        currentTime
+      );
       
-      // Calculate how much the base angle has changed since last frame
-      let deltaAngle = baseAngleInDegrees - this.lastBaseAngle;
+      // Use the angleRadians directly from the global timing system
+      this.currentAngle = angleData.angleRadians;
       
-      // Handle wraparound from 359->0 degrees
-      if (deltaAngle < -180) {
-        deltaAngle += 360;
-      } else if (deltaAngle > 180) {
-        deltaAngle -= 360;
-      }
-      
-      // Apply time subdivision multiplier to the delta if enabled
-      if (this.state.useTimeSubdivision && this.state.timeSubdivisionValue !== 1) {
-        const multiplier = this.state.timeSubdivisionValue;
-        
-        // Store original delta for logging
-        const originalDelta = deltaAngle;
-        
-        // Apply the time subdivision multiplier
-        deltaAngle *= multiplier;
-        
-        // Enhanced logging for debugging time subdivision
-        if (DEBUG_LOGGING && Math.random() < 0.003) {
-          
-          
-          
-        }
-      } else if (DEBUG_LOGGING && Math.random() < 0.001) {
-        // Log when time subdivision is disabled occasionally
-        
-      }
-      
-      // Apply subframe precision smoothing - use elapsed time to scale the delta angle change
-      // This makes movement smoother at varying frame rates
-      const targetFrameTime = 1/60; // Target 60fps as baseline
-      const timeRatio = elapsedTime / targetFrameTime;
-      
-      // Only apply time-based scaling if we have valid time measurements
-      if (isFinite(timeRatio) && timeRatio > 0) {
-        // Scale deltaAngle by the time ratio to maintain consistent rotation speed
-        // regardless of actual frame rate
-        deltaAngle *= timeRatio;
-      }
-      
-      // Accumulate the angle continuously
-      this.accumulatedAngle = (this.accumulatedAngle + deltaAngle) % 360;
-      if (this.accumulatedAngle < 0) this.accumulatedAngle += 360;
-      
-      // Store the current base angle for next frame's calculation
-      this.lastBaseAngle = baseAngleInDegrees;
-      
-      // Convert accumulated angle from degrees to radians
-      this.currentAngle = (this.accumulatedAngle * Math.PI) / 180;
-      
-      // IMPORTANT: DO NOT apply rotation here!
-      // LayerManager.updateLayers will handle applying rotation to the group.
+      // Also update our accumulated angle for consistency
+      this.accumulatedAngle = angleData.angleDegrees;
     } else {
       // Fallback calculation if no global state is available
       if (DEBUG_LOGGING) {
@@ -962,10 +964,6 @@ export class Layer {
       if (this.state && this.state.useTimeSubdivision && this.state.timeSubdivisionValue !== 1) {
         const multiplier = this.state.timeSubdivisionValue;
         this.currentAngle = (this.currentAngle || 0) + rotationSpeed * deltaTime * multiplier;
-        
-        if (DEBUG_LOGGING && Math.random() < 0.003) {
-          
-        }
       } else {
         this.currentAngle = (this.currentAngle || 0) + rotationSpeed * deltaTime;
       }

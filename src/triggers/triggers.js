@@ -42,7 +42,10 @@ subframeEngine.initialize();
 // Subframe timing variables
 const POSITION_RECORD_INTERVAL = 1 / 120; // Record positions at max 120Hz for efficiency
 const DEFAULT_COOLDOWN_TIME = 0.05; // 50ms default cooldown between triggers
-let lastPositionRecordTime = 0;
+
+// FIXED: Change from global lastPositionRecordTime to a map keyed by layer ID
+// This ensures each layer has its own independent recording schedule
+const lastPositionRecordTimes = new Map();
 
 // Setup periodic cleanup timer
 let cleanupTimerId = null;
@@ -618,8 +621,8 @@ export function resetTriggerSystem() {
   }
   setupCleanupTimer();
   
-  // Reset the last position record time
-  lastPositionRecordTime = 0;
+  // FIXED: Reset the layer-specific position record times
+  lastPositionRecordTimes.clear();
 }
 
 /**
@@ -994,7 +997,7 @@ function detectIntersectionTriggers(
 }
 
 /**
- * Detect triggers for a layer using subframe precision
+ * Detect audio triggers for a layer with subframe precision
  * @param {Object} layer Layer to detect triggers for
  * @param {number} tNow Current time in seconds
  * @param {Function} audioCallback Callback function for triggered audio
@@ -1010,9 +1013,25 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
   const state = layer.state;
   const group = layer.group;
   
+  // FIXED: Early return for layers with 0 copies to prevent any trigger processing
+  if (!state || state.copies <= 0) {
+    return false;
+  }
+  
   // Skip processing if group is not visible
   if (!group.visible) {
     return false;
+  }
+  
+  // FIXED: Ensure trigger detection works properly for all layers
+  // Force-set layerId in userData to ensure correct layer identification
+  if (group.userData) {
+    group.userData.layerId = layer.id;
+    
+    // Also ensure we have a stateId reference
+    if (group.userData.stateId === undefined || group.userData.stateId !== layer.id) {
+      group.userData.stateId = layer.id;
+    }
   }
   
   // Initialize trigger rate limiting for lerping if needed
@@ -1065,6 +1084,13 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
     }
   }
   
+  // FIXED: Ensure layer's baseGeo has proper userData for correct trigger detection
+  if (layer.baseGeo && (!layer.baseGeo.userData || layer.baseGeo.userData.layerId !== layer.id)) {
+    layer.baseGeo.userData = layer.baseGeo.userData || {};
+    layer.baseGeo.userData.layerId = layer.id;
+    layer.baseGeo.userData.vertexCount = state.segments;
+  }
+  
   // Setup variables for tracking triggers
   const triggeredNow = new Set();
   
@@ -1084,11 +1110,16 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
     return false;
   }
   
-  // SUBFRAME ENHANCEMENT: Record positions at fixed intervals
+  // FIXED: Check if this is the first time processing this layer and initialize its timestamp
+  if (!lastPositionRecordTimes.has(layer.id)) {
+    lastPositionRecordTimes.set(layer.id, tNow - POSITION_RECORD_INTERVAL - 0.001); // Set to just before interval
+  }
+  
+  // SUBFRAME ENHANCEMENT: Record positions at fixed intervals - layer-specific timing
   // This decouples position recording from frame rate for more consistent trigger detection
-  if (tNow - lastPositionRecordTime >= POSITION_RECORD_INTERVAL) {
+  if (tNow - lastPositionRecordTimes.get(layer.id) >= POSITION_RECORD_INTERVAL) {
     recordLayerVertexPositions(layer, tNow);
-    lastPositionRecordTime = tNow;
+    lastPositionRecordTimes.set(layer.id, tNow);
   }
   
   // SUBFRAME ENHANCEMENT: Check for triggers with subframe precision
@@ -1329,8 +1360,16 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
   const state = layer.state;
   const group = layer.group;
   
+  // FIXED: Additional early return for layers with 0 copies
+  if (!state || state.copies <= 0) {
+    return false;
+  }
+  
   // Skip if group is not visible
   if (!group.visible) return false;
+  
+  // FIXED: Ensure we have the correct layer ID
+  const layerId = layer.id;
   
   // Get cooldown time from state or use default
   const cooldownTime = state.triggerCooldown || DEFAULT_COOLDOWN_TIME;
@@ -1361,8 +1400,8 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
   for (let ci = 0; ci < copies; ci++) {
     // Process each vertex in this copy
     for (let vi = 0; vi < state.segments; vi++) {
-      // Create a unique vertex ID
-      const vertexId = `${layer.id}-${ci}-${vi}`;
+      // Create a unique vertex ID that includes the layer ID
+      const vertexId = `${layerId}-${ci}-${vi}`;
       
       try {
         // Skip if this trigger is in the recent triggers map and still in cooldown
@@ -1417,7 +1456,7 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
               copyIndex: ci,
               vertexIndex: vi,
               isIntersection: false,
-              layerId: layer.id
+              layerId: layerId // FIXED: Explicitly use layerId
             }, state);
             
             // Add subframe-specific properties
@@ -1425,6 +1464,7 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
             note.isSubframe = true;
             note.crossingFactor = crossingResult.crossingFactor;
             note.position = crossingResult.position;
+            note.layerId = layerId; // FIXED: Always include layerId in the note
           } catch (e) {
             // Fallback if createNote fails
             const frequency = Math.hypot(nonRotatedX, nonRotatedY) * 2;
@@ -1439,7 +1479,8 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
               z: crossingResult.position.z,
               time: crossingResult.exactTime,
               isSubframe: true,
-              vertexId: vertexId
+              vertexId: vertexId,
+              layerId: layerId // FIXED: Include layerId in fallback note
             };
           }
           
@@ -1460,7 +1501,7 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
                 camera,
                 renderer,
                 isQuantized: true,
-                layer
+                layer: layer // FIXED: Pass the whole layer, not just the ID
               };
               
               // Handle quantization
@@ -1470,6 +1511,7 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
                 // Trigger with precise time
                 const noteCopy = {...note};
                 noteCopy.time = triggerTime;
+                noteCopy.layerId = layerId; // FIXED: Ensure layerId is set
                 
                 // Trigger audio
                 audioCallback(noteCopy);
@@ -1484,7 +1526,7 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
                   camera, 
                   renderer, 
                   isQuantized, 
-                  layer
+                  layer // FIXED: Explicitly pass the layer
                 );
                 
                 // Set as triggered
@@ -1492,6 +1534,9 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
               }
             } else {
               // Regular non-quantized trigger
+              // FIXED: Ensure layerId is set before calling audioCallback
+              if (!note.layerId) note.layerId = layerId;
+              
               audioCallback(note);
               
               // Create visual marker
@@ -1504,31 +1549,31 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
                 camera, 
                 renderer, 
                 false, // not quantized
-                layer
+                layer // FIXED: Explicitly pass the layer
               );
               
               // Set as triggered
               anyTriggers = true;
             }
-            
-            // Add to triggered set
-            triggeredNow.add(vertexId);
           }
         }
       } catch (error) {
-        console.error(`Error in subframe trigger detection for layer ${layer.id}, copy ${ci}, vertex ${vi}:`, error);
+        console.error(`Error processing vertex trigger for layer ${layerId}, copy ${ci}, vertex ${vi}:`, error);
       }
     }
     
-    // Process intersection points
-    detectIntersectionSubframeTriggers(
-      layer, ci, angle, timestamp, audioCallback, 
-      triggeredNow, triggeredPoints, camera, renderer, scene, cooldownTime
-    );
+    // Process intersection triggers for this copy if we have more than one copy
+    if (copies > 1 && state.useIntersections) {
+      const isIntersectionTriggered = detectIntersectionSubframeTriggers(
+        layer, ci, angle, timestamp, audioCallback, 
+        triggeredNow, triggeredPoints, camera, renderer, scene, cooldownTime
+      );
+      
+      if (isIntersectionTriggered) {
+        anyTriggers = true;
+      }
+    }
   }
-  
-  // Update the layer's last triggered set
-  layer.lastTrig = triggeredNow;
   
   return anyTriggers;
 }

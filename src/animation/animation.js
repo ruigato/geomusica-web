@@ -192,11 +192,6 @@ export function animate(props) {
       globalState.updateAngle(currentTime * 1000);
     }
     
-    // Use the SubframeTrigger system to detect triggers with high precision
-    if (triggerAudioCallback) {
-      detectLayerTriggers(activeLayer, currentTime, triggerAudioCallback);
-    }
-    
     // Update DOM label positions if the function is available
     if (typeof updateLabelPositions === 'function') {
       updateLabelPositions(activeLayer, cam, renderer);
@@ -205,6 +200,30 @@ export function animate(props) {
     // Update and fade out axis labels
     if (typeof updateAxisLabels === 'function') {
       updateAxisLabels();
+    }
+  }
+  
+  // FIXED: Detect triggers on ALL visible layers, not just the active one
+  if (triggerAudioCallback && scene._layerManager && scene._layerManager.layers) {
+    // Loop through all layers and detect triggers on each visible one
+    for (const layer of scene._layerManager.layers) {
+      // FIXED: Only process layers with both visibility AND copies > 0
+      if (layer && layer.visible && layer.state && layer.state.copies > 0) {
+        // FIXED: Create a unique context for each layer's trigger detection
+        // This prevents issues where processing one layer affects another
+        const layerContext = {
+          layerId: layer.id,
+          time: currentTime,
+          callback: (note) => {
+            // Ensure the note has the correct layer ID
+            const noteWithLayerId = {...note, layerId: layer.id};
+            triggerAudioCallback(noteWithLayerId);
+          }
+        };
+        
+        // Process this layer with its own context
+        detectLayerTriggers(layer, layerContext.time, layerContext.callback);
+      }
     }
   }
   

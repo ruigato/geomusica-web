@@ -12,6 +12,18 @@ export class GlobalStateManager {
     this.lastTime = performance.now();
     this.lastAngle = 0;
     
+    // FIXED: Centralized layer timing system
+    this._layerTimingSystem = {
+      // Base angle that all layers should refer to
+      baseAngle: 0,
+      // Layer-specific angle multipliers (for time subdivision)
+      layerMultipliers: new Map(),
+      // Last time the angles were updated
+      lastUpdateTime: performance.now() / 1000,
+      // Accumulated angles per layer (degrees)
+      accumulatedAngles: new Map()
+    };
+    
     // Audio engine parameters
     this.attack = DEFAULT_VALUES.ATTACK;
     this.decay = DEFAULT_VALUES.DECAY;
@@ -45,6 +57,81 @@ export class GlobalStateManager {
   }
   
   /**
+   * FIXED: Get layer angle data, creating a consistent timing reference for all layers
+   * @param {string} layerId Layer ID
+   * @param {number} timeSubdivisionValue Time subdivision multiplier for this layer
+   * @param {number} currentTime Current time in seconds
+   * @returns {Object} Angle data for the layer
+   */
+  getLayerAngleData(layerId, timeSubdivisionValue, currentTime) {
+    if (!this._layerTimingSystem) {
+      this._layerTimingSystem = {
+        baseAngle: this.lastAngle || 0,
+        layerMultipliers: new Map(),
+        lastUpdateTime: currentTime,
+        accumulatedAngles: new Map()
+      };
+    }
+    
+    // Store the multiplier for this layer
+    this._layerTimingSystem.layerMultipliers.set(layerId, timeSubdivisionValue || 1);
+    
+    // Calculate how much time has passed since the last update
+    const elapsedTime = currentTime - this._layerTimingSystem.lastUpdateTime;
+    
+    // FIXED: Always update angles even if this is the first access for this layer
+    // to maintain continuous rotation
+    if (elapsedTime > 0) {
+      // Calculate base rotation (degrees) based on BPM
+      // 120 BPM = 0.5 rotations per second = 180 degrees per second
+      const rotationsPerSecond = this.bpm / 240;
+      const baseDeltaAngleDegrees = rotationsPerSecond * 360 * elapsedTime;
+      
+      // Update the base angle
+      this._layerTimingSystem.baseAngle = (this._layerTimingSystem.baseAngle + baseDeltaAngleDegrees) % 360;
+      
+      // Update all layer angles with their respective multipliers
+      for (const [id, multiplier] of this._layerTimingSystem.layerMultipliers.entries()) {
+        // Get current accumulated angle for this layer (or initialize it)
+        const currentAngle = this._layerTimingSystem.accumulatedAngles.get(id) || this._layerTimingSystem.baseAngle;
+        
+        // Calculate new angle with this layer's multiplier
+        const newAngle = (currentAngle + (baseDeltaAngleDegrees * multiplier)) % 360;
+        
+        // Store the new accumulated angle
+        this._layerTimingSystem.accumulatedAngles.set(id, newAngle);
+      }
+      
+      // Update the last update time
+      this._layerTimingSystem.lastUpdateTime = currentTime;
+    }
+    
+    // Get the accumulated angle for this specific layer
+    let layerAngle = this._layerTimingSystem.accumulatedAngles.get(layerId);
+    
+    // FIXED: If this is the first time for this layer, initialize it based on the base angle
+    // but avoid causing a jump in animation by using the current base angle
+    if (layerAngle === undefined) {
+      layerAngle = this._layerTimingSystem.baseAngle;
+      this._layerTimingSystem.accumulatedAngles.set(layerId, layerAngle);
+      
+      // IMPORTANT: Don't update lastUpdateTime here - we want continuous motion
+      // instead of resetting the timer, which would cause a pause
+    }
+    
+    // Convert from degrees to radians for the return value
+    const angleRadians = (layerAngle * Math.PI) / 180;
+    
+    return {
+      angleDegrees: layerAngle,
+      angleRadians: angleRadians,
+      baseAngleDegrees: this._layerTimingSystem.baseAngle,
+      lastUpdateTime: this._layerTimingSystem.lastUpdateTime,
+      elapsedTime: elapsedTime
+    };
+  }
+  
+  /**
    * Set BPM (global tempo)
    * @param {number} value New BPM value
    */
@@ -56,8 +143,6 @@ export class GlobalStateManager {
       
     }
   }
-  
-  
   
   /**
    * Set quantization value

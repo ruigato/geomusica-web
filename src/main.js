@@ -190,16 +190,26 @@ function performStateSync(isLayerSwitch = false) {
     
     // FIXED: Better handling of parameter changes during layer switches
     if (isLayerSwitch && state && typeof state.resetParameterChanges === 'function') {
-      // Reset parameter changes to prevent unnecessary geometry recreation
+      // Reset parameter changes to prevent unnecessary geometry recreation during layer switch
       state.resetParameterChanges();
       
+      // FIXED: Also prevent any geometry updates during layer switches
+      // Set a flag to indicate we just switched layers and don't need geometry updates
+      if (activeLayer) {
+        activeLayer._justSwitchedTo = true;
+        
+        // Clear the flag after a short delay to allow normal updates after the switch
+        setTimeout(() => {
+          activeLayer._justSwitchedTo = false;
+        }, 100); // 100ms grace period
+      }
     }
     
-    // FIXED: Improved geometry update logic
+    // FIXED: Improved geometry update logic - skip if we're switching layers
     if (!isLayerSwitch && state && state.parameterChanges) {
       handleGeometryUpdates(state, activeLayer);
     } else if (isLayerSwitch) {
-      
+      // Skip geometry updates completely during layer switches
     }
     
   } catch (error) {
