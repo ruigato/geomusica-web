@@ -174,17 +174,14 @@ export class LayerManager {
   }
   
   /**
-   * Initialize the geometry for a layer
-   * @param {Layer} layer The layer to initialize
+   * Initialize layer geometry using current state parameters
+   * @param {Layer} layer Layer to initialize geometry for
    */
   initializeLayerGeometry(layer) {
     const state = layer.state;
     const layerId = layer.id;
     
-    if (DEBUG_LOGGING) {
-      
-      
-    }
+    console.log(`Initializing geometry for layer ${layerId} with radius=${state.radius}, copies=${state.copies}, segments=${state.segments}`);
     
     // Ensure we have some reasonable defaults
     state.radius = state.radius || 300;  // LARGER radius for visibility
@@ -204,9 +201,7 @@ export class LayerManager {
       state  // Use this specific layer's state
     );
     
-    if (DEBUG_LOGGING) {
-      
-    }
+    console.log(`Created geometry for layer ${layerId}, now updating group`);
     
     // Initialize the group with the geometry
     // IMPORTANT: Using the object parameter pattern for updateGroup - all params must be passed in an options object
@@ -225,9 +220,7 @@ export class LayerManager {
       justCalculatedIntersections: true
     });
     
-    if (DEBUG_LOGGING) {
-      
-    }
+    console.log(`Completed geometry initialization for layer ${layerId}`);
   }
   
   /**
@@ -239,56 +232,32 @@ export class LayerManager {
     if (this.activeLayerId === layerId) {
       return;
     }
-    
+
     if (DEBUG_LOGGING) {
-      
-    
-      // Log the current state of the layer we're switching to before making it active
-      if (this.layers[layerId]) {
-        
-      }
+      console.log(`Activating layer ${layerId}`);
     }
-    
-    // Deactivate the current active layer
-    if (this.activeLayerId !== undefined && this.layers[this.activeLayerId]) {
-      const previousLayerId = this.activeLayerId;
-      const previousLayer = this.layers[previousLayerId];
-      
-      previousLayer.deactivate();
-      if (DEBUG_LOGGING) {
-        
-      }
+
+    // Get the layer
+    const layer = this.layers[layerId];
+    if (!layer) {
+      console.error(`Cannot activate layer ${layerId} - not found`);
+      return;
     }
-    
-    // Make the new layer active
-    this.layers[layerId].activate();
+
+    // Deactivate current active layer
+    if (this.activeLayerId !== null && this.layers[this.activeLayerId]) {
+      this.layers[this.activeLayerId].active = false;
+    }
+
+    // Set new active layer
     this.activeLayerId = layerId;
-    if (DEBUG_LOGGING) {
-      
-    }
-    
-    // Ensure window._appState is synchronized with the active layer
+    layer.active = true;
+
+    // Sync state with window._appState for UI
     this.syncWindowAppState();
 
-    // Force UI update with the new layer's parameters
-    const newLayerState = this.layers[layerId].state;
-    
-    // Force parameter changes to trigger UI updates
-    if (newLayerState && newLayerState.parameterChanges) {
-      // Mark all parameter changes to force UI updates
-      Object.keys(newLayerState.parameterChanges).forEach(key => {
-        newLayerState.parameterChanges[key] = true;
-      });
-      
-      if (DEBUG_LOGGING) {
-        
-      }
-    }
-    
-    // Try direct UI update approaches
-    this.forceUIUpdate(layerId, newLayerState);
-    
-    return this.layers[layerId];
+    // Trigger UI updates for this layer
+    this.forceUIUpdate(layerId, layer.state);
   }
   
   /**
@@ -316,47 +285,52 @@ export class LayerManager {
   }
   
   /**
-   * Force UI update when changing layers using multiple approaches
-   * @param {number} layerId ID of the layer
-   * @param {Object} layerState The layer's state object
-   * @private
+   * Force UI update for a layer
+   * @param {number} layerId Layer ID to update UI for
+   * @param {Object} layerState Layer state object
    */
   forceUIUpdate(layerId, layerState) {
-    // First try using global UI update function
+    // Skip if no layerState provided
+    if (!layerState) {
+      return;
+    }
+
+    // Try using the global updateUIFromState function
     if (window.updateUIFromState && typeof window.updateUIFromState === 'function') {
       try {
         window.updateUIFromState(layerState);
         if (DEBUG_LOGGING) {
-          
+          console.log(`Updated UI from state for layer ${layerId}`);
         }
       } catch (error) {
-        console.error(`[LAYER MANAGER] Error updating UI from state:`, error);
+        console.error(`Error updating UI from state for layer ${layerId}:`, error);
       }
     }
-    
-    // Also try layer-specific UI update function
+
+    // Try using the global updateUIForActiveLayer function
     if (window.updateUIForActiveLayer && typeof window.updateUIForActiveLayer === 'function') {
       try {
         window.updateUIForActiveLayer(layerId);
         if (DEBUG_LOGGING) {
-          
+          console.log(`Updated UI for active layer ${layerId}`);
         }
       } catch (error) {
-        console.error(`[LAYER MANAGER] Error updating UI for active layer:`, error);
+        console.error(`Error updating UI for active layer ${layerId}:`, error);
       }
     }
-    
-    // Try to dispatch custom event that UI might be listening for
+
+    // Try dispatching a custom event that UI components might listen for
     try {
-      const event = new CustomEvent('layerChanged', { 
-        detail: { layerId, state: layerState }
+      const event = new CustomEvent('layerActivated', { 
+        detail: { layerId: layerId, state: layerState }
       });
       window.dispatchEvent(event);
+      
       if (DEBUG_LOGGING) {
-        
+        console.log(`Dispatched layerActivated event for layer ${layerId}`);
       }
     } catch (error) {
-      console.error(`[LAYER MANAGER] Error dispatching layer change event:`, error);
+      console.error(`Error dispatching layer activated event for layer ${layerId}:`, error);
     }
   }
   
@@ -585,300 +559,102 @@ export class LayerManager {
   }
   
   /**
-   * Update all layers
-   * @param {Object} animationParams Animation parameters from main.js
+   * Update all layers in the scene
+   * @param {Object} animationParams Animation parameters
+   * @returns {Promise} Promise that resolves when all layers are updated
    */
   async updateLayers(animationParams) {
     const { 
-      scene, 
-      tNow, 
-      dt, 
-      angle, 
-      lastAngle, 
-      triggerAudioCallback,
-      activeLayerId, // This is now passed from animation.js
-      camera,        // Add camera from animation params
-      renderer       // Add renderer from animation params
+      scene, time, deltaTime, audioCallback 
     } = animationParams;
     
-    // Ensure we have the global previous angle for subframe precision
-    const previousAngle = animationParams.previousAngle || lastAngle;
-
-    // Ensure all layers have camera and renderer access
-    if (camera && renderer) {
-      // Use our dedicated method to propagate camera and renderer references
-      this.ensureCameraAndRendererForLayers(camera, renderer);
-      
-      // Set global window references as a fallback
-      if (!window.mainCamera) window.mainCamera = camera;
-      if (!window.mainRenderer) window.mainRenderer = renderer;
-      if (!window.mainScene) window.mainScene = scene;
-    } else {
-      
+    // Skip if no layers
+    if (!this.layers || this.layers.length === 0) {
+      return;
     }
-
-    // Ensure we're working with the correct active layer
-    if (activeLayerId !== undefined && this.activeLayerId !== activeLayerId) {
-      
-      // Force sync to the one from animation params
-      this.setActiveLayer(activeLayerId);
-    }
-
-    // Add frame counter to control logging frequency
-    this.frameCounter = (this.frameCounter || 0) + 1;
-    const shouldLog = DEBUG_LOGGING && (this.frameCounter % 900 === 0);
-
-    // Check if window._appState is pointing to the correct layer state
-    // This handles cases where _appState might have been reassigned elsewhere
-    this.syncWindowAppState();
-
-    // Add camera update based on layer geometry
-    this.updateCameraForLayerBounds(scene, shouldLog);
-
-    // Debug log all layers' key parameters if logging is enabled
-    if (shouldLog) {
-      
-      this.layers.forEach(layer => {
-        
-      });
-    }
-
-    // Track which layer's geometry was updated this frame for debugging
-    const updatedGeometryForLayers = [];
     
-    // Track layers that need intersection updates
-    const layersNeedingIntersectionUpdates = [];
-
-    // Process each layer
-    for (let layerId = 0; layerId < this.layers.length; layerId++) {
-      const layer = this.layers[layerId];
-      
-      // Skip if layer is invalid
-      if (!layer) continue;
-      
-      // Get direct reference to the layer's state
-      const state = layer.state;
-      
-      // Skip processing if state is undefined
-      if (!state) continue;
-      
-      // Check if this is the active layer
-      const isActiveLayer = layerId === this.activeLayerId;
-      
-      // Skip if invisible and not the active layer (active layer should always process)
-      if (!layer.visible && !isActiveLayer) {
+    // Add debug logging for animation parameters
+    if (Math.random() < 0.01) {
+      console.log(`updateLayers called with time=${time}, deltaTime=${deltaTime}`);
+    }
+    
+    // First pass: Update all layers
+    for (const layer of this.layers) {
+      // Skip if layer is disabled
+      if (!layer || !layer.visible) {
         continue;
       }
       
-      // FIXED: Update lerp values for this layer's state
-      // This is required for the Lag parameter to work correctly
-      if (state.updateLerp && typeof state.updateLerp === 'function') {
-        // Convert ms to seconds for the lerp update
-        const dtSeconds = dt / 1000;
-        state.updateLerp(dtSeconds);
+      // Record previous angle for trigger detection
+      layer.previousAngle = layer.currentAngle || 0;
+      
+      // Update layer state - will update currentAngle
+      if (typeof layer.update === 'function') {
+        layer.update(time, deltaTime);
+      } else {
+        // If layer doesn't have an update method, just update the angle
+        const globalState = layer.state?.globalState || window._globalState;
         
-        // Debugging for lerp updates
-        if (state.useLerp && shouldLog) {
+        // Get time subdivision multiplier for this layer
+        const timeSubdivisionMultiplier = layer.state?.useTimeSubdivision ? 
+          (layer.state.timeSubdivisionValue || 1) : 1;
+        
+        // Get angle data from global timing system if available
+        if (globalState && typeof globalState.getLayerAngleData === 'function') {
+          const angleData = globalState.getLayerAngleData(
+            layer.id,
+            timeSubdivisionMultiplier,
+            time
+          );
           
+          // Set current angle
+          layer.currentAngle = angleData.angleRadians;
+        } else {
+          // Fallback - simple rotation at 45 degrees per second
+          layer.currentAngle = (layer.currentAngle || 0) + (Math.PI / 4) * deltaTime * (timeSubdivisionMultiplier || 1);
         }
       }
       
-      // Reset intersection update flag to prevent constant recalculation
-      if (state.justCalculatedIntersections) {
-        state.justCalculatedIntersections = false;
+      // Update layer's camera and renderer references if needed
+      this.ensureCameraAndRendererForLayers(
+        scene?.userData?.camera || window.mainCamera,
+        scene?.userData?.renderer || window.mainRenderer
+      );
+      
+      // Skip trigger detection if layer isn't active
+      if (!layer.active) {
+        continue;
       }
       
-      // Check if any parameters have changed
-      const hasParameterChanges = state.hasParameterChanged();
-      
-      // Check if we need to update intersections based on parameter changes
-      // that would affect geometry (radius, segments, copies, etc.)
-      if (hasParameterChanges) {
-        // Parameters that affect intersection calculation
-        const intersectionRelevantParams = [
-          'radius', 'segments', 'copies', 'stepScale', 'angle',
-          'useStars', 'starSkip', 'useCuts'
-        ];
-        
-        // Check if any of these parameters changed
-        const needsIntersectionUpdate = Object.entries(state.parameterChanges)
-          .some(([param, changed]) => changed && intersectionRelevantParams.includes(param));
-        
-        if (needsIntersectionUpdate) {
-          layer.needsIntersectionUpdate = true;
-          layersNeedingIntersectionUpdates.push(layerId);
-        }
+      // Skip trigger detection if angle hasn't changed
+      if (layer.currentAngle === layer.previousAngle && !layer.state?.isLerping) {
+        continue;
       }
       
-      // CRITICAL FIX: Create geometry ONLY for this layer when it's needed
-      // This ensures we're updating the correct layer's geometry
-      if (!layer.baseGeo || hasParameterChanges) {
-        // Dispose old geometry
-        if (layer.baseGeo && layer.baseGeo.dispose) {
-          layer.baseGeo.dispose();
-        }
-        
-        // Create new geometry using THIS LAYER'S state values (not the active layer)
-        layer.baseGeo = createPolygonGeometry(
-          state.radius,
-          state.segments,
-          state  // Use this specific layer's state
-        );
-        
-        // Add necessary userData for trigger detection
-        layer.baseGeo.userData.layerId = layerId;
-        layer.baseGeo.userData.vertexCount = state.segments;
-        
-        updatedGeometryForLayers.push(layerId);
-        
-        // Log geometry recreation for debugging
-        if (DEBUG_LOGGING) {
-          
-        }
+      // Detect triggers for this layer
+      const triggeredPoints = detectLayerTriggers(
+        layer,
+        time,
+        audioCallback
+      );
+      
+      // Handle any triggers (currently handled by detectLayerTriggers internally)
+      if (triggeredPoints && triggeredPoints.length > 0 && DEBUG_LOGGING) {
+        console.log(`Layer ${layer.id} triggered ${triggeredPoints.length} points`);
       }
-      
-      // Ensure group has state reference for trigger detection
-      if (layer.group) {
-        // Don't set state directly since it's now a getter-only property
-        // Instead, ensure stateId is set correctly for the getter to use
-        layer.group.userData.stateId = layerId;
-        
-        // Also add layerId to the group's userData for trigger system to identify
-        layer.group.userData.layerId = layerId;
-      }
-      
-      // Only update the group if there are parameter changes, we're lerping, or it's the first few frames
-      const shouldUpdateGroup = 
-        hasParameterChanges || 
-        state.isLerping() || 
-        state.justCalculatedIntersections ||
-        layer.needsIntersectionUpdate || // Add check for layer-specific intersection updates
-        this.frameCounter < 10 || // Always update during first few frames for stability
-        // Force update if angle is different from target
-        (state.useLerp && Math.abs(state.angle - state.targetAngle) > 0.01);
-      
-      if (shouldUpdateGroup) {
-        // Update the group with current parameters - angle here is for cumulative angle between copies
-        // IMPORTANT: Using the object parameter pattern for updateGroup - all params must be passed in an options object
-        updateGroup({
-          group: layer.group,
-          state: state,
-          layer: layer,
-          scene: this.scene,
-          baseGeo: layer.baseGeo,
-          mat: layer.material,
-          copies: state.copies,
-          stepScale: state.stepScale,
-          segments: state.segments,
-          angle: state.angle, // Use the fixed angle between copies, not the animation angle
-          isLerping: state.isLerping && typeof state.isLerping === 'function' ? state.isLerping() : false,
-          justCalculatedIntersections: state.justCalculatedIntersections
-        });
-        
-        // Check if the layer still needs intersection updates after the updateGroup call
-        // If the updateGroup handled the intersections, we can remove it from the pending list
-        if (!layer.needsIntersectionUpdate) {
-          const index = layersNeedingIntersectionUpdates.indexOf(layerId);
-          if (index !== -1) {
-            layersNeedingIntersectionUpdates.splice(index, 1);
-          }
-        }
-        
-        if ((shouldLog || hasParameterChanges) && DEBUG_LOGGING) {
-          
-        }
-      }
-      
-      // IMPORTANT: Update the layer's angle with time subdivision applied
-      // This is the fix for time subdivision not working
-      if (typeof layer.updateAngle === 'function') {
-        // Current time in seconds (convert from ms)
-        const currentTimeInSeconds = tNow / 1000;
-        
-        // Store the previous angle before updating
-        layer.previousAngle = layer.currentAngle || 0;
-        
-        // Update with high precision timing
-        layer.updateAngle(currentTimeInSeconds);
-      }
-      
-      // IMPORTANT: Apply the rotation using the layer's calculated angle (which includes time subdivision)
-      // instead of directly using the global angle
-      if (layer.group) {
-        // If the layer has a calculated angle (from updateAngle), use it
-        // Otherwise fall back to the global angle
-        const rotationAngle = (layer.currentAngle !== undefined) ? 
-          layer.currentAngle : // This value already includes time subdivision
-          ((angle * Math.PI) / 180); // Convert from degrees to radians
-          
-        layer.group.rotation.z = rotationAngle;
-        
-        // Occasionally log rotation info for debugging
-        if (DEBUG_LOGGING && Math.random() < 0.001) {
-          const hasTimeSubdivision = state.useTimeSubdivision && state.timeSubdivisionValue !== 1;
-          
-        }
-      }
-      
-      // Detect triggers if this layer has copies
-      if (state.copies > 0) {
-        // Use direct layer trigger detection with the imported function
-        detectLayerTriggers(
-          layer,
-          tNow / 1000, // Convert milliseconds to seconds for subframe trigger system
-          (note) => {
-            // Add layer ID to the note for routing to correct instrument
-            const layerNote = { ...note, layerId: layerId };
-            return triggerAudioCallback(layerNote);
-          }
-        );
-      }
-      
-      // IMPORTANT: Clean up expired markers to allow fading
-      clearLayerMarkers(layer);
-      
-      // Reset parameter change flags
-      state.resetParameterChanges();
-      
-      // Update the layer's lastUpdateTime
-      layer.lastUpdateTime = tNow / 1000;
     }
     
-    // Process any remaining layers that need intersection updates
-    // This is done separately to avoid blocking the main layer update loop
-    if (layersNeedingIntersectionUpdates.length > 0) {
-      // Use a small delay to avoid blocking the main thread
-      setTimeout(() => {
-        for (const layerId of layersNeedingIntersectionUpdates) {
-          const layer = this.getLayerById(layerId);
-          if (layer && layer.needsIntersectionUpdate) {
-            this.updateLayerIntersections(layerId);
-          }
-        }
-      }, 0);
-    }
-    
-    // Optional: Calculate inter-layer intersections if needed
-    // This is a more advanced feature and might be computationally expensive
-    // DISABLED: Inter-layer intersections are explicitly disabled for performance reasons
-    // To re-enable, set this.enableInterLayerIntersections to true in the constructor
-    if (false && this.enableInterLayerIntersections && this.frameCounter % 30 === 0) {
-      // Only calculate every 30 frames to avoid performance impact
-      this.detectInterLayerIntersections();
-    }
-    
-    // Log which layers had geometry updates in this frame (if any)
-    if (updatedGeometryForLayers.length > 0 && DEBUG_LOGGING) {
-      
+    // Second pass: Check if we need to update camera position to fit all layers
+    if (scene) {
+      this.updateCameraForLayerBounds(scene);
     }
   }
 
   /**
    * Update camera position based on layer geometry bounds
    * @param {THREE.Scene} scene The Three.js scene
-   * @param {boolean} shouldLog Whether to log debug information
    */
-  updateCameraForLayerBounds(scene, shouldLog = false) {
+  updateCameraForLayerBounds(scene) {
     // Get camera and renderer references from scene userData
     const camera = scene.userData?.camera;
     if (!camera) {
@@ -931,7 +707,7 @@ export class LayerManager {
         state.targetCameraDistance = targetDistance;
         
         // Log camera update if requested
-        if (shouldLog) {
+        if (DEBUG_LOGGING) {
           
         }
       }
@@ -945,24 +721,23 @@ export class LayerManager {
   }
 
   /**
-   * Force recreation of geometry for a layer
-   * @param {number} layerId ID of the layer to recreate geometry for
+   * Recreate the geometry for a specific layer
+   * @param {number} layerId ID of the layer to update
+   * @returns {boolean} True if geometry was recreated
    */
   recreateLayerGeometry(layerId) {
-    if (layerId < 0 || layerId >= this.layers.length) {
-      console.error(`Invalid layer ID: ${layerId}`);
-      return;
-    }
-    
+    // Get the layer
     const layer = this.layers[layerId];
-    
-    // Reset the trigger system to avoid false triggers after geometry change
-    resetTriggerSystem();
-    
+    if (!layer) {
+      console.warn(`Cannot recreate geometry for layer ${layerId} - not found`);
+      return false;
+    }
+
+    // Log layer state before recreation
+    console.log(`Layer ${layerId} state before recreation - radius: ${layer.state.radius}, copies: ${layer.state.copies}, segments: ${layer.state.segments}`);
+
     // Recreate the geometry
-    this.initializeLayerGeometry(layer);
-    
-    return layer;
+    return layer.recreateGeometry(true);
   }
 
   /**

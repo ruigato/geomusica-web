@@ -72,7 +72,6 @@ export function createAppState() {
     lastAngle: 0,
     lastTrig: new Set(),
     markers: [],
-    justCalculatedIntersections: false,
     
     // Tracking parameter changes
     lastStepScale: DEFAULT_VALUES.STEP_SCALE,
@@ -129,16 +128,6 @@ export function createAppState() {
     minVelocity: 0.3, // Minimum velocity (0-1)
     maxVelocity: 0.9, // Maximum velocity (0-1)
     
-    // Intersection related parameters
-    useIntersections: DEFAULT_VALUES.USE_INTERSECTIONS,
-    lastUseIntersections: DEFAULT_VALUES.USE_INTERSECTIONS,
-    intersectionPoints: [],
-    needsIntersectionUpdate: true,
-    
-    // Cuts related parameters
-    useCuts: false,
-    lastUseCuts: false,
-    
     // Lerp/Lag related parameters
     useLerp: false,
     lerpTime: DEFAULT_VALUES.LERP_TIME,
@@ -183,18 +172,47 @@ export function createAppState() {
     starSkip: 1, // Default skip value
     useStars: false, // Default to off
     
+    // Cuts parameters (for star cuts)
+    useCuts: false,
+    lastUseCuts: false,
+    
+    // Add back intersection controls
+    useIntersections: false,
+    
+    // Synth parameters
+    attack: DEFAULT_VALUES.ATTACK,
+    decay: DEFAULT_VALUES.DECAY,
+    
     /**
      * Check if any parameters have changed
      * @returns {boolean} True if any parameters changed
      */
     hasParameterChanged() {
-      return Object.values(this.parameterChanges).some(changed => changed);
+      const hasChanges = Object.values(this.parameterChanges).some(changed => changed);
+      
+      if (hasChanges) {
+        // Log which parameters changed
+        const changedParams = Object.entries(this.parameterChanges)
+          .filter(([_, val]) => val)
+          .map(([key, _]) => key)
+          .join(", ");
+        
+        console.log(`State parameters changed: ${changedParams} (layerId: ${this.layerId})`);
+      }
+      
+      return hasChanges;
     },
     
     /**
      * Reset all parameter change flags
      */
     resetParameterChanges() {
+      const hadChanges = Object.values(this.parameterChanges).some(changed => changed);
+      
+      if (hadChanges) {
+        console.log(`Resetting parameter changes for layer ${this.layerId}`);
+      }
+      
       for (const key in this.parameterChanges) {
         this.parameterChanges[key] = false;
       }
@@ -210,9 +228,7 @@ export function createAppState() {
       
       // Did something actually change that requires an update?
       const hasChanges = 
-        this.needsIntersectionUpdate || 
         this.needsPointFreqLabelsUpdate ||
-        this.justCalculatedIntersections ||
         this.hasParameterChanged();
       
       // If nothing changed, no update needed
@@ -260,6 +276,9 @@ export function createAppState() {
       // Validate
       const newValue = Math.max(10, Number(value));
       
+      // Log all radius changes for debugging
+      console.log(`setRadius called with value=${value}, newValue=${newValue}, current targetRadius=${this.targetRadius}`);
+      
       // Check against targetRadius to handle lerping correctly
       if (this.targetRadius !== newValue) {
         this.targetRadius = newValue;
@@ -293,6 +312,9 @@ export function createAppState() {
      */
     setCopies(value) {
       const newValue = Math.max(0, Math.round(value));
+      
+      // Log all copies changes for debugging
+      console.log(`setCopies called with value=${value}, newValue=${newValue}, current copies=${this.copies}`);
       
       if (newValue !== this.copies) {
         this.copies = newValue;
@@ -603,75 +625,12 @@ export function createAppState() {
      * @param {boolean} value Enable/disable intersections
      */
     setUseIntersections(value) {
-      const enabled = !!value;
-      
-      if (this.useIntersections !== enabled) {
-        this.useIntersections = enabled;
+      const newValue = Boolean(value);
+      if (this.useIntersections !== newValue) {
+        this.useIntersections = newValue;
         this.parameterChanges.useIntersections = true;
-        
-        console.log("setUseIntersections called with value:", enabled);
-        
-        // Different behavior based on whether we're enabling or disabling
-        if (enabled) {
-          // When enabling, set flag to recalculate
-          this.needsIntersectionUpdate = true;
-          
-          // Try to force more immediate update for UI responsiveness
-          const layerId = this.layerId;
-          
-          // Try to access the layer through window._layers if available
-          if (window._layers && typeof window._layers.getLayerById === 'function') {
-            const layer = window._layers.getLayerById(layerId);
-            if (layer) {
-              // CRITICAL: Skip processing if copies is 0 or less
-              if (!layer.state.copies || layer.state.copies <= 0) {
-                console.log(`Skipping intersection update for layer ${layerId} because copies is ${layer.state.copies}`);
-                return this;
-              }
-              
-              // Force immediate update of intersections
-              layer.updateIntersections();
-              
-              // If we have a scene reference, immediately create the markers
-              if (layer.group && layer.group.parent) {
-                const scene = layer.group.parent;
-                
-                // Import the intersection functions dynamically if needed
-                import('../geometry/intersections.js').then(module => {
-                  // CRITICAL: Double-check copies before proceeding
-                  if (!layer.state.copies || layer.state.copies <= 0) {
-                    console.log(`Skipping intersection markers for layer ${layerId} because copies is ${layer.state.copies}`);
-                    return;
-                  }
-                  
-                  // Process intersections and create markers
-                  module.processIntersections(layer);
-                  module.createIntersectionMarkers(scene, layer);
-                }).catch(err => {
-                  console.error("Error importing intersection modules:", err);
-                });
-              }
-            }
-          }
-        } else {
-          // When disabling, make sure we clear any existing intersections
-          this.needsIntersectionUpdate = false; // Don't need to recalculate when disabling
-          
-          // Clear any existing markers
-          const layerId = this.layerId;
-          if (window._layers && typeof window._layers.getLayerById === 'function') {
-            const layer = window._layers.getLayerById(layerId);
-            if (layer && typeof layer.clearIntersections === 'function') {
-              console.log(`Clearing intersections for layer ${layerId} because intersections were disabled`);
-              layer.clearIntersections();
-            }
-          }
-        }
-        
-        console.log("State updated - useIntersections:", this.useIntersections, "needsIntersectionUpdate:", this.needsIntersectionUpdate);
+        this.needsIntersectionUpdate = true;
       }
-      
-      return this;
     },
     
     /**
@@ -814,7 +773,25 @@ export function createAppState() {
      * @param {boolean} value Enable/disable axis labels
      */
     setShowAxisFreqLabels(value) {
-      this.showAxisFreqLabels = Boolean(value);
+      const newValue = Boolean(value);
+      // Only update if the value actually changed
+      if (this.showAxisFreqLabels !== newValue) {
+        this.showAxisFreqLabels = newValue;
+        this.parameterChanges.showAxisFreqLabels = true;
+        
+        // If we're disabling axis labels, make sure to clear existing ones
+        if (!newValue && typeof window !== 'undefined') {
+          // Use clearLabels function if available
+          if (typeof window.clearAxisLabels === 'function') {
+            window.clearAxisLabels();
+          }
+          
+          // Also update the global state if available
+          if (window._globalState) {
+            window._globalState.showAxisFreqLabels = false;
+          }
+        }
+      }
     },
     
     /**
@@ -822,7 +799,11 @@ export function createAppState() {
      * @param {boolean} value Enable/disable point labels
      */
     setShowPointsFreqLabels(value) {
-      this.showPointsFreqLabels = Boolean(value);
+      const newValue = Boolean(value);
+      if (this.showPointsFreqLabels !== newValue) {
+        this.showPointsFreqLabels = newValue;
+        this.parameterChanges.showPointsFreqLabels = true;
+      }
       
       if (!value && this.pointFreqLabels.length > 0) {
         this.cleanupPointFreqLabels();
@@ -1005,17 +986,18 @@ export function createAppState() {
     },
     
     /**
-     * Get total count of points in the system
-     * @returns {number} Total number of points
+     * Get total number of points/vertices in the geometry
+     * @returns {number} Total point count
      */
     getTotalPointCount() {
-      let count = this.segments * this.copies; // Regular vertices
-      
-      if (this.intersectionPoints) {
-        count += this.intersectionPoints.length; // Intersection points
+      // If geometry exists, use actual vertex count
+      if (this.baseGeo && this.baseGeo.userData) {
+        return this.baseGeo.userData.vertexCount || 0;
       }
       
-      return count;
+      // Otherwise estimate from segments and copies
+      const regularVertices = (this.segments || 3) * (this.copies || 0);
+      return regularVertices;
     },
     
     /**
@@ -1040,21 +1022,22 @@ export function createAppState() {
       
       // Note: Copies parameter is now set directly and not affected by lerping
       
-      // Check if significant changes occurred and explicitly mark parameters as changed
-      if (Math.abs(oldRadius - this.radius) > 0.1) {
+      // Only mark parameters as changed when they've changed significantly
+      // This prevents constant rerendering due to tiny floating point differences
+      if (Math.abs(oldRadius - this.radius) > 0.5) {
         this.parameterChanges.radius = true;
       }
       
-      if (Math.abs(oldStepScale - this.stepScale) > 0.001) {
+      if (Math.abs(oldStepScale - this.stepScale) > 0.005) {
         this.parameterChanges.stepScale = true;
       }
       
-      if (Math.abs(oldAngle - this.angle) > 0.1) {
+      if (Math.abs(oldAngle - this.angle) > 0.5) {
         this.parameterChanges.angle = true;
       }
       
       // Check for significant alt scale changes and mark parameter as changed
-      if (Math.abs(oldAltScale - this.altScale) > 0.001 && this.useAltScale) {
+      if (Math.abs(oldAltScale - this.altScale) > 0.005 && this.useAltScale) {
         this.parameterChanges.altScale = true;
       }
       
@@ -1266,24 +1249,33 @@ export function createAppState() {
      * @param {boolean} value Enable/disable cuts
      */
     setUseCuts(value) {
+      // Store last value for change detection
+      this.lastUseCuts = this.useCuts;
+      
+      // Convert to boolean and check if the value actually changed
       const newValue = Boolean(value);
+      
+      // Only update if the value actually changed to prevent unnecessary updates
       if (this.useCuts !== newValue) {
+        // Set new value
         this.useCuts = newValue;
+        
+        // Register parameter change
         this.parameterChanges.useCuts = true;
         
-        // Force intersection update when toggling cuts with stars enabled
-        if (this.useStars && this.starSkip > 1) {
+        // If this changes from false to true, force intersection recalculation
+        if (!this.lastUseCuts && this.useCuts && this.useStars && this.starSkip > 1) {
           if (DEBUG_STAR_CUTS) {
-            
+            console.log("Enabling star cuts - requires recalculation of geometry");
           }
-          this.needsIntersectionUpdate = true;
-          
-          // Force geometry recreation when toggling cuts with stars enabled
-          this.segmentsChanged = true;
-          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
         }
         
-        
+        // If changing from true to false, clear any existing star cuts
+        if (this.lastUseCuts && !this.useCuts) {
+          if (DEBUG_STAR_CUTS) {
+            console.log("Disabling star cuts");
+          }
+        }
       }
     },
     

@@ -482,6 +482,7 @@ export function setupUI(state) {
   if (useFractalCheckbox) useFractalCheckbox.checked = state.useFractal;
   if (useStarsCheckbox) useStarsCheckbox.checked = state.useStars;
   if (useCutsCheckbox) useCutsCheckbox.checked = state.useCuts;
+  if (useIntersectionsCheckbox) useIntersectionsCheckbox.checked = state.useIntersections;
   
   // Set initial values for scale mod controls from state with null checks
   if (altScaleRange && altScaleNumber && altScaleValue) {
@@ -646,11 +647,8 @@ export function setupUI(state) {
   if (useStarsCheckbox) {
     useStarsCheckbox.checked = state.useStars;
     useStarsCheckbox.addEventListener('change', e => {
-      // Get the current active layer state
-      const activeState = typeof window.getActiveState === 'function' ? 
-        window.getActiveState() : state;
-        
-      activeState.setUseStars(e.target.checked);
+      state.setUseStars(e.target.checked);
+      updateValidSkips();
     });
   }
   
@@ -658,11 +656,7 @@ export function setupUI(state) {
   if (useCutsCheckbox) {
     useCutsCheckbox.checked = state.useCuts;
     useCutsCheckbox.addEventListener('change', e => {
-      // Get the current active layer state
-      const activeState = typeof window.getActiveState === 'function' ? 
-        window.getActiveState() : state;
-        
-      activeState.setUseCuts(e.target.checked);
+      state.setUseCuts(e.target.checked);
     });
   }
   
@@ -670,11 +664,7 @@ export function setupUI(state) {
   if (useIntersectionsCheckbox) {
     useIntersectionsCheckbox.checked = state.useIntersections;
     useIntersectionsCheckbox.addEventListener('change', e => {
-      // Get the current active layer state
-      const activeState = typeof window.getActiveState === 'function' ? 
-        window.getActiveState() : state;
-        
-      activeState.setUseIntersections(e.target.checked);
+      state.setUseIntersections(e.target.checked);
     });
   }
 
@@ -908,11 +898,21 @@ export function setupUI(state) {
   }
   
   if (radiusRange && radiusNumber && radiusValue) {
+    // Add direct event listeners to log when radius controls are used
+    radiusRange.addEventListener('input', e => {
+      console.log(`UI: Radius range changed to ${e.target.value}`);
+    });
+    
+    radiusNumber.addEventListener('change', e => {
+      console.log(`UI: Radius number changed to ${e.target.value}`);
+    });
+    
     syncPair(radiusRange, radiusNumber, radiusValue, 
       function setRadius(value) {
         // Use getActiveState dynamically at call time, not during setup
         const targetState = typeof window.getActiveState === 'function' ? 
           window.getActiveState() : state;
+        console.log(`UI: Setting radius to ${value} on state ${targetState?.layerId || 'unknown'}`);
         targetState.setRadius(Number(value));
       }, 
       UI_RANGES.RADIUS[0], UI_RANGES.RADIUS[1], 
@@ -920,11 +920,21 @@ export function setupUI(state) {
   }
   
   if (copiesRange && copiesNumber && copiesValue) {
+    // Add direct event listeners to log when copies controls are used
+    copiesRange.addEventListener('input', e => {
+      console.log(`UI: Copies range changed to ${e.target.value}`);
+    });
+    
+    copiesNumber.addEventListener('change', e => {
+      console.log(`UI: Copies number changed to ${e.target.value}`);
+    });
+    
     syncPair(copiesRange, copiesNumber, copiesValue, 
       function setCopies(value) {
         // Use getActiveState dynamically at call time, not during setup
         const targetState = typeof window.getActiveState === 'function' ? 
           window.getActiveState() : state;
+        console.log(`UI: Setting copies to ${value} on state ${targetState?.layerId || 'unknown'}`);
         targetState.setCopies(Number(value));
       }, 
       UI_RANGES.COPIES[0], UI_RANGES.COPIES[1], 

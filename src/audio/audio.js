@@ -13,6 +13,7 @@ let audioContext = null;
 let csoundStarted = false;
 let startTime = 0;
 let sampleRate = 44100; 
+let audioContextActivated = false;
 
 // Path to the orchestra file
 const ORC_FILE_PATH = '/src/audio/GeoMusica.orc';

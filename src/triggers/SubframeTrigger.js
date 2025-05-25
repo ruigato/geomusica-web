@@ -128,18 +128,49 @@ export class TemporalTriggerEngine {
     
     const now = this.getCurrentTime();
     
+    // More aggressive pruning - 2 seconds history is enough for most cases
+    const MAX_HISTORY_TIME = 2.0; // Only keep 2 seconds of history
+    const MIN_STATES_TO_KEEP = 2; // Always keep at least 2 states for each vertex
+    
     // First pass: remove old entries from each vertex's history
     for (const [id, states] of this.vertexStates.entries()) {
-      // Prune states that are too old (older than 5 seconds)
-      const recentStates = states.filter(state => now - state.timestamp < 5);
+      // Prune states that are too old (older than MAX_HISTORY_TIME seconds)
+      const recentStates = states.filter(state => 
+        now - state.timestamp < MAX_HISTORY_TIME
+      );
       
-      if (recentStates.length === 0) {
+      // Always keep at least MIN_STATES_TO_KEEP states (most recent ones)
+      if (recentStates.length < MIN_STATES_TO_KEEP && states.length >= MIN_STATES_TO_KEEP) {
+        // Sort by timestamp (most recent first)
+        states.sort((a, b) => b.timestamp - a.timestamp);
+        // Keep only the MIN_STATES_TO_KEEP most recent states
+        const limitedStates = states.slice(0, MIN_STATES_TO_KEEP);
+        this.vertexStates.set(id, limitedStates);
+      } else if (recentStates.length === 0) {
         // If no recent states, remove this vertex entirely
         this.vertexStates.delete(id);
         this.vertexLastAccessed.delete(id);
       } else if (recentStates.length !== states.length) {
         // Update with pruned list
         this.vertexStates.set(id, recentStates);
+      }
+      
+      // Limit maximum number of states per vertex (prevent memory bloat)
+      const maxStatesPerVertex = Math.min(this.maxMemory, 10); // More aggressive limit
+      if (this.vertexStates.has(id) && this.vertexStates.get(id).length > maxStatesPerVertex) {
+        // Sort by timestamp (most recent first)
+        const sortedStates = this.vertexStates.get(id).sort((a, b) => 
+          b.timestamp - a.timestamp
+        );
+        // Keep only the most recent states up to maxStatesPerVertex
+        this.vertexStates.set(id, sortedStates.slice(0, maxStatesPerVertex));
+      }
+    }
+    
+    // Clean up recent crossings
+    for (const [id, timestamp] of this.recentCrossings.entries()) {
+      if (now - timestamp > 1.0) { // Only keep crossing history for 1 second
+        this.recentCrossings.delete(id);
       }
     }
     
@@ -151,8 +182,13 @@ export class TemporalTriggerEngine {
       // Sort by last accessed time (oldest first)
       entries.sort((a, b) => a[1] - b[1]);
       
+      // Be more aggressive in cleanup when significantly over limit
+      const targetSize = this.vertexStates.size > this.maxVertices * 2 ? 
+        this.maxVertices / 2 : // If way over, reduce to half capacity
+        this.maxVertices;      // Otherwise, reduce to capacity
+      
       // Calculate how many to remove
-      const removeCount = this.vertexStates.size - this.maxVertices;
+      const removeCount = this.vertexStates.size - targetSize;
       
       // Remove oldest entries
       for (let i = 0; i < removeCount; i++) {
@@ -185,10 +221,14 @@ export class TemporalTriggerEngine {
   /**
    * Record a new vertex position
    * @param {string} id - Unique vertex identifier
-   * @param {Object} position - Current position {x, y, z}
+   * @param {number} copyIndex - Copy index for this vertex
+   * @param {number} vertexIndex - Index of vertex within its geometry
    * @param {number} timestamp - Current timestamp (in seconds)
+   * @param {number} x - X coordinate
+   * @param {number} y - Y coordinate
+   * @param {number} z - Z coordinate (optional)
    */
-  recordVertexPosition(id, position, timestamp) {
+  recordVertexPosition(id, copyIndex, vertexIndex, timestamp, x, y, z = 0) {
     if (!this._initialized) {
       this.initialize();
     }
@@ -201,8 +241,13 @@ export class TemporalTriggerEngine {
       this._evictLeastRecentlyUsed();
     }
     
-    // Create state object
+    // Create state object with position
+    const position = { x, y, z };
     const state = new TemporalVertexState(position, timestamp, id);
+    
+    // Store metadata for this vertex
+    state.copyIndex = copyIndex;
+    state.vertexIndex = vertexIndex;
     
     // Get or create the state array for this vertex
     if (!this.vertexStates.has(id)) {
@@ -264,7 +309,7 @@ export class TemporalTriggerEngine {
     
     // Record all vertices in the batch
     vertices.forEach(vertex => {
-      this.recordVertexPosition(vertex.id, vertex.position, timestamp);
+      this.recordVertexPosition(vertex.id, vertex.copyIndex, vertex.vertexIndex, timestamp, vertex.position.x, vertex.position.y, vertex.position.z);
     });
   }
   
@@ -294,15 +339,39 @@ export class TemporalTriggerEngine {
   }
   
   /**
-   * Dispose of the engine and clean up resources
+   * Dispose of all resources used by the engine
    */
   dispose() {
+    // Clear the cleanup timer
     if (this.cleanupTimerId !== null) {
       clearInterval(this.cleanupTimerId);
       this.cleanupTimerId = null;
     }
-    this.clearAllHistory();
+    
+    // Clear all data structures
+    this.vertexStates.clear();
+    this.vertexLastAccessed.clear();
+    this.recentCrossings.clear();
+    
+    // Set initialized flag to false
     this._initialized = false;
+    
+    // Clear the last processed time
+    this.lastProcessedTime = 0;
+    
+    // Clear references to parent objects to avoid memory leaks
+    this.parentScene = null;
+    
+    // Explicitly trigger garbage collection if available
+    if (typeof global !== 'undefined' && global.gc) {
+      try {
+        global.gc();
+      } catch (e) {
+        console.warn('Failed to trigger garbage collection:', e);
+      }
+    }
+    
+    console.log('TemporalTriggerEngine disposed and resources released');
   }
   
   /**
@@ -556,5 +625,76 @@ export class TemporalTriggerEngine {
     }
     
     return results;
+  }
+  
+  /**
+   * Detect axis crossings for a specific layer
+   * @param {string} layerId - Layer identifier
+   * @param {number} timestamp - Current timestamp
+   * @param {number} currentAngle - Current rotation angle in radians
+   * @param {number} previousAngle - Previous rotation angle in radians
+   * @param {number} cooldownTime - Cooldown time between triggers for the same vertex
+   * @returns {Array} Array of trigger events
+   */
+  detectTriggers(layerId, timestamp, currentAngle, previousAngle, cooldownTime = 0) {
+    if (!this._initialized) {
+      this.initialize();
+    }
+    
+    // Update the last processed time
+    this.lastProcessedTime = timestamp;
+    
+    // Store all detected triggers
+    const triggers = [];
+    
+    // Process each vertex that belongs to this layer
+    for (const [id, states] of this.vertexStates.entries()) {
+      // Skip vertices that don't match the layer pattern
+      if (!id.startsWith(`${layerId}-`)) {
+        continue;
+      }
+      
+      // Extract copy and vertex index from id
+      const idParts = id.split('-');
+      const copyIndex = parseInt(idParts[1]);
+      const vertexIndex = parseInt(idParts[2]);
+      
+      // Check if this vertex has enough states to detect crossings
+      if (states.length < 2) {
+        continue;
+      }
+      
+      // Check if this vertex recently triggered
+      const lastCrossingTime = this.recentCrossings.get(id) || 0;
+      if (timestamp - lastCrossingTime < cooldownTime) {
+        continue;
+      }
+      
+      // Detect crossing for this vertex
+      const result = this.detectCrossing(id, cooldownTime);
+      
+      // If a crossing was detected
+      if (result.hasCrossed) {
+        // Mark as recently crossed to prevent multiple triggers
+        this.recentCrossings.set(id, timestamp);
+        
+        // Calculate angle at crossing (in radians)
+        const angle = Math.atan2(result.position.y, result.position.x);
+        
+        // Add to triggers
+        triggers.push({
+          x: result.position.x,
+          y: result.position.y,
+          z: result.position.z || 0,
+          angle,
+          exactTime: result.exactTime,
+          copyIndex,
+          vertexIndex,
+          id
+        });
+      }
+    }
+    
+    return triggers;
   }
 } 

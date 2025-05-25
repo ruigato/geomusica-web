@@ -1,7 +1,7 @@
 // src/state/layer.js - Layer class for multi-layer architecture
 import { createAppState } from './state.js';
 import * as THREE from 'three';
-import { createPolygonGeometry } from '../geometry/geometry.js';
+import { createPolygonGeometry, updateGroup } from '../geometry/geometry.js';
 
 // Debug flag to control logging
 const DEBUG_LOGGING = false;
@@ -25,7 +25,6 @@ export class Layer {
     
     // Store layer ID instead of direct reference to avoid circular references
     this.state.layerId = id;
-    // REMOVED: this.state.layerRef = this; // This line created circular reference
     
     // Use WeakRef for layer manager reference to avoid memory retention
     this._layerManagerRef = null;
@@ -49,11 +48,6 @@ export class Layer {
     // IMPORTANT: Initialize markers array for trigger markers
     this.markers = [];
     
-    // Intersection-specific properties
-    this.intersectionPoints = [];
-    this.needsIntersectionUpdate = false;
-    this.lastIntersectionUpdate = 0;
-    
     // Last time this layer was updated
     this.lastUpdateTime = 0;
     
@@ -75,36 +69,36 @@ export class Layer {
     this.state.parameterChanges.radius = true;
     this.state.parameterChanges.stepScale = true;
     
+    // Tracking the current and previous angles for rotation
+    this.currentAngle = 0;
+    this.previousAngle = 0;
+    
     if (DEBUG_LOGGING) {
-      
-      
+      console.log(`Created Layer ${id} with name ${this.name}`);
     }
     
     // Override the setRadius, setSegments, and setCopies methods to add layer-specific logging
     const originalSetRadius = this.state.setRadius;
     this.state.setRadius = (value) => {
       if (DEBUG_LOGGING) {
-        
+        console.log(`Layer ${id} - setRadius(${value})`);
       }
-      this.needsIntersectionUpdate = true;
       return originalSetRadius.call(this.state, value);
     };
     
     const originalSetSegments = this.state.setSegments;
     this.state.setSegments = (value) => {
       if (DEBUG_LOGGING) {
-        
+        console.log(`Layer ${id} - setSegments(${value})`);
       }
-      this.needsIntersectionUpdate = true;
       return originalSetSegments.call(this.state, value);
     };
     
     const originalSetCopies = this.state.setCopies;
     this.state.setCopies = (value) => {
       if (DEBUG_LOGGING) {
-        
+        console.log(`Layer ${id} - setCopies(${value})`);
       }
-      this.needsIntersectionUpdate = true;
       return originalSetCopies.call(this.state, value);
     };
     
@@ -117,7 +111,7 @@ export class Layer {
           .filter(([_, val]) => val)
           .map(([key, _]) => key)
           .join(", ");
-        
+        console.log(`Layer ${id} - Parameters changed: ${changedParams}`);
       }
       return hasChanges;
     };
@@ -173,7 +167,7 @@ export class Layer {
     
     // Log material creation with color info
     if (DEBUG_LOGGING) {
-      
+      console.log(`Layer ${this.id} - Created material with color ${this.color.getHexString()}`);
     }
     
     // Apply any state overrides from options
@@ -195,7 +189,7 @@ export class Layer {
     }
     
     if (DEBUG_LOGGING) {
-      
+      console.log(`Layer ${this.id} - Initialized with radius=${this.state.radius}, segments=${this.state.segments}, copies=${this.state.copies}`);
     }
   }
   
@@ -216,7 +210,7 @@ export class Layer {
       this.material.needsUpdate = true; // Important! This forces Three.js to update the material
       
       if (DEBUG_LOGGING) {
-        
+        console.log(`Layer ${this.id} - Updated material color to ${this.color.getHexString()}`);
       }
     }
     
@@ -251,1086 +245,240 @@ export class Layer {
   }
   
   /**
-   * Set the visibility of this layer
-   * @param {boolean} visible Whether the layer should be visible
+   * Recreate geometry for this layer
+   * @param {boolean} force Force recreation even if no parameters changed
+   * @returns {boolean} True if geometry was recreated
    */
-  setVisible(visible) {
-    this.visible = visible;
-    if (this.group) {
-      this.group.visible = visible;
-    }
-  }
-  
-  /**
-   * Activate this layer (make it the current active layer)
-   */
-  activate() {
-    this.active = true;
-    if (DEBUG_LOGGING) {
-      
+  recreateGeometry(force = false) {
+    // Skip if not active and not forced
+    if (!this.active && !force) {
+      return false;
     }
     
-    // Store original methods if they haven't been stored already
-    // and ensure we're not overriding them if they already exist
-    if (!this.state._originalMethods) {
-      this.state._originalMethods = {
-        setRadius: this.state.setRadius,
-        setSegments: this.state.setSegments,
-        setCopies: this.state.setCopies,
-        hasParameterChanged: this.state.hasParameterChanged
-      };
+    // Check if any parameters have changed
+    const hasChanges = this.state.hasParameterChanged() || force;
+    
+    // Skip if no changes and not forced
+    if (!hasChanges && !force) {
+      return false;
     }
     
-    // Hook into state change methods to add debug logging for this layer
-    this.state.setRadius = (value) => {
-      if (DEBUG_LOGGING) {
-        
-      }
-      return this.state._originalMethods.setRadius.call(this.state, value);
-    };
-    
-    this.state.setSegments = (value) => {
-      if (DEBUG_LOGGING) {
-        
-      }
-      return this.state._originalMethods.setSegments.call(this.state, value);
-    };
-    
-    this.state.setCopies = (value) => {
-      if (DEBUG_LOGGING) {
-        
-      }
-      return this.state._originalMethods.setCopies.call(this.state, value);
-    };
-    
-    // Mark all parameters as changed to force UI updates
-    if (this.state.parameterChanges) {
-      Object.keys(this.state.parameterChanges).forEach(key => {
-        this.state.parameterChanges[key] = true;
-      });
-      
-      if (DEBUG_LOGGING) {
-        
-      }
+    // Use less frequent detailed debug logging
+    if (DEBUG_LOGGING || Math.random() < 0.1) { // Only log ~10% of the time
+      console.log(`Layer ${this.id} - Recreating geometry with radius=${this.state.radius}, copies=${this.state.copies}, segments=${this.state.segments}`);
     }
     
-    // Update window._appState to point to this layer's state
-    if (window._appState !== this.state) {
-      window._appState = this.state;
-      if (DEBUG_LOGGING) {
-        
-      }
-    }
-    
-    // FIXED: Initialize timing variables from centralized timing system
-    // This prevents timing jumps when switching between layers
-    const globalState = this.group?.userData?.globalState;
-    if (globalState) {
-      // Get the time subdivision multiplier for this layer
-      const timeSubdivisionMultiplier = this.state.useTimeSubdivision ? 
-        (this.state.timeSubdivisionValue || 1) : 1;
-      
-      // FIXED: Only initialize angle if not already set to prevent jumps when switching
-      // Use existing values if available, only get new ones if this is first activation
-      if (this.currentAngle === undefined) {
-        // Use the global timing system to get initial angle data for this layer
-        const angleData = globalState.getLayerAngleData(
-          this.id,
-          timeSubdivisionMultiplier,
-          performance.now() / 1000 // Current time in seconds
-        );
-        
-        // Use the angle data directly
-        this.currentAngle = angleData.angleRadians;
-        this.previousAngle = this.currentAngle;
-        this.accumulatedAngle = angleData.angleDegrees;
-        this.lastUpdateTime = angleData.lastUpdateTime;
-      }
-      
-      // Just update the multiplier in the global timing system
-      // without changing the angle or timing
-      globalState.getLayerAngleData(
-        this.id,
-        timeSubdivisionMultiplier,
-        this.lastUpdateTime || (performance.now() / 1000)
-      );
-    }
-    
-    // FIXED: Don't recreate geometry when activating a layer - only check if it's completely missing
-    // Only call ensureValidGeometry if the layer has no geometry at all
-    if (!this.baseGeo || !this.group || this.group.children.length === 0) {
-      this.ensureValidGeometry();
-    } else {
-      // Just ensure the layer and group are visible
-      this.visible = true;
-      if (this.group) {
-        this.group.visible = true;
-      }
-      
-      // Ensure the baseGeo has proper userData for trigger detection
-      if (this.baseGeo && !this.baseGeo.userData.layerId) {
-        this.baseGeo.userData.layerId = this.id;
-        this.baseGeo.userData.vertexCount = this.state.segments;
-      }
-    }
-    
-    // Trigger UI updates for this layer
-    this.forceUIUpdate();
-  }
-  
-  /**
-   * Force UI updates for this layer using all available methods
-   */
-  forceUIUpdate() {
-    // Try using the global updateUIFromState function
-    if (window.updateUIFromState && typeof window.updateUIFromState === 'function') {
-      try {
-        window.updateUIFromState(this.state);
-        if (DEBUG_LOGGING) {
-          
-        }
-      } catch (error) {
-        console.error(`[LAYER ${this.id}] Error updating UI from state:`, error);
-      }
-    }
-    
-    // Try using the global updateUIForActiveLayer function
-    if (window.updateUIForActiveLayer && typeof window.updateUIForActiveLayer === 'function') {
-      try {
-        window.updateUIForActiveLayer(this.id);
-        if (DEBUG_LOGGING) {
-          
-        }
-      } catch (error) {
-        console.error(`[LAYER ${this.id}] Error updating UI for active layer:`, error);
-      }
-    }
-    
-    // Try dispatching a custom event that UI components might listen for
-    try {
-      const event = new CustomEvent('layerActivated', { 
-        detail: { layerId: this.id, state: this.state }
-      });
-      window.dispatchEvent(event);
-      
-      if (DEBUG_LOGGING) {
-        
-      }
-    } catch (error) {
-      console.error(`[LAYER ${this.id}] Error dispatching layer activated event:`, error);
-    }
-  }
-  
-  /**
-   * Deactivate this layer
-   */
-  deactivate() {
-    this.active = false;
-    if (DEBUG_LOGGING) {
-      
-    }
-    
-    // Remove debug hooks from state methods when deactivating
-    // Only restore original methods if they were properly saved
-    if (this.state._originalMethods) {
-      // Restore all original methods from the stored object
-      this.state.setRadius = this.state._originalMethods.setRadius;
-      this.state.setSegments = this.state._originalMethods.setSegments;
-      this.state.setCopies = this.state._originalMethods.setCopies;
-      
-      if (this.state._originalMethods.hasParameterChanged) {
-        this.state.hasParameterChanged = this.state._originalMethods.hasParameterChanged;
-      }
-      
-      if (DEBUG_LOGGING) {
-        
-      }
-    } else if (DEBUG_LOGGING) {
-      
-    }
-  }
-  
-  /**
-   * Ensure this layer has valid geometry that can be used for trigger detection
-   * This is essential for triggers to work correctly
-   */
-  ensureValidGeometry() {
-    // If no geometry exists or it's invalid, recreate it
-    if (!this.baseGeo || !this.baseGeo.getAttribute('position')) {
-      if (DEBUG_LOGGING) {
-        
-      }
-      this.recreateGeometry();
-    }
-    
-    // Ensure the geometry has the necessary userData for trigger detection
-    if (this.baseGeo && !this.baseGeo.userData.layerId) {
-      this.baseGeo.userData.layerId = this.id;
-      this.baseGeo.userData.vertexCount = this.state.segments;
-      if (DEBUG_LOGGING) {
-        
-      }
-    }
-    
-    // Ensure the group has the state reference for trigger detection
-    if (this.group) {
-      // Don't set state directly since it's now a getter-only property
-      // Instead, ensure stateId is set correctly which the getter uses
-      this.group.userData.stateId = this.id;
-      
-      // Check if the state getter is working by reading it
-      if (DEBUG_LOGGING && this.group.userData.state !== this.state) {
-        console.warn(`[LAYER ${this.id}] State getter not working properly`);
-      }
-      
-      // Make sure the group is visible
-      if (!this.group.visible) {
-        this.group.visible = true;
-        if (DEBUG_LOGGING) {
-          
-        }
-      }
-    }
-    
-    // Initialize lastTrig set if it doesn't exist
-    if (!this.state.lastTrig) {
-      this.state.lastTrig = new Set();
-      if (DEBUG_LOGGING) {
-        
-      }
-    }
-  }
-  
-  /**
-   * Dispose of all resources and break all circular references
-   */
-  dispose() {
-    // Get a reference to the layer manager before we clear our reference to it
-    const layerManager = this.getLayerManager();
-    
-    // Remove layer from parent scene properly
-    if (this.group && this.group.parent) {
-      this.group.parent.remove(this.group);
-    }
-
-    // Clean up Three.js materials and geometries in all traversed objects
-    if (this.group) {
-      this.group.traverse((child) => {
-        // Dispose of geometries
-        if (child.geometry && child.geometry.dispose) {
-          child.geometry.dispose();
-        }
-        
-        // Dispose of materials (handle both single materials and arrays)
-        if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach(material => {
-              if (material && material.dispose) {
-                // Dispose textures if present
-                if (material.map) material.map.dispose();
-                if (material.lightMap) material.lightMap.dispose();
-                if (material.bumpMap) material.bumpMap.dispose();
-                if (material.normalMap) material.normalMap.dispose();
-                if (material.specularMap) material.specularMap.dispose();
-                if (material.envMap) material.envMap.dispose();
-                
-                material.dispose();
-              }
-            });
-          } else if (child.material.dispose) {
-            // Dispose textures if present
-            if (child.material.map) child.material.map.dispose();
-            if (child.material.lightMap) child.material.lightMap.dispose();
-            if (child.material.bumpMap) child.material.bumpMap.dispose();
-            if (child.material.normalMap) child.material.normalMap.dispose();
-            if (child.material.specularMap) child.material.specularMap.dispose();
-            if (child.material.envMap) child.material.envMap.dispose();
-            
-            child.material.dispose();
-          }
-        }
-        
-        // Remove any event listeners
-        if (child.userData && child.userData.eventListeners) {
-          for (const [eventType, listener] of Object.entries(child.userData.eventListeners)) {
-            child.removeEventListener(eventType, listener);
-          }
-          child.userData.eventListeners = null;
-        }
-        
-        // Break any references to the state object in userData
-        if (child.userData && child.userData.state === this.state) {
-          // If we added a getter property for state, delete it
-          if (Object.getOwnPropertyDescriptor(child.userData, 'state')?.get) {
-            delete child.userData.state;
-          } else {
-            // Otherwise just null it out
-            child.userData.state = null;
-          }
-        }
-        
-        // If stateId exists, null it out
-        if (child.userData && child.userData.stateId === this.id) {
-          child.userData.stateId = null;
-        }
-        
-        // Clear all userData references
-        if (child.userData) {
-          for (const key in child.userData) {
-            child.userData[key] = null;
-          }
-        }
-      });
-    }
-    
-    // Dispose base geometry if it exists
-    if (this.baseGeo && this.baseGeo.dispose) {
+    // Dispose old geometry
+    if (this.baseGeo) {
       this.baseGeo.dispose();
     }
     
-    // Dispose material if it exists
-    if (this.material && this.material.dispose) {
-      this.material.dispose();
-    }
+    // Directly create geometry with current state parameters
+    this.baseGeo = createPolygonGeometry(
+      this.state.radius,
+      this.state.segments,
+      this.state // Pass entire state for configuration
+    );
     
-    // Clear all Map/Set collections
-    if (this.prevWorldVertices instanceof Map) {
-      this.prevWorldVertices.clear();
-      this.prevWorldVertices = null;
-    }
+    // Store reference to this geometry in state
+    this.state.baseGeo = this.baseGeo;
     
-    if (this.lastTrig instanceof Set) {
-      this.lastTrig.clear();
-      this.lastTrig = null;
-    }
-    
-    // Ensure _triggersTimestamps Map is cleared
-    if (this._triggersTimestamps instanceof Map) {
-      this._triggersTimestamps.clear();
-      this._triggersTimestamps = null;
-    }
-    
-    // Clean up intersection-specific properties
-    this.clearIntersections();
-    this.intersectionPoints = null;
-    this.needsIntersectionUpdate = false;
-    this.lastIntersectionUpdate = null;
-    
-    // Clean up state collections
-    if (this.state) {
-      // Remove circular references in state
-      if (this.state.layerRef) {
-        this.state.layerRef = null;
-      }
-      
-      if (this.state.lastTrig instanceof Set) {
-        this.state.lastTrig.clear();
-        this.state.lastTrig = null;
-      }
-      
-      if (this.state.prevWorldVertices instanceof Map) {
-        this.state.prevWorldVertices.clear();
-        this.state.prevWorldVertices = null;
-      }
-      
-      // Clear any other collections in state
-      for (const key in this.state) {
-        if (this.state[key] instanceof Map || this.state[key] instanceof Set) {
-          this.state[key].clear();
-          this.state[key] = null;
-        }
-      }
-      
-      // Clear state references that might be circular
-      this.state.layerId = null;
-      
-      // Remove this layer's state from global _appState if it's the same
-      if (window._appState === this.state) {
-        // Try to set _appState to another layer's state if available
-        if (layerManager && layerManager.layers) {
-          const otherLayer = layerManager.layers.find(l => l !== this && l.state);
-          if (otherLayer) {
-            window._appState = otherLayer.state;
-          } else {
-            window._appState = null;
-          }
-        } else {
-          window._appState = null;
-        }
-      }
-    }
-    
-    // Clear layer manager reference - must be done after the above uses of layerManager
-    this._layerManagerRef = null;
-    
-    // Clear markers array
-    if (this.markers && Array.isArray(this.markers)) {
-      // Remove markers from scene if they have parents
-      this.markers.forEach(marker => {
-        if (marker.parent) {
-          marker.parent.remove(marker);
-        }
-        
-        // Dispose marker geometry and material
-        if (marker.geometry) marker.geometry.dispose();
-        if (marker.material) {
-          if (Array.isArray(marker.material)) {
-            marker.material.forEach(mat => mat.dispose());
-          } else {
-            marker.material.dispose();
-          }
-        }
+    // Update the group to use the new geometry and current state parameters
+    if (this.group) {
+      updateGroup({
+        group: this.group,
+        state: this.state,
+        layer: this,
+        baseGeo: this.baseGeo,
+        mat: this.material,
+        copies: this.state.copies,
+        stepScale: this.state.stepScale,
+        segments: this.state.segments,
+        angle: this.state.angle,
+        isLerping: this.state.useLerp
       });
-      
-      this.markers.length = 0;
-      this.markers = null;
     }
     
-    // Clear other references that might cause circular dependencies
-    this.baseGeo = null;
-    this.material = null;
-    this.group = null;
-    this.state = null;
+    // Reset parameter change flags
+    this.state.resetParameterChanges();
+    
+    return true;
   }
   
   /**
-   * Safely get layer manager reference without creating circular dependencies
-   * @returns {LayerManager|null} Layer manager instance or null if not available
+   * Get the total number of vertices in this layer
+   * @returns {number} Total vertex count
+   */
+  getVertexCount() {
+    if (this.baseGeo && this.baseGeo.userData) {
+      return this.baseGeo.userData.vertexCount || 0;
+    }
+    return 0;
+  }
+  
+  /**
+   * Get layer manager, using weak reference to avoid memory leaks
+   * @returns {LayerManager|null} The layer manager, if available
    */
   getLayerManager() {
-    // Try getting from WeakRef if available
     if (this._layerManagerRef) {
-      // If using WeakRef, dereference it
-      if (this._layerManagerRef instanceof WeakRef) {
+      // Get the actual reference from the weak reference
+      if (typeof this._layerManagerRef.deref === 'function') {
         return this._layerManagerRef.deref();
       }
-      // If direct reference, just return it (for backward compatibility)
+      // Fallback for browsers without WeakRef
       return this._layerManagerRef;
     }
-    
-    // Try getting from global window if available
-    if (window._layers) {
-      // Store a weak reference for future use
-      this._layerManagerRef = new WeakRef(window._layers);
-      return window._layers;
-    }
-    
     return null;
   }
   
   /**
-   * Set layer manager reference using WeakRef to prevent memory leaks
-   * @param {LayerManager} layerManager Layer manager instance
+   * Set layer manager using weak reference to avoid memory leaks
+   * @param {LayerManager} layerManager The layer manager to set
    */
   setLayerManager(layerManager) {
-    if (!layerManager) {
-      this._layerManagerRef = null;
-      return;
-    }
-    
-    // Use WeakRef if supported by the browser
-    if (typeof WeakRef !== 'undefined') {
+    if (typeof WeakRef !== 'undefined' && layerManager) {
+      // Use WeakRef to avoid strong circular reference
       this._layerManagerRef = new WeakRef(layerManager);
     } else {
       // Fallback for browsers without WeakRef support
-      // Just store the ID to avoid circular references
       this._layerManagerRef = layerManager;
     }
   }
   
   /**
-   * Recreate the geometry for this layer
-   * This is used when geometry parameters change
+   * Set the visibility of this layer
+   * @param {boolean} isVisible Whether the layer should be visible
+   * @returns {Layer} This layer instance for method chaining
    */
-  recreateGeometry() {
-    // FIXED: Skip recreation if we just switched to this layer
-    if (this._justSwitchedTo) {
-      if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Skipping geometry recreation after layer switch`);
-      }
+  setVisible(isVisible) {
+    const visibility = !!isVisible; // Convert to boolean
+    
+    // Update layer visibility property
+    this.visible = visibility;
+    
+    // Update Three.js group visibility
+    if (this.group) {
+      this.group.visible = visibility;
+    }
+    
+    // Return this for method chaining
+    return this;
+  }
+  
+  /**
+   * Update the layer for animation
+   * @param {number} currentTime Current time in seconds
+   * @param {number} deltaTime Time since last update in seconds
+   */
+  update(currentTime, deltaTime) {
+    // Skip update if layer is not visible
+    if (!this.visible || !this.group) {
       return;
     }
     
-    // Reset the trigger set to avoid false positives
-    if (this.state.lastTrig) {
-      this.state.lastTrig.clear();
-    }
-    
-    // Create a dedicated THREE.Group for this layer if it doesn't exist
-    if (!this.group) {
-      this.group = new THREE.Group();
-      this.group.name = `layer-${this.id}`;
-      this.group.userData.layerId = this.id;
+    // Check if any parameters have changed and recreate geometry if needed
+    if (this.state.hasParameterChanged()) {
+      // Log which specific parameters have changed
+      const changedParams = Object.entries(this.state.parameterChanges)
+        .filter(([_, val]) => val)
+        .map(([key, _]) => key)
+        .join(", ");
       
-      // Set up state access via getter to avoid circular references
-      this.group.userData.stateId = this.id;
-      Object.defineProperty(this.group.userData, 'state', {
-        get: () => this.state,
-        configurable: true
-      });
-    }
-    
-    // Check for existing baseGeo and dispose if it exists
-    if (this.baseGeo) {
-      if (this.baseGeo.dispose) {
-        this.baseGeo.dispose();
-      }
-      this.baseGeo = null;
-    }
-    
-    // Ensure we have a material for this layer
-    if (!this.material) {
-      this.material = new THREE.LineBasicMaterial({
-        color: this.color,
-        transparent: true,
-        opacity: 1.0,
-        depthTest: false,
-        depthWrite: false,
-        linewidth: 2
-      });
-    }
-    
-    // Create new geometry
-    this.baseGeo = createPolygonGeometry(
-      this.state.radius,
-      this.state.segments,
-      this.state
-    );
-    
-    // Store creation timestamp and layer ID in geometry userData
-    this.baseGeo.userData = {
-      createdAt: Date.now(),
-      layerId: this.id,
-      vertexCount: this.state.segments
-    };
-    
-    // Clean up old geometry children from group
-    if (this.group.children.length > 0) {
-      // Store children we want to keep (not line objects)
-      const childrenToKeep = this.group.children.filter(child => {
-        // Keep specialized marker objects
-        if (child.userData && (
-          child.userData.isMarker ||
-          child.userData.isIntersectionGroup ||
-          child.userData.isAxisLabel
-        )) {
-          return true;
-        }
-        
-        // Keep any other special objects (camera, lights, etc.)
-        if (child.type !== 'Line' && 
-            child.type !== 'LineLoop' && 
-            child.type !== 'LineSegments') {
-          return true;
-        }
-        
-        // Otherwise dispose and remove
-        if (child.geometry) {
-          child.geometry.dispose();
-        }
-        if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach(m => m.dispose());
-          } else {
-            child.material.dispose();
-          }
-        }
-        return false;
-      });
-      
-      // Replace group children with filtered list
-      this.group.children.length = 0;
-      childrenToKeep.forEach(child => this.group.add(child));
-    }
-    
-    // Add debug sphere at center
-    let debugSphere = this.group.children.find(
-      child => child.type === 'Mesh' && child.geometry && child.geometry.type === 'SphereGeometry'
-    );
-    
-    if (!debugSphere) {
-      const sphereGeo = new THREE.SphereGeometry(5, 8, 8);
-      const sphereMat = new THREE.MeshBasicMaterial({
-        color: this.color,
-        transparent: true,
-        opacity: 0.5,
-        depthTest: false
-      });
-      debugSphere = new THREE.Mesh(sphereGeo, sphereMat);
-      // Mark debug sphere as a helper so it's not counted for intersections
-      debugSphere.userData = {
-        isHelper: true,
-        isDebugSphere: true,
-        layerId: this.id
-      };
-      this.group.add(debugSphere);
-    } else if (!debugSphere.userData.isHelper) {
-      // Make sure existing debug spheres have the helper flag
-      debugSphere.userData.isHelper = true;
-      debugSphere.userData.isDebugSphere = true;
-    }
-    
-    if (DEBUG_LOGGING) {
-      
-    }
-    
-    // Force intersection update when geometry changes
-    this.needsIntersectionUpdate = true;
-    
-    // Log that geometry was recreated
-    if (DEBUG_LOGGING) {
-      
-    }
-    
-    return this;
-  }
-  
-  /**
-   * Force layer to be fully visible with high contrast settings
-   */
-  forceVisibility() {
-    // Ensure both layer and group are set to visible
-    this.visible = true;
-    if (this.group) {
-      this.group.visible = true;
-    }
-    
-    // Make material highly visible
-    if (this.material) {
-      this.material.transparent = false;
-      this.material.opacity = 1.0;
-      this.material.depthTest = false;
-      this.material.depthWrite = false;
-      this.material.linewidth = 5;
-      this.material.needsUpdate = true;
-      
-      // Set to bright green for maximum visibility
-      this.material.color = new THREE.Color(0x00FF00);
-    }
-    
-    // Recreate geometry with large radius
-    if (this.state) {
-      this.state.radius = Math.max(this.state.radius, 300);
-      this.state.parameterChanges.radius = true;
-      
-      // Force immediate camera update
-      const boundingRadius = this.state.radius * Math.pow(this.state.stepScale, this.state.copies - 1) * 1.5;
-      this.state.targetCameraDistance = boundingRadius * 2; // Set a distance that will capture all geometry
-      this.state.cameraDistance = this.state.targetCameraDistance; // Immediate update
-      
-      // Apply to camera if available
-      if (this.group && this.group.parent && this.group.parent.userData && this.group.parent.userData.camera) {
-        this.group.parent.userData.camera.position.z = this.state.cameraDistance;
-      }
-    }
-    
-    // Force geometry recreation
-    this.recreateGeometry();
-    
-    if (DEBUG_LOGGING) {
-      
-    }
-    
-    return this;
-  }
-  
-  /**
-   * Update the rotation angle for this layer
-   * @param {number} currentTime Current time in seconds
-   */
-  updateAngle(currentTime) {
-    // FIXED: Ensure we have a previous angle for continuity
-    if (this.currentAngle === undefined) {
-      this.currentAngle = 0;
-    }
-    
-    // Store previous angle for marker hit detection
-    this.previousAngle = this.currentAngle;
-    
-    // Get global state manager (which should be attached to the group)
-    const globalState = this.group?.userData?.globalState;
-    
-    if (globalState) {
-      // FIXED: Use the centralized timing system instead of our own calculations
-      // Get the time subdivision multiplier for this layer
-      const timeSubdivisionMultiplier = this.state.useTimeSubdivision ? 
-        (this.state.timeSubdivisionValue || 1) : 1;
-      
-      // FIXED: Ensure we have a valid lastUpdateTime for continuous motion
-      if (this.lastUpdateTime === undefined) {
-        this.lastUpdateTime = currentTime - 0.016; // Add a small delta to ensure motion
+      // Only log occasionally to reduce console spam
+      if (Math.random() < 0.1) {
+        console.log(`Layer ${this.id} parameters changed: ${changedParams}`);
       }
       
-      // Use the global timing system to get angle data for this layer
-      const angleData = globalState.getLayerAngleData(
-        this.id,
-        timeSubdivisionMultiplier,
-        currentTime
-      );
+      // Only recreate geometry for meaningful changes that affect the shape
+      const criticalParams = ['radius', 'copies', 'segments', 'useStars', 'starSkip', 
+                              'useIntersections', 'fractalValue', 'useFractal', 
+                              'useEuclid', 'euclidValue'];
       
-      // Use the angleRadians directly from the global timing system
-      this.currentAngle = angleData.angleRadians;
+      const hasCriticalChanges = criticalParams.some(param => changedParams.includes(param));
       
-      // Also update our accumulated angle for consistency
-      this.accumulatedAngle = angleData.angleDegrees;
-    } else {
-      // Fallback calculation if no global state is available
-      if (DEBUG_LOGGING) {
-        
-      }
-      
-      // Default to a slow rotation (45 degrees per second)
-      const lastUpdateTime = this.lastUpdateTime || (currentTime - 0.016);
-      const deltaTime = currentTime - lastUpdateTime;
-      const rotationSpeed = Math.PI / 4; // 45 degrees per second
-      
-      // Check if time subdivision should be applied to this fallback
-      if (this.state && this.state.useTimeSubdivision && this.state.timeSubdivisionValue !== 1) {
-        const multiplier = this.state.timeSubdivisionValue;
-        this.currentAngle = (this.currentAngle || 0) + rotationSpeed * deltaTime * multiplier;
+      if (hasCriticalChanges) {
+        // Only log occasionally to reduce console spam
+        if (Math.random() < 0.1) {
+          console.log(`Layer ${this.id} - Recreating geometry due to: ${changedParams}`);
+        }
+        this.recreateGeometry();
       } else {
-        this.currentAngle = (this.currentAngle || 0) + rotationSpeed * deltaTime;
+        // Just reset parameter changes without recreating geometry for minor changes
+        this.state.resetParameterChanges();
       }
     }
     
-    // Store the time for future delta calculations
-    this.lastUpdateTime = currentTime;
-  }
-
-  /**
-   * Make sure camera and renderer are attached to this layer
-   * @returns {Object} Object with camera and renderer
-   */
-  ensureCameraAndRenderer() {
-    // Try to find the scene by traversing up the hierarchy
-    let currentParent = this.group?.parent;
-    let scene = null;
+    // Store previous angle for trigger detection
+    this.previousAngle = this.currentAngle || 0;
     
-    // Traverse up to find the scene object
-    while (currentParent && !scene) {
-      if (currentParent.type === 'Scene' || currentParent.isScene) {
-        scene = currentParent;
-        break;
-      }
-      // Check if this parent has camera/renderer (might be layerContainer)
-      if (currentParent.userData?.camera && currentParent.userData?.renderer) {
-        return {
-          camera: currentParent.userData.camera,
-          renderer: currentParent.userData.renderer
-        };
-      }
-      currentParent = currentParent.parent;
-    }
+    // Get time subdivision multiplier for this layer
+    const timeSubdivisionMultiplier = this.state?.useTimeSubdivision ? 
+      (this.state.timeSubdivisionValue || 1) : 1;
     
-    // If we found the scene, check for camera/renderer
-    if (scene && scene.userData?.camera && scene.userData?.renderer) {
-      return {
-        camera: scene.userData.camera,
-        renderer: scene.userData.renderer
-      };
-    }
+    // Get global state for BPM if available
+    const globalState = window._globalState;
+    const bpm = globalState?.bpm || 120;
     
-    // Try global window references as fallback
-    if (window.mainCamera && window.mainRenderer) {
-      
-      return {
-        camera: window.mainCamera,
-        renderer: window.mainRenderer
-      };
-    }
+    // Calculate rotation based on BPM
+    // At 120 BPM, we do 0.5 rotations per second (one rotation every 2 seconds)
+    const rotationsPerSecond = bpm / 240;
     
-    // Try scene direct properties as another fallback
-    if (scene) {
-      if (scene.mainCamera && scene.mainRenderer) {
-        
-        return {
-          camera: scene.mainCamera,
-          renderer: scene.mainRenderer
-        };
-      }
-      
-      // Look for camera in scene children
-      const cameraInScene = scene.children.find(child => 
-        child instanceof THREE.Camera || 
-        child.type === 'PerspectiveCamera' || 
-        child.type === 'OrthographicCamera'
-      );
-      
-      if (cameraInScene && window.mainRenderer) {
-        
-        return {
-          camera: cameraInScene,
-          renderer: window.mainRenderer
-        };
-      }
-    }
+    // Calculate angle change based on time delta
+    const angleChangeRadians = 2 * Math.PI * rotationsPerSecond * deltaTime * timeSubdivisionMultiplier;
     
+    // Update current angle (with normalization to prevent extremely large values)
+    // Add the angle change
+    let newAngle = (this.currentAngle || 0) + angleChangeRadians;
     
-    return { camera: null, renderer: null };
-  }
-
-  /**
-   * Update the layer with animation parameters
-   * @param {number} currentTime Current time in seconds
-   * @param {number} deltaTime Time elapsed since last frame in seconds
-   */
-  update(currentTime, deltaTime) {
-    // Mark initialization as complete after first update
-    this.initializationComplete = true;
+    // Normalize angle to stay within 0 to 2π range
+    // This prevents accumulation of extremely large rotation values
+    newAngle = newAngle % (2 * Math.PI);
+    if (newAngle < 0) newAngle += 2 * Math.PI; // Handle negative values
     
-    // Update rotation angle based on time
-    this.updateAngle(currentTime);
+    // Update current angle with normalized value
+    this.currentAngle = newAngle;
     
-    // Check if we need to fix camera/renderer references
-    // Only try to fix if there's a pending check or they're missing
-    if (this.cameraPendingCheck || !this.cameraChecked) {
-      this.cameraPendingCheck = false;
-      this.cameraChecked = true;
-      
-      // Get references through the hierarchy - try group first
-      if (this.group) {
-        let cameraRef = null;
-        let rendererRef = null;
-        
-        // Check group userData first
-        if (this.group.userData?.camera && this.group.userData?.renderer) {
-          cameraRef = this.group.userData.camera;
-          rendererRef = this.group.userData.renderer;
-        } 
-        // Then check parent chain
-        else {
-          const { camera, renderer } = this.ensureCameraAndRenderer();
-          cameraRef = camera;
-          rendererRef = renderer;
-        }
-        
-        // If we found references, store them at multiple levels for redundancy
-        if (cameraRef && rendererRef) {
-          // Store at group level
-          this.group.userData = this.group.userData || {};
-          this.group.userData.camera = cameraRef;
-          this.group.userData.renderer = rendererRef;
-          
-          // Store at parent level if available
-          if (this.group.parent) {
-            this.group.parent.userData = this.group.parent.userData || {};
-            this.group.parent.userData.camera = cameraRef;
-            this.group.parent.userData.renderer = rendererRef;
-          }
-          
-          // Log success only on first setup
-          if (!this.cameraSetupLogged) {
-            
-            this.cameraSetupLogged = true;
-          }
-        }
-      }
-    }
-    
-    // Check if intersections need to be updated
-    if (this.needsIntersectionUpdate) {
-      // In a real implementation, we would calculate intersections here
-      // For now, just record that we processed the update request
-      this.lastIntersectionUpdate = currentTime;
-      this.needsIntersectionUpdate = false;
-      
-      if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Processed intersection update at time ${currentTime}`);
-      }
-    }
-  }
-
-  /**
-   * Propagate camera and renderer references to this layer
-   * @param {THREE.Camera} camera The camera
-   * @param {THREE.Renderer} renderer The renderer
-   * @returns {boolean} True if references were successfully set
-   */
-  propagateCameraAndRenderer(camera, renderer) {
-    if (!camera || !renderer) {
-      return false;
-    }
-    
-    // Store at group level
+    // Apply rotation to layer group
     if (this.group) {
-      this.group.userData = this.group.userData || {};
-      this.group.userData.camera = camera;
-      this.group.userData.renderer = renderer;
+      this.group.rotation.z = this.currentAngle;
       
-      // Also propagate to all children
-      this.group.traverse(child => {
-        if (child !== this.group) {
-          child.userData = child.userData || {};
-          child.userData.camera = camera;
-          child.userData.renderer = renderer;
-        }
-      });
+      // Debug logging with normalized angle values (less frequent to reduce console spam)
+      if (Math.random() < 0.001) { // Reduced frequency (0.1% chance per frame)
+        const degrees = (this.currentAngle * 180 / Math.PI).toFixed(1);
+        console.log(`Layer ${this.id} rotation: ${degrees}° (normalized), deltaTime: ${(deltaTime * 1000).toFixed(2)}ms, bpm: ${bpm}`);
+      }
     }
     
-    // Store at baseGeo level
-    if (this.baseGeo) {
-      this.baseGeo.userData = this.baseGeo.userData || {};
-      this.baseGeo.userData.camera = camera;
-      this.baseGeo.userData.renderer = renderer;
-    }
-    
-    // Mark as checked and set up
-    this.cameraChecked = true;
-    this.cameraPendingCheck = false;
-    
-    // Log success only on first setup
-    if (!this.cameraSetupLogged) {
-      
-      this.cameraSetupLogged = true;
-    }
-    
-    return true;
+    // Store the current time
+    this.state.lastTime = currentTime;
   }
-
+  
   /**
-   * Update the layer's intersections with other layers
-   * This triggers a recalculation of intersection points
-   * @returns {Layer} This layer for method chaining
+   * Update intersections for this layer
+   * Recreates the geometry with intersections
    */
   updateIntersections() {
-    console.log(`[LAYER ${this.id}] updateIntersections called`);
-    
-    // IMPORTANT: Only set needsIntersectionUpdate to true when intersections are actually enabled
-    // and we have at least 2 copies (needed for intersections)
-    const useIntersections = this.state?.useIntersections === true;
-    const useStarCuts = this.state?.useStars === true && this.state?.useCuts === true && this.state?.starSkip > 1;
-    const hasSufficientCopies = this.state?.copies > 1;
-    
-    if ((useIntersections || useStarCuts) && hasSufficientCopies) {
-      this.needsIntersectionUpdate = true;
-      this.lastIntersectionUpdate = Date.now();
+    // Only update if we need to calculate intersections
+    if (this.state.useIntersections || (this.state.useStars && this.state.useCuts)) {
+      // Mark as needing update
+      this.state.needsIntersectionUpdate = true;
       
-      if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Requesting intersection update`);
-      }
-    } else if (!hasSufficientCopies) {
-      console.log(`[LAYER ${this.id}] Skipping intersection update - insufficient copies: ${this.state?.copies}`);
-      
-      // Reset flag and clear any existing intersections
-      this.needsIntersectionUpdate = false;
-      this.clearIntersections();
-    } else {
-      // Case when intersections are disabled but we have sufficient copies
-      console.log(`[LAYER ${this.id}] Skipping intersection update - intersections are disabled`);
-      this.needsIntersectionUpdate = false;
-      
-      // Clear any existing markers
-      this.clearIntersections();
+      // Force geometry recreation to include intersections
+      this.recreateGeometry(true);
     }
-    
-    console.log(`[LAYER ${this.id}] State useIntersections:`, this.state.useIntersections);
-    
-    // Check if the layer group is properly attached to the scene
-    if (this.group) {
-      const isInScene = !!this.group.parent;
-      console.log(`[LAYER ${this.id}] Layer group is ${isInScene ? 'attached to scene' : 'NOT attached to scene'}`);
-      console.log(`[LAYER ${this.id}] Layer group has ${this.group.children.length} children`);
-      console.log(`[LAYER ${this.id}] Layer group visible: ${this.group.visible}`);
-    }
-    
-    return this;
   }
   
   /**
-   * Clear all intersection points and markers for this layer
-   * @returns {Layer} This layer for method chaining
+   * Clear all intersections for this layer
    */
   clearIntersections() {
-    console.log(`[LAYER ${this.id}] clearIntersections called`);
-    // REMOVED: Don't clear intersection points here as they're needed for creating markers
-    // this.intersectionPoints = [];
+    // Reset intersection-related state
+    this.state.needsIntersectionUpdate = false;
     
-    // Remove any intersection markers from the scene
-    if (!this.group) {
-      console.log(`[LAYER ${this.id}] No group found to clear markers from`);
-      return this;
+    // Force geometry recreation if we have any state that requires it
+    if (this.baseGeo && this.baseGeo.userData && this.baseGeo.userData.hasIntersections) {
+      this.recreateGeometry(true);
     }
-    
-    // First try using the direct markersGroup reference we added
-    if (this.markersGroup) {
-      console.log(`[LAYER ${this.id}] Found markerGroup via direct reference with ${this.markersGroup.children.length} markers`);
-      
-      // Dispose of all marker geometries and materials
-      this.markersGroup.traverse(child => {
-        if (child.geometry) child.geometry.dispose();
-        if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach(m => m.dispose());
-          } else {
-            child.material.dispose();
-          }
-        }
-      });
-      
-      // Remove from parent
-      const parent = this.markersGroup.parent;
-      if (parent) {
-        parent.remove(this.markersGroup);
-        console.log(`[LAYER ${this.id}] Removed markersGroup from its parent`);
-      } else {
-        console.warn(`[LAYER ${this.id}] markersGroup has no parent to remove from`);
-      }
-      
-      // Clear the reference
-      this.markersGroup = null;
-      return this;
-    }
-    
-    // Fallback: Find and remove intersection marker group if it exists
-    console.log(`[LAYER ${this.id}] No direct markersGroup reference, searching among ${this.group.children.length} children`);
-    
-    // List all children types for debugging
-    const childTypes = this.group.children.map(child => {
-      return {
-        type: child.type,
-        isIntersectionGroup: child.userData?.isIntersectionGroup || false,
-        name: child.name || 'unnamed'
-      };
-    });
-    console.log(`[LAYER ${this.id}] Child types:`, JSON.stringify(childTypes));
-    
-    const intersectionGroup = this.group.children.find(
-      child => child.userData && child.userData.isIntersectionGroup
-    );
-    
-    if (intersectionGroup) {
-      console.log(`[LAYER ${this.id}] Found and removing intersection group with ${intersectionGroup.children.length} markers`);
-      
-      // Dispose of all marker geometries and materials
-      intersectionGroup.traverse(child => {
-        if (child.geometry) child.geometry.dispose();
-        if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach(m => m.dispose());
-          } else {
-            child.material.dispose();
-          }
-        }
-      });
-      
-      // Remove from parent
-      this.group.remove(intersectionGroup);
-    } else {
-      console.log(`[LAYER ${this.id}] No intersection group found to clear`);
-    }
-    
-    if (DEBUG_LOGGING) {
-      console.log(`[LAYER ${this.id}] Cleared all intersections`);
-    }
-    
-    return this;
-  }
-  
-  /**
-   * Check if this layer has any intersection points
-   * @returns {boolean} True if there are intersection points
-   */
-  hasIntersections() {
-    return this.intersectionPoints && this.intersectionPoints.length > 0;
   }
 } 

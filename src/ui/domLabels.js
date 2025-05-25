@@ -209,8 +209,13 @@ export function createOrUpdateLabel(id, worldPos, text, camera, renderer) {
 export function createAxisLabel(id, worldPos, text, camera, renderer, lifespan = 1.0, color = null) {
   if (!axisLabelContainer) initLabelContainers();
   
+  // First, check for an existing label with the same ID and remove it to prevent duplicates
+  if (activeAxisLabels.has(id)) {
+    removeAxisLabel(id);
+  }
+  
+  // Get a new label from the pool
   const label = getAxisLabel();
-  activeAxisLabels.set(id, label);
   
   // Set ID for DOM queries
   label.id = 'axis-' + id;
@@ -223,15 +228,20 @@ export function createAxisLabel(id, worldPos, text, camera, renderer, lifespan =
   label.dataset.worldY = worldPos.y;
   label.dataset.worldZ = worldPos.z || 0;
   
+  // Ensure a reasonable lifespan (at least 0.5s, at most 5s)
+  const normalizedLifespan = Math.min(5.0, Math.max(0.5, lifespan)) * 1000; // Convert to ms
+  
   // Store creation time and lifespan for time-based fadeout
   label.dataset.createdAt = Date.now();
-  label.dataset.lifespan = lifespan * 1000; // Store in ms
+  label.dataset.lifespan = normalizedLifespan;
   
   // Position and set text - center the label over the point
-  // The transform in CSS is already set to translate(-50%, -100%) to position above the point
   label.style.left = `${screenPos.x}px`;
   label.style.top = `${screenPos.y - 10}px`; // Add a small offset to position above the point
   label.textContent = text;
+  
+  // Start with full opacity
+  label.style.opacity = "1.0";
   
   // Apply custom color if provided
   if (color) {
@@ -249,6 +259,10 @@ export function createAxisLabel(id, worldPos, text, camera, renderer, lifespan =
     }
   }
   
+  // Store in the active labels map
+  activeAxisLabels.set(id, label);
+  
+  // Return a reference to the label
   return { id: 'axis-' + id, domElement: label };
 }
 
@@ -376,18 +390,45 @@ export function updateAxisLabels() {
   
   if (activeAxisLabels.size === 0) return;
   
+  // Check if axis labels are globally disabled in the state
+  const globalState = window._globalState;
+  const showAxisLabels = globalState?.showAxisFreqLabels !== false;
+  
+  // If axis labels are disabled, forcefully clear all existing labels
+  if (!showAxisLabels) {
+    // Clear all axis labels immediately
+    clearAxisLabels();
+    return;
+  }
+  
   // Current time for fade calculations
   const now = Date.now();
   
+  // Force a maximum lifespan to prevent labels from staying forever
+  const MAX_LABEL_LIFETIME = 5000; // 5 seconds absolute maximum
+  
+  // Track labels to remove after iteration
+  const labelsToRemove = [];
+  
   activeAxisLabels.forEach((label, id) => {
-    if (!label.dataset.createdAt || !label.dataset.lifespan) return;
+    // If missing creation time or lifespan data, force removal
+    if (!label.dataset.createdAt || !label.dataset.lifespan) {
+      labelsToRemove.push(id);
+      return;
+    }
     
     // Get creation time and lifespan
     const creationTime = parseInt(label.dataset.createdAt);
-    const lifespan = parseInt(label.dataset.lifespan);
+    const lifespan = Math.min(parseInt(label.dataset.lifespan), MAX_LABEL_LIFETIME);
     
     // Calculate elapsed time in ms
     const elapsed = now - creationTime;
+    
+    // If label has existed longer than MAX_LABEL_LIFETIME, remove it regardless of lifespan
+    if (elapsed > MAX_LABEL_LIFETIME) {
+      labelsToRemove.push(id);
+      return;
+    }
     
     // Calculate opacity based on time (linear fade)
     const opacity = Math.max(0, 1 - (elapsed / lifespan));
@@ -396,10 +437,32 @@ export function updateAxisLabels() {
     label.style.opacity = opacity;
     
     // Remove if expired
-    if (elapsed >= lifespan) {
-      removeAxisLabel(id);
+    if (elapsed >= lifespan || opacity <= 0.05) {
+      labelsToRemove.push(id);
     }
   });
+  
+  // Remove all labels marked for removal
+  labelsToRemove.forEach(id => {
+    removeAxisLabel(id);
+  });
+  
+  // If too many labels are active, remove the oldest ones
+  const MAX_ACTIVE_LABELS = 20;
+  if (activeAxisLabels.size > MAX_ACTIVE_LABELS) {
+    // Convert to array, sort by creation time, and keep only the newest MAX_ACTIVE_LABELS
+    const sortedLabels = Array.from(activeAxisLabels.entries())
+      .sort((a, b) => {
+        const timeA = parseInt(a[1].dataset.createdAt) || 0;
+        const timeB = parseInt(b[1].dataset.createdAt) || 0;
+        return timeB - timeA; // Newest first
+      });
+    
+    // Remove oldest labels
+    sortedLabels.slice(MAX_ACTIVE_LABELS).forEach(([id]) => {
+      removeAxisLabel(id);
+    });
+  }
 }
 
 /**
@@ -538,4 +601,22 @@ function hideOrphanedLabels(activeMarkers) {
       label.style.display = 'none';
     }
   }
+}
+
+/**
+ * Clear all axis labels only
+ */
+export function clearAxisLabels() {
+  if (!axisLabelContainer) return;
+  
+  // Clear axis labels
+  activeAxisLabels.forEach((label, id) => {
+    releaseAxisLabel(label);
+  });
+  activeAxisLabels.clear();
+}
+
+// Export to window for global access
+if (typeof window !== 'undefined') {
+  window.clearAxisLabels = clearAxisLabels;
 }

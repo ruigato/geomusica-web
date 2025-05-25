@@ -28,10 +28,8 @@ export function createNote(triggerData, state) {
     y = 0, 
     copyIndex, 
     vertexIndex, 
-    isIntersection = false,
-    isStarCut = false,  // New flag to identify star cut intersections
-    angle = 0, 
-    lastAngle = 0, 
+    angle = 0,
+    lastAngle = 0,
     globalIndex 
   } = triggerData;
   
@@ -55,11 +53,6 @@ export function createNote(triggerData, state) {
   // Use globalIndex if provided (new sequential approach)
   if (globalIndex !== undefined) {
     pointIndex = globalIndex;
-  } else if (isIntersection) {
-    // For intersection points, use point index from intersection array
-    const intersectionIndex = triggerData.intersectionIndex || 0;
-    const totalRegularPoints = state ? (state.copies * state.segments) : 0;
-    pointIndex = totalRegularPoints + intersectionIndex;
   } else if (copyIndex !== undefined && vertexIndex !== undefined) {
     // For regular vertices, combine copy index and vertex index
     const copies = state ? state.copies : 1;
@@ -94,8 +87,6 @@ export function createNote(triggerData, state) {
     pointIndex,
     copyIndex: copyIndex || 0,
     vertexIndex: vertexIndex || 0,
-    isIntersection,
-    isStarCut,  // Add the star cut flag to the note
     coordinates: { x, y },
     time: Date.now(), // Current time in ms
     noteName,
@@ -255,45 +246,30 @@ function calculateInterpolatedValue(pointIndex, modulo, min, max) {
   // Support for min > max (swapping) by calculating actual low/high values
   const actualMin = Math.min(min, max);
   const actualMax = Math.max(min, max);
-  const range = actualMax - actualMin;
   
-  // Find the position within the current modulo cycle
-  const cycle = Math.floor(pointIndex / modulo);
-  const position = pointIndex - (cycle * modulo);
+  // Determine if we need to invert (when min > max)
+  const invert = min > max;
   
-  // Calculate normalized position (0 to 1)
-  const normalizedPosition = position / modulo;
+  // Calculate where we are in the current cycle
+  const cyclePosition = (pointIndex % modulo) / modulo;
   
-  // Using a sine wave pattern for smooth oscillation between min and max
-  // sin ranges from -1 to 1, so adjust to range 0 to 1
-  const oscillation = (Math.sin(normalizedPosition * Math.PI * 2) + 1) / 2;
+  // Use sine wave interpolation for smooth values
+  const normalizedValue = 0.5 + 0.5 * Math.sin(cyclePosition * Math.PI * 2 - Math.PI/2);
   
-  // Calculate the base value
-  const baseValue = actualMin + oscillation * range;
+  // Map to our range
+  const interpolatedValue = actualMin + normalizedValue * (actualMax - actualMin);
   
-  // If min > max, invert the mapping
-  if (min > max) {
-    return actualMin + actualMax - baseValue;
-  } else {
-    return baseValue;
-  }
+  // Invert if min > max
+  return invert ? (actualMin + actualMax - interpolatedValue) : interpolatedValue;
 }
 
 /**
- * Generate a deterministic random value based on a seed
+ * Generate a deterministic random number from a seed
  * @param {number} seed - Seed value
- * @returns {number} Pseudo-random value between 0 and 1
+ * @returns {number} Random number between 0-1
  */
 function seededRandom(seed) {
-  // Simple deterministic random function
-  // Using a Linear Congruential Generator algorithm
-  const a = 1664525;
-  const c = 1013904223;
-  const m = Math.pow(2, 32);
-  
-  // Calculate next value
-  const next = (a * (seed + 1) + c) % m;
-  
-  // Normalize to [0, 1]
-  return next / m;
+  // Simple but effective seeded random function
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
 }

@@ -149,7 +149,7 @@ function isPointOverlapping(x, y, activePoints) {
 function calculateFrequency(x, y, state) {
   // Safety check for invalid inputs
   if (isNaN(x) || isNaN(y) || x === undefined || y === undefined) {
-    
+    console.warn("Invalid coordinates in calculateFrequency:", x, y);
     // Return a safe default
     return {
       frequency: 440, // Default to A4
@@ -164,7 +164,7 @@ function calculateFrequency(x, y, state) {
   
   // If distance calculation resulted in NaN or is zero, use a safe default
   if (isNaN(distance) || distance === 0) {
-    
+    console.warn("Invalid distance in calculateFrequency:", distance);
     return {
       frequency: 440, // Default to A4
       noteName: "A4",
@@ -181,7 +181,7 @@ function calculateFrequency(x, y, state) {
   
   // Ensure frequency is not NaN
   if (isNaN(frequency)) {
-    
+    console.warn("NaN frequency calculated in calculateFrequency");
     frequency = 440; // Default to A4
   }
   
@@ -201,13 +201,13 @@ function calculateFrequency(x, y, state) {
       noteName = getNoteName(frequency, refFreq);
     } catch (e) {
       // If quantization fails, use unquantized frequency
-      
+      console.error("Error in frequency quantization:", e);
     }
   }
   
   // Final safety check - if after all processing frequency is still NaN, use default
   if (isNaN(frequency)) {
-    
+    console.error("After processing, frequency is still NaN");
     frequency = 440;
     noteName = "A4";
   }
@@ -280,7 +280,7 @@ export function processPendingTriggers(currentTime, audioCallback, scene) {
       const timingDelta = Math.abs(currentTime - executeTime);
       if (timingDelta > 0.001) { // Log if more than 1ms off
         if (DEBUG_LOGGING) {
-          
+          console.log(`Trigger timing delta: ${timingDelta.toFixed(5)}s`);
         }
       }
       
@@ -468,6 +468,31 @@ export function createMarker(angle, worldX, worldY, scene, note, camera = null, 
     return null;
   }
   
+  // Limit the maximum number of markers to prevent memory issues
+  const MAX_MARKERS = 100;
+  if (markersArray.length >= MAX_MARKERS) {
+    // Remove oldest markers if we exceed the limit
+    const markersToRemove = markersArray.length - MAX_MARKERS + 1;
+    
+    for (let i = 0; i < markersToRemove; i++) {
+      const oldMarker = markersArray.shift(); // Remove from the beginning (oldest)
+      
+      if (oldMarker) {
+        // Remove label if it exists
+        if (oldMarker.userData && oldMarker.userData.label) {
+          removeLabel(oldMarker.userData.label.id);
+        }
+        
+        // Remove from scene
+        scene.remove(oldMarker);
+        
+        // Dispose geometry and material
+        if (oldMarker.geometry) oldMarker.geometry.dispose();
+        if (oldMarker.material) oldMarker.material.dispose();
+      }
+    }
+  }
+  
   const frequency = note.frequency;
   const duration = note.duration;
   const velocity = note.velocity;
@@ -483,9 +508,6 @@ export function createMarker(angle, worldX, worldY, scene, note, camera = null, 
     if (isQuantized) {
       // Create a brighter version of the layer color for quantized triggers
       markerColor = layer.color.clone().multiplyScalar(1.5);
-    } else if (note.isIntersection) {
-      // Use a slightly different color for intersection points
-      markerColor = layer.color.clone().multiplyScalar(1.3);
     } else {
       // Use layer color for regular markers
       markerColor = layer.color;
@@ -494,1389 +516,673 @@ export function createMarker(angle, worldX, worldY, scene, note, camera = null, 
     // Fallback colors if no layer or layer has no color
     if (isQuantized) {
       markerColor = 0x00ff00; // Green for quantized
-    } else if (note.isIntersection) {
-      markerColor = 0xff00ff; // Magenta for intersections
     } else {
-      markerColor = 0xffff00; // Yellow for normal
+      markerColor = 0xff0000; // Red for regular
     }
   }
   
-  // Scale marker size based on duration
-  const baseSize = 8;
-  const markerSize = baseSize * (0.5 + duration);
-  
-  const markerMat = new THREE.MeshBasicMaterial({
+  // Create material with optional transparency
+  const markerMaterial = new THREE.MeshBasicMaterial({
     color: markerColor,
     transparent: true,
-    opacity: velocity, // Set opacity based on velocity
-    depthTest: false
+    opacity: Math.min(1.0, velocity * 1.5), // Scale opacity by velocity with a cap at 1.0
   });
   
-  // Scale the geometry based on note duration
-  markerGeom.scale(markerSize / baseSize, markerSize / baseSize, markerSize / baseSize);
+  // Create mesh
+  const marker = new THREE.Mesh(markerGeom, markerMaterial);
+  marker.position.set(worldX, worldY, 10);
   
-  // Create the mesh
-  const markerMesh = new THREE.Mesh(markerGeom, markerMat);
+  // Set render order to ensure marker appears on top
+  marker.renderOrder = 1000;
   
-  // Position directly using world coordinates - no rotation needed
-  markerMesh.position.set(worldX, worldY, 5); // Slightly in front
+  // Store metadata about this marker
+  marker.userData = {
+    isMarker: true,
+    creationTime: getCurrentTime(),
+    duration: duration,
+    frequency: frequency,
+    angle: angle,
+    layerId: layer ? layer.id : null,
+    note: { ...note } // Store a copy of the note
+  };
   
-  // Add to scene
-  scene.add(markerMesh);
+  // Add to markers array
+  markersArray.push(marker);
   
-  // Create text label if frequency is provided and axis labels are enabled
-  let textLabel = null;
-  if (frequency !== null && layer && layer.state && layer.state.showAxisFreqLabels !== false) {
-    // Make sure we have camera and renderer for creating labels
-    if (!camera || !renderer) {
-      // Try to get them from scene if available
-      if (scene) {
-        // Try to get from scene userData
-        camera = scene.userData?.camera;
-        renderer = scene.userData?.renderer;
-        
-        // Try layer's group if not in scene
-        if ((!camera || !renderer) && layer.group) {
-          camera = layer.group.userData?.camera;
-          renderer = layer.group.userData?.renderer;
-        }
-        
-        // Use layer's helper method if available
-        if ((!camera || !renderer) && typeof layer.ensureCameraAndRenderer === 'function') {
-          const result = layer.ensureCameraAndRenderer();
-          camera = result.camera;
-          renderer = result.renderer;
-        }
+  // Add to scene for rendering
+  scene.add(marker);
+  
+  // Create frequency label if camera and renderer are provided
+  if (camera && renderer) {
+    let labelText;
+    
+    // Format based on whether this is a quantized note and its properties
+    if (note.noteName) {
+      if (isQuantized) {
+        labelText = `${note.noteName} (Q)`;
+      } else {
+        labelText = note.noteName;
+      }
+    } else {
+      if (isQuantized) {
+        labelText = `${frequency.toFixed(1)}Hz (Q)`;
+      } else {
+        labelText = `${frequency.toFixed(1)}Hz`;
       }
     }
     
-    // If we have camera and renderer, create label
-    if (camera && renderer) {
-      // Format frequency with appropriate display
-      let displayText;
+    // Create label object
+    const label = createOrUpdateLabel(
+      `marker-${markersArray.length}-${Math.random().toString(36).substr(2, 9)}`,
+      new THREE.Vector3(worldX, worldY, 10),
+      labelText,
+      camera,
+      renderer
+    );
+    
+    // Store label reference in marker userData
+    marker.userData.label = label;
+  }
+  
+  // Check if we need to create an axis label (only when showAxisFreqLabels is true)
+  if (layer && layer.state && layer.state.showAxisFreqLabels === true) {
+    // If this is an axis crossing, create a label
+    const isXAxisCrossing = Math.abs(worldY) < 5; // Close to X-axis
+    const isYAxisCrossing = Math.abs(worldX) < 5; // Close to Y-axis
+    
+    if (isXAxisCrossing || isYAxisCrossing) {
+      const axis = isXAxisCrossing ? 'x' : 'y';
       
-      // If equal temperament is enabled, show both the original frequency and the note name
-      if (layer.state.useEqualTemperament && note.noteName) {
-        // Add a "Q" prefix for quantized triggers for visual feedback
-        const qPrefix = isQuantized ? "Q " : "";
-        const intersectionPrefix = note.isIntersection ? "I " : "";
-        displayText = `${qPrefix}${intersectionPrefix}${frequency.toFixed(1)}Hz (${note.noteName}) ${duration.toFixed(2)}s`;
-      } else {
-        // Just show frequency in free temperament mode
-        // Add a "Q" prefix for quantized triggers
-        const qPrefix = isQuantized ? "Q " : "";
-        const intersectionPrefix = note.isIntersection ? "I " : "";
-        displayText = `${qPrefix}${intersectionPrefix}${frequency.toFixed(2)}Hz ${duration.toFixed(2)}s`;
-      }
+      // Create a more specific ID to prevent ID conflicts
+      // Include timestamp to ensure uniqueness
+      const labelId = `axis-${layer.id}-${note.copyIndex || 0}-${note.vertexIndex || 0}-${Date.now()}`;
       
-      // Create a unique ID for this temporary label
-      const labelId = `axis-${Math.random().toString(36).substr(2, 9)}`;
+      const labelPos = new THREE.Vector3(worldX, worldY, 0);
+      const labelText = isQuantized ? 
+        `${note.noteName || note.frequency.toFixed(1) + 'Hz'} Q` : 
+        note.noteName || note.frequency.toFixed(1) + 'Hz';
       
-      // Create axis crossing label - use world coordinates directly
-      const worldPosition = new THREE.Vector3(worldX, worldY, 5);
+      // Use layer color for the label
+      const labelColor = layer.color;
       
-      // Use the layer's color for the label if available
-      const labelColor = layer && layer.color ? layer.color : null;
-      
-      // Create the axis label - use 1 second lifespan
-      textLabel = createAxisLabel(labelId, worldPosition, displayText, camera, renderer, 1.0, labelColor);
+      // Use a shorter lifespan for better UI responsiveness (0.8 seconds)
+      // This matches the marker fade time better
+      createAxisLabel(labelId, labelPos, labelText, camera, renderer, 0.8, labelColor);
     }
   }
   
-  // Add to markers array with life value and animation state
-  const marker = {
-    mesh: markerMesh,
-    textLabel: textLabel,
-    life: MARK_LIFE,
-    originalLife: MARK_LIFE,
-    animState: ANIMATION_STATES.IDLE,
-    isQuantized: isQuantized,
-    isIntersection: note.isIntersection || false,
-    noteInfo: {
-      frequency,
-      duration,
-      velocity
-    },
-    justHit: false,
-    velocity: 0,
-    pan: note.pan || 0,
-    frequency: frequency,
-    // Store position for updating
-    position: new THREE.Vector3(worldX, worldY, 5),
-    // Keep track of which layer this marker belongs to
-    layerId: layer ? layer.id : (scene._layerManager ? scene._layerManager.activeLayerId : null),
-    createdAt: performance.now()
+  // Set up animation for marker fading with improved memory management
+  const animateMarker = () => {
+    // Check if marker is still in the DOM/scene
+    if (!marker.parent) {
+      // Marker was removed, don't continue animation
+      return;
+    }
+    
+    const now = getCurrentTime();
+    const age = now - marker.userData.creationTime;
+    
+    // Calculate fade based on age and duration
+    const normalizedAge = age / MARK_LIFE;
+    
+    if (normalizedAge >= 1.0) {
+      // Get reference to the marker's scene before removing it
+      const markerScene = marker.parent;
+      
+      // Remove marker from scene
+      if (markerScene) {
+        markerScene.remove(marker);
+      }
+      
+      // Remove from markers array
+      if (markersArray) {
+        const index = markersArray.indexOf(marker);
+        if (index !== -1) {
+          markersArray.splice(index, 1);
+        }
+      }
+      
+      // Dispose of geometry and material to prevent memory leaks
+      if (marker.geometry) {
+        marker.geometry.dispose();
+      }
+      
+      if (marker.material) {
+        if (Array.isArray(marker.material)) {
+          marker.material.forEach(mat => mat.dispose());
+        } else {
+          marker.material.dispose();
+        }
+      }
+      
+      // Remove label if it exists
+      if (marker.userData.label) {
+        removeLabel(marker.userData.label.id);
+      }
+      
+      return;
+    }
+    
+    // Scale and fade the marker
+    const scale = Math.max(0.1, 1.0 - normalizedAge);
+    marker.scale.set(scale, scale, scale);
+    marker.material.opacity = Math.max(0, 1.0 - normalizedAge) * Math.min(1.0, velocity * 1.5);
+    
+    // Request next animation frame
+    requestAnimationFrame(animateMarker);
   };
   
-  // Add the marker to the appropriate array
-  markersArray.push(marker);
+  // Start animation
+  animateMarker();
   
   return marker;
 }
 
 /**
- * Reset the trigger system - call when geometry changes
+ * Reset the trigger system state
  */
 export function resetTriggerSystem() {
-  // Clear all collections completely
+  // Clear all maps and arrays
   recentTriggers.clear();
   pendingTriggers = [];
+  lastPositionRecordTimes.clear();
   
-  // Also reset the subframe engine
+  // Reset the subframe engine
   if (subframeEngine) {
     subframeEngine.clearAllHistory();
   }
   
-  // Reset timers and restart cleanup
+  // Reset cleanup timer
   if (cleanupTimerId !== null) {
     clearInterval(cleanupTimerId);
     cleanupTimerId = null;
   }
+  
+  // Set up a new cleanup timer
   setupCleanupTimer();
   
-  // FIXED: Reset the layer-specific position record times
-  lastPositionRecordTimes.clear();
+  if (DEBUG_LOGGING) {
+    console.log("Trigger system reset complete");
+  }
 }
 
 /**
- * Completely dispose of the trigger system and free resources
- * Call this when the application is shutting down or when
- * the trigger system is no longer needed
+ * Dispose of all resources used by the trigger system
  */
 export function disposeTriggerSystem() {
-  // Clear all collections
+  // Clear data structures
   recentTriggers.clear();
   pendingTriggers = [];
+  lastPositionRecordTimes.clear();
   
   // Dispose of the subframe engine
   if (subframeEngine) {
     subframeEngine.dispose();
   }
   
-  // Clear any timers
+  // Clear timers
   if (cleanupTimerId !== null) {
     clearInterval(cleanupTimerId);
     cleanupTimerId = null;
   }
+  
+  if (DEBUG_LOGGING) {
+    console.log("Trigger system disposed");
+  }
 }
 
 /**
- * Check if axis crossing occurred between two positions, with enhanced detection for high BPM
- * @param {number} prevX Previous X position
- * @param {number} prevY Previous Y position
- * @param {number} currX Current X position
- * @param {number} currY Current Y position
- * @returns {Object} Object with hasCrossed boolean and interpolation factor
+ * Check if a line segment crosses the axes in an enhanced way
+ * that properly detects crossings in all quadrants
+ * @param {number} prevX Previous x coordinate
+ * @param {number} prevY Previous y coordinate
+ * @param {number} currX Current x coordinate
+ * @param {number} currY Current y coordinate
+ * @returns {Object} Crossing information
  */
 function checkEnhancedAxisCrossing(prevX, prevY, currX, currY) {
-  // Basic case: point crosses from right to left and is above X-axis
-  if (prevX > 0 && currX <= 0 && currY > 0) {
-    // Calculate the exact interpolation factor where crossing occurred
-    const crossingFactor = prevX / (prevX - currX);
-    return { hasCrossed: true, crossingFactor };
-  }
+  // Check if segment crosses the y-axis (x = 0)
+  const crossesYAxis = (prevX < 0 && currX >= 0) || (prevX >= 0 && currX < 0);
   
-  // Handle large angle changes with enhanced detection
-  if (currY > 0) {
-    const prevAngleFromYAxis = Math.atan2(prevX, prevY);
-    const currAngleFromYAxis = Math.atan2(currX, currY);
+  // Check if segment crosses the x-axis (y = 0)
+  const crossesXAxis = (prevY < 0 && currY >= 0) || (prevY >= 0 && currY < 0);
+  
+  // Calculate the precise crossing point if needed
+  let crossingPoint = null;
+  let axis = null;
+  
+  if (crossesYAxis) {
+    // Calculate where the line segment crosses the y-axis
+    const t = -prevX / (currX - prevX);
+    const yAtCrossing = prevY + t * (currY - prevY);
     
-    if (Math.sign(prevAngleFromYAxis) > 0 && Math.sign(currAngleFromYAxis) <= 0) {
-      const angleDiff = Math.abs(prevAngleFromYAxis - currAngleFromYAxis);
-      if (angleDiff < Math.PI) {
-        // Calculate approximate crossing factor based on angle progression
-        const crossingFactor = Math.abs(prevAngleFromYAxis) / angleDiff;
-        return { hasCrossed: true, crossingFactor };
-      }
-    }
+    // Store crossing info
+    crossingPoint = { x: 0, y: yAtCrossing };
+    axis = 'y';
+  } else if (crossesXAxis) {
+    // Calculate where the line segment crosses the x-axis
+    const t = -prevY / (currY - prevY);
+    const xAtCrossing = prevX + t * (currX - prevX);
+    
+    // Store crossing info
+    crossingPoint = { x: xAtCrossing, y: 0 };
+    axis = 'x';
   }
   
-  return { hasCrossed: false, crossingFactor: 0 };
+  return {
+    crossesYAxis,
+    crossesXAxis,
+    crossingPoint,
+    axis
+  };
 }
 
 /**
- * Detect triggers for intersection points (including star cuts)
- * This function processes the intersection markers in each copy group
- * @param {Object} copyGroup - The copy group containing intersection markers
- * @param {Object} layer - The layer object
- * @param {number} copyIndex - The index of the current copy
- * @param {number} angle - Current rotation angle
- * @param {number} lastAngle - Previous rotation angle
- * @param {number} tNow - Current time
- * @param {Function} audioCallback - Callback function for triggered audio
- * @param {Set} triggeredNow - Set of already triggered points
- * @param {Array} triggeredPoints - Array of triggered point positions
- * @param {THREE.Matrix4} inverseRotationMatrix - Matrix to remove rotation
- * @param {THREE.Matrix4} rotationMatrix - Matrix to apply rotation
- * @param {boolean} isLerping - Whether values are currently being lerped
- * @param {number} LERPING_TRIGGER_COOLDOWN - Cooldown time for triggers during lerping
- * @returns {boolean} True if any triggers were detected
+ * Detect triggers for a layer
+ * @param {Layer} layer Layer to detect triggers for
+ * @param {number} tNow Current time
+ * @param {Function} audioCallback Callback to play audio
+ * @returns {Array} Array of triggered points
  */
-function detectIntersectionTriggers(
-  copyGroup, layer, copyIndex, angle, lastAngle, tNow, audioCallback, 
-  triggeredNow, triggeredPoints, inverseRotationMatrix, rotationMatrix, 
-  isLerping, LERPING_TRIGGER_COOLDOWN
-) {
-  // Debug when this function is called
-  if (DEBUG_STAR_CUTS) {
-    
+export function detectLayerTriggers(layer, tNow, audioCallback) {
+  // Skip if layer doesn't exist or isn't active
+  if (!layer || !layer.active) {
+    return [];
   }
-  
-  // Check if this copy group has intersection markers
-  if (!copyGroup || !copyGroup.userData) {
-    if (DEBUG_STAR_CUTS) {
-      
-    }
-    return false;
+
+  // Get copy group from layer
+  const copyGroup = layer.group;
+  if (!copyGroup) {
+    return [];
   }
-  
-  // Check if layer has intersections
-  if (layer && typeof layer.hasIntersections === 'function' && !layer.hasIntersections()) {
-    if (DEBUG_STAR_CUTS) {
-      
-    }
-    return false;
+
+  // Get camera and renderer from layer or scene
+  const camera = layer.camera || (copyGroup.parent && copyGroup.parent.userData && copyGroup.parent.userData.camera);
+  const renderer = layer.renderer || (copyGroup.parent && copyGroup.parent.userData && copyGroup.parent.userData.renderer);
+
+  // Layer ID for trigger tracking
+  const layerId = layer.id;
+
+  // Skip if layer isn't active or angle hasn't changed
+  if (!layer.active || (layer.currentAngle === layer.previousAngle && !layer.state.isLerping)) {
+    return [];
   }
-  
-  // Improved detection of intersection marker group
-  let intersectionGroup = null;
-  
-  // First, check the standard location
-  if (copyGroup.userData.intersectionMarkerGroup) {
-    intersectionGroup = copyGroup.userData.intersectionMarkerGroup;
-  } else {
-    // Try to find an intersection group as a direct child
-    for (let i = 0; copyGroup.children && i < copyGroup.children.length; i++) {
-      const child = copyGroup.children[i];
-      if (child.userData && child.userData.isIntersectionGroup) {
-        intersectionGroup = child;
-        break;
-      }
-    }
+
+  // Make sure lastPositionRecordTimes has an entry for this layer
+  if (!lastPositionRecordTimes.has(layerId)) {
+    lastPositionRecordTimes.set(layerId, 0);
   }
-  
-  if (!intersectionGroup || !intersectionGroup.children) {
-    if (DEBUG_STAR_CUTS) {
-      
-    }
-    return false;
-  }
-  
-  if (DEBUG_STAR_CUTS) {
-    
-  }
-  
-  // Get layer data
+
+  // Get state from layer
   const state = layer.state;
-  const scene = layer.group?.parent;
   
-  // Skip if no scene or state
-  if (!scene || !state) {
-    return false;
-  }
+  // Check if we need to record new vertex positions for subframe detection
+  const timeSinceLastRecording = tNow - lastPositionRecordTimes.get(layerId);
   
-  // Get camera and renderer from multiple possible sources
-  let camera = scene?.userData?.camera;
-  let renderer = scene?.userData?.renderer;
-  
-  // Try to get camera and renderer from layer's group if not found in scene
-  if (!camera || !renderer) {
-    camera = layer.group?.userData?.camera;
-    renderer = layer.group?.userData?.renderer;
+  if (timeSinceLastRecording >= POSITION_RECORD_INTERVAL) {
+    // Record positions for all vertices in all copies
+    recordLayerVertexPositions(layer, tNow);
     
-    // Try layer's ensureCameraAndRenderer method as a last resort
-    if ((!camera || !renderer) && typeof layer.ensureCameraAndRenderer === 'function') {
-      const result = layer.ensureCameraAndRenderer();
-      camera = result.camera;
-      renderer = result.renderer;
-      
-      // Cache the results if they were found
-      if (camera && renderer) {
-        scene.userData.camera = camera;
-        scene.userData.renderer = renderer;
-      }
-    }
+    // Update last record time
+    lastPositionRecordTimes.set(layerId, tNow);
   }
   
-  // Determine if these are star cut intersections
-  const isStarCuts = state.useStars && state.useCuts && state.starSkip > 1;
+  // Set a lower cooldown time when lerping for smoother triggering
+  const LERPING_TRIGGER_COOLDOWN = state.isLerping ? 0.01 : DEFAULT_COOLDOWN_TIME;
   
-  if (isStarCuts && DEBUG_STAR_CUTS) {
+  // Array to track all triggered points in this frame
+  const triggeredNow = [];
+  
+  // Track triggered points to avoid duplicates
+  const triggeredPoints = [];
+  
+  // Get rotation matrices for detection
+  const angle = layer.currentAngle;
+  const lastAngle = layer.previousAngle;
+  const rotationMatrix = new THREE.Matrix4().makeRotationZ(angle);
+  const inverseRotationMatrix = new THREE.Matrix4().makeRotationZ(-angle);
+  
+  // Let the subframe trigger system handle the actual detection
+  // with much higher precision
+  const subframeTriggered = detectSubframeTriggers(
+    layer, tNow, audioCallback, camera, renderer, copyGroup.parent
+  );
+  
+  // Return all triggered points
+  return [...triggeredNow, ...subframeTriggered];
+}
+
+/**
+ * Record vertex positions for a layer
+ * @param {Layer} layer Layer to record positions for
+ * @param {number} timestamp Current timestamp
+ */
+function recordLayerVertexPositions(layer, timestamp) {
+  // Skip if layer doesn't exist or isn't active
+  if (!layer || !layer.active) {
+    return;
+  }
+  
+  // Get copy group from layer
+  const copyGroup = layer.group;
+  if (!copyGroup) {
+    return;
+  }
+  
+  // Current rotation angle
+  const angle = layer.currentAngle || 0;
+  
+  // Create rotation matrices
+  const rotationMatrix = new THREE.Matrix4().makeRotationZ(angle);
+  const inverseRotationMatrix = new THREE.Matrix4().makeRotationZ(-angle);
+  
+  // Process each child in the copy group
+  const children = Array.from(copyGroup.children);
+  
+  for (let ci = 0; ci < children.length; ci++) {
+    const child = children[ci];
     
-  }
-  
-  // Create a map for vertices that have already been checked
-  if (!layer.prevIntersectionVertices) {
-    layer.prevIntersectionVertices = new Map();
-  }
-  
-  // Temp vectors for calculations
-  const worldPos = new THREE.Vector3();
-  const prevWorldPos = new THREE.Vector3();
-  
-  // Get the current world matrix of the copy group
-  const tempWorldMatrix = new THREE.Matrix4();
-  intersectionGroup.updateMatrixWorld();
-  tempWorldMatrix.copy(intersectionGroup.matrixWorld);
-  
-  // Apply the inverse rotation to get the unrotated world positions
-  tempWorldMatrix.premultiply(inverseRotationMatrix);
-  
-  // Track if any triggers occurred
-  let anyTriggers = false;
-  let triggersCount = 0;
-  
-  // Process each intersection marker (point)
-  for (let i = 0; i < intersectionGroup.children.length; i++) {
-    const marker = intersectionGroup.children[i];
-    
-    // Skip non-mesh objects
-    if (marker.type !== 'Mesh') {
+    // Skip non-polygon objects
+    if (child.userData && (
+      child.userData.isMarker || 
+      child.userData.isAxisLabel
+    )) {
       continue;
     }
     
-    // Create a unique key for this intersection point
-    const key = `${layer.id}-intersection-${copyIndex}-${i}`;
-    
-    // Skip if already triggered in this frame
-    if (triggeredNow.has(key)) {
-      if (DEBUG_STAR_CUTS) {
+    // Skip objects that aren't Lines or LineLoops
+    if (child.type !== 'Line' && child.type !== 'LineLoop' && child.type !== 'LineSegments') {
+      // If this is a Group, we need to check its children
+      if (child.type === 'Group') {
+        const lineChildren = child.children.filter(c => 
+          c.type === 'Line' || c.type === 'LineLoop' || c.type === 'LineSegments'
+        );
         
-      }
-      continue;
-    }
-    
-    try {
-      // Get current marker world position (unrotated)
-      worldPos.copy(marker.position);
-      
-      // Skip invalid positions
-      if (isNaN(worldPos.x) || isNaN(worldPos.y) || isNaN(worldPos.z)) {
+        // Process each line child
+        for (const lineChild of lineChildren) {
+          // Record positions for this line
+          recordLineVertexPositions(lineChild, ci, layer, timestamp, rotationMatrix, inverseRotationMatrix);
+        }
+        
         continue;
-      }
-      
-      // Apply unrotated world matrix to get position in world space
-      worldPos.applyMatrix4(tempWorldMatrix);
-      
-      // Store original non-rotated position for frequency calculation
-      const nonRotatedPos = worldPos.clone();
-      
-      // Apply rotation manually for trigger detection
-      worldPos.applyMatrix4(rotationMatrix);
-      
-      // Get previous vertex world position
-      let hasPrevPos = false;
-      if (layer.prevIntersectionVertices.has(key)) {
-        prevWorldPos.copy(layer.prevIntersectionVertices.get(key));
-        hasPrevPos = true;
       } else {
-        // For first frame, use current position
-        prevWorldPos.copy(worldPos);
-      }
-      
-      // Store current position for next frame (with rotation)
-      layer.prevIntersectionVertices.set(key, worldPos.clone());
-      
-      // Skip trigger detection if we don't have previous positions
-      if (!hasPrevPos) {
         continue;
       }
-      
-      // Check for large position changes (likely due to geometry changes)
-      const positionDistance = prevWorldPos.distanceTo(worldPos);
-      const MAX_REASONABLE_MOVEMENT = 50; // Maximum reasonable movement between frames
-      
-      if (positionDistance > MAX_REASONABLE_MOVEMENT) {
-        if (DEBUG_STAR_CUTS) {
-          
-        }
-        continue;
-      }
-      
-      // Unwrap position values
-      const currX = worldPos.x;
-      const currY = worldPos.y;
-      const prevX = prevWorldPos.x;
-      const prevY = prevWorldPos.y;
-      
-      // Enhanced crossing detection with interpolation support
-      const { hasCrossed, crossingFactor } = checkEnhancedAxisCrossing(prevX, prevY, currX, currY);
-      
-      // Skip if not triggered this frame
-      if (hasCrossed && !layer.lastTrig.has(key)) {
-        // Only apply rate limiting during lerping
-        if (isLerping) {
-          // Check if this intersection is in cooldown period
-          const now = performance.now();
-          const lastTriggerTime = layer._triggersTimestamps.get(key) || 0;
-          const timeSinceLastTrigger = now - lastTriggerTime;
-          
-          // Skip if we're still in the cooldown period
-          if (timeSinceLastTrigger < LERPING_TRIGGER_COOLDOWN) {
-            continue;
-          }
-          
-          // Update the timestamp for this intersection
-          layer._triggersTimestamps.set(key, now);
-        }
-        
-        // Check for overlap with previously triggered points
-        if (!isPointOverlapping(currX, currY, triggeredPoints)) {
-          // Add to triggered points
-          triggeredPoints.push({ x: currX, y: currY });
-          
-          // Use the non-rotated position from the transformed geometry
-          // This already has all scaling factors applied (including modulus)
-          const nonRotatedX = nonRotatedPos.x;
-          const nonRotatedY = nonRotatedPos.y;
-          
-          // Calculate frequency directly from the transformed coordinates
-          const frequency = Math.hypot(nonRotatedX, nonRotatedY);
-          
-          // Calculate more accurate timing based on crossing factor
-          const adjustedTime = tNow - (1 - crossingFactor) * (1000 / 120);
-          
-          // Create a note object for this intersection point
-          const note = createNote({
-            x: nonRotatedX,
-            y: nonRotatedY,
-            isIntersection: true,
-            isStarCut: isStarCuts, // Set isStarCut flag based on the state
-            intersectionIndex: i,
-            copyIndex: copyIndex,
-            frequency: frequency,
-            layerId: layer.id // Include layer ID in the note data
-          }, state);
-          
-          // Update time information
-          note.time = adjustedTime;
-          
-          // Handle quantization
-          if (state.useQuantization) {
-            // Create trigger info
-            const triggerInfo = {
-              note: {...note},
-              worldRot: angle,
-              camera,
-              renderer,
-              isQuantized: true,
-              layer
-            };
-            
-            // Handle quantization
-            const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(tNow, state, triggerInfo);
-            
-            if (shouldTrigger) {
-              // Trigger with precise time
-              const noteCopy = {...note};
-              noteCopy.time = triggerTime;
-              
-              // Create visual marker at the crossing point
-              createMarker(
-                angle,
-                currX,
-                currY,
-                scene,
-                noteCopy,
-                camera,
-                renderer,
-                isQuantized,
-                layer // Pass layer to createMarker for layer-specific styling
-              );
-              
-              // Trigger audio callback
-              audioCallback(noteCopy);
-              
-              // Mark as triggered this frame
-              triggeredNow.add(key);
-              layer.lastTrig.add(key);
-              
-              anyTriggers = true;
-              triggersCount++;
-            }
-          } else {
-            // Simple trigger without quantization
-            // Create visual marker at the crossing point
-            createMarker(
-              angle,
-              currX,
-              currY,
-              scene,
-              note,
-              camera,
-              renderer,
-              false,
-              layer // Pass layer to createMarker for layer-specific styling
-            );
-            
-            // Trigger audio callback
-            audioCallback(note);
-            
-            // Mark as triggered this frame
-            triggeredNow.add(key);
-            layer.lastTrig.add(key);
-            
-            anyTriggers = true;
-            triggersCount++;
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`Error processing intersection ${i} in copy ${copyIndex} of layer ${layer.id}:`, error);
     }
+    
+    // Record positions for this line
+    recordLineVertexPositions(child, ci, layer, timestamp, rotationMatrix, inverseRotationMatrix);
+  }
+}
+
+/**
+ * Record vertex positions for a single line object
+ * @param {THREE.Line} line Line object to record positions for
+ * @param {number} copyIndex Index of the copy
+ * @param {Layer} layer Layer the line belongs to
+ * @param {number} timestamp Current timestamp
+ * @param {THREE.Matrix4} rotationMatrix Current rotation matrix
+ * @param {THREE.Matrix4} inverseRotationMatrix Inverse rotation matrix
+ */
+function recordLineVertexPositions(line, copyIndex, layer, timestamp, rotationMatrix, inverseRotationMatrix) {
+  // Skip if line doesn't have geometry or position attribute
+  if (!line.geometry || !line.geometry.attributes.position) {
+    return;
   }
   
-  // Clear the lastTrig set in the next frame
-  if (anyTriggers) {
-    window.requestAnimationFrame(() => {
-      layer.lastTrig.clear();
+  // Get position attribute
+  const posAttr = line.geometry.attributes.position;
+  
+  // Get transformation matrices
+  const lineWorldMatrix = new THREE.Matrix4();
+  line.updateMatrixWorld();
+  lineWorldMatrix.copy(line.matrixWorld);
+  
+  // Temporary vectors for calculations
+  const tempVec = new THREE.Vector3();
+  const worldPos = new THREE.Vector3();
+  
+  // Process each vertex in the line
+  for (let vi = 0; vi < posAttr.count; vi++) {
+    // Get vertex position
+    tempVec.fromBufferAttribute(posAttr, vi);
+    
+    // Transform to world space
+    worldPos.copy(tempVec).applyMatrix4(lineWorldMatrix);
+    
+    // Create unique vertex ID
+    const vertexId = `${layer.id}-${copyIndex}-${vi}`;
+    
+    // Add position to subframe engine
+    subframeEngine.recordVertexPosition(
+      vertexId,
+      copyIndex,
+      vi,
+      timestamp,
+      worldPos.x,
+      worldPos.y,
+      worldPos.z
+    );
+  }
+}
+
+/**
+ * Detect triggers using the subframe system
+ * @param {Layer} layer Layer to detect triggers for
+ * @param {number} timestamp Current timestamp
+ * @param {Function} audioCallback Callback to play audio
+ * @param {THREE.Camera} camera Camera for positioning
+ * @param {THREE.WebGLRenderer} renderer Renderer for positioning
+ * @param {THREE.Scene} scene Scene to add markers to
+ * @returns {Array} Array of triggered points
+ */
+function detectSubframeTriggers(layer, timestamp, audioCallback, camera, renderer, scene) {
+  // Skip if layer doesn't exist or isn't active
+  if (!layer || !layer.active) {
+    return [];
+  }
+  
+  // Set cooldown time based on whether we're lerping
+  const cooldownTime = layer.state.isLerping ? 0.01 : DEFAULT_COOLDOWN_TIME;
+  
+  // Get all triggered vertices from the subframe engine
+  const triggeredVertices = subframeEngine.detectTriggers(
+    layer.id, 
+    timestamp, 
+    layer.currentAngle, 
+    layer.previousAngle,
+    cooldownTime
+  );
+  
+  // Array to store all triggered points
+  const triggeredPoints = [];
+  
+  // Process triggered vertices
+  for (const trigger of triggeredVertices) {
+    // Create unique ID for this trigger
+    const triggerId = `${layer.id}-${trigger.copyIndex}-${trigger.vertexIndex}-${Math.floor(timestamp * 10)}`;
+    
+    // Skip if this was recently triggered
+    if (recentTriggers.has(triggerId)) {
+      continue;
+    }
+    
+    // Mark as recently triggered
+    recentTriggers.set(triggerId, {
+      time: timestamp,
+      position: { x: trigger.x, y: trigger.y, z: trigger.z }
+    });
+    
+    // Calculate frequency for this point
+    const x = trigger.x;
+    const y = trigger.y;
+    
+    // Get frequency from position
+    let frequency = getFrequency(x, y);
+    let noteName = null;
+    
+    // Apply equal temperament if enabled
+    if (layer.state.useEqualTemperament) {
+      const refFreq = layer.state.referenceFrequency || 440;
+      try {
+        frequency = quantizeToEqualTemperament(frequency, refFreq);
+        noteName = getNoteName(frequency, refFreq);
+      } catch (e) {
+        // Use unquantized frequency if quantization fails
+      }
+    }
+    
+    // Calculate pan position (-1 to 1 based on x position)
+    const pan = Math.max(-1, Math.min(1, x / 300));
+    
+    // Create note object
+    const note = createNote({
+      x,
+      y,
+      copyIndex: trigger.copyIndex,
+      vertexIndex: trigger.vertexIndex,
+      globalIndex: trigger.vertexIndex + (trigger.copyIndex * 100) // Simple global index calculation
+    }, layer.state);
+    
+    // Store note name if available
+    if (noteName) {
+      note.noteName = noteName;
+    }
+    
+    // Calculate trigger angle (in degrees for display)
+    const triggerAngle = (trigger.angle * 180 / Math.PI) % 360;
+    
+    // Add trigger information to note
+    note.copyIndex = trigger.copyIndex;
+    note.vertexIndex = trigger.vertexIndex;
+    note.triggerAngle = triggerAngle;
+    note.layerId = layer.id;
+    note.x = x;
+    note.y = y;
+    
+    // Apply quantization if enabled
+    if (layer.state.useQuantization) {
+      handleQuantizedTrigger(timestamp, layer.state, {
+        note,
+        x: trigger.x,
+        y: trigger.y,
+        angle: triggerAngle,
+        worldX: trigger.x,
+        worldY: trigger.y,
+        layerId: layer.id,
+        isSubframe: true,
+        camera,
+        renderer
+      });
+    } else {
+      // Play note immediately
+      if (audioCallback) {
+        audioCallback(note);
+      }
+      
+      // Create visual marker
+      createMarker(
+        triggerAngle,
+        trigger.x,
+        trigger.y,
+        scene,
+        note,
+        camera,
+        renderer,
+        false,
+        layer
+      );
+    }
+    
+    // Add to triggered points
+    triggeredPoints.push({
+      x: trigger.x,
+      y: trigger.y,
+      z: trigger.z,
+      note,
+      angle: triggerAngle,
+      copyIndex: trigger.copyIndex,
+      vertexIndex: trigger.vertexIndex,
+      layerId: layer.id
     });
   }
   
-  if (DEBUG_STAR_CUTS && triggersCount > 0) {
-    
-  }
-  
-  return anyTriggers;
+  return triggeredPoints;
 }
 
 /**
- * Detect audio triggers for a layer with subframe precision
- * @param {Object} layer Layer to detect triggers for
- * @param {number} tNow Current time in seconds
- * @param {Function} audioCallback Callback function for triggered audio
- * @returns {boolean} True if any triggers were detected
- */
-export function detectLayerTriggers(layer, tNow, audioCallback) {
-  // Validation checks
-  if (!layer) {
-    return false;
-  }
-  
-  // Get layer data
-  const state = layer.state;
-  const group = layer.group;
-  
-  // FIXED: Early return for layers with 0 copies to prevent any trigger processing
-  if (!state || state.copies <= 0) {
-    return false;
-  }
-  
-  // Skip processing if group is not visible
-  if (!group.visible) {
-    return false;
-  }
-  
-  // FIXED: Ensure trigger detection works properly for all layers
-  // Force-set layerId in userData to ensure correct layer identification
-  if (group.userData) {
-    group.userData.layerId = layer.id;
-    
-    // Also ensure we have a stateId reference
-    if (group.userData.stateId === undefined || group.userData.stateId !== layer.id) {
-      group.userData.stateId = layer.id;
-    }
-  }
-  
-  // Initialize trigger rate limiting for lerping if needed
-  if (!layer._triggersTimestamps) {
-    layer._triggersTimestamps = new Map();
-  }
-  
-  // Check if lerping is active
-  const isLerping = state && state.isLerping && typeof state.isLerping === 'function' && state.isLerping();
-  
-  // Ensure lastTrig set exists
-  if (!layer.lastTrig) layer.lastTrig = new Set();
-  
-  // Get the scene from the group's parent
-  const scene = group.parent;
-  if (!scene) {
-    return false;
-  }
-  
-  // Get camera and renderer from multiple possible sources
-  let camera = scene?.userData?.camera;
-  let renderer = scene?.userData?.renderer;
-  
-  // Try to get camera and renderer from layer's group if not found in scene
-  if (!camera || !renderer) {
-    camera = layer.group?.userData?.camera;
-    renderer = layer.group?.userData?.renderer;
-    
-    // Try layer's ensureCameraAndRenderer method as a last resort
-    if ((!camera || !renderer) && typeof layer.ensureCameraAndRenderer === 'function') {
-      const result = layer.ensureCameraAndRenderer();
-      camera = result.camera;
-      renderer = result.renderer;
-      
-      // Cache the results if they were found
-      if (camera && renderer) {
-        scene.userData.camera = camera;
-        scene.userData.renderer = renderer;
-      }
-    }
-  }
-  
-  // Skip if geometry was just created (avoid false triggers)
-  if (layer.baseGeo && layer.baseGeo.userData && layer.baseGeo.userData.createdAt) {
-    const timeSinceCreation = Date.now() - layer.baseGeo.userData.createdAt;
-    const GEOMETRY_GRACE_PERIOD = 100; // 100ms grace period
-    
-    if (timeSinceCreation < GEOMETRY_GRACE_PERIOD) {
-      return false;
-    }
-  }
-  
-  // FIXED: Ensure layer's baseGeo has proper userData for correct trigger detection
-  if (layer.baseGeo && (!layer.baseGeo.userData || layer.baseGeo.userData.layerId !== layer.id)) {
-    layer.baseGeo.userData = layer.baseGeo.userData || {};
-    layer.baseGeo.userData.layerId = layer.id;
-    layer.baseGeo.userData.vertexCount = state.segments;
-  }
-  
-  // Setup variables for tracking triggers
-  const triggeredNow = new Set();
-  
-  // Check how many copies we have
-  let copies = 0;
-  if (state.copies) {
-    copies = state.copies;
-  } else if (group.children) {
-    // Count real copies (excluding intersection marker groups)
-    copies = group.children.filter(child => 
-      !(child.userData && child.userData.isIntersectionGroup)
-    ).length - 1; // Subtract 1 for the debug sphere
-  }
-  
-  // Skip if no copies or zero segments
-  if (copies <= 0 || state.segments <= 0) {
-    return false;
-  }
-  
-  // FIXED: Check if this is the first time processing this layer and initialize its timestamp
-  if (!lastPositionRecordTimes.has(layer.id)) {
-    lastPositionRecordTimes.set(layer.id, tNow - POSITION_RECORD_INTERVAL - 0.001); // Set to just before interval
-  }
-  
-  // SUBFRAME ENHANCEMENT: Record positions at fixed intervals - layer-specific timing
-  // This decouples position recording from frame rate for more consistent trigger detection
-  if (tNow - lastPositionRecordTimes.get(layer.id) >= POSITION_RECORD_INTERVAL) {
-    recordLayerVertexPositions(layer, tNow);
-    lastPositionRecordTimes.set(layer.id, tNow);
-  }
-  
-  // SUBFRAME ENHANCEMENT: Check for triggers with subframe precision
-  return detectSubframeTriggers(layer, tNow, audioCallback, camera, renderer, scene);
-}
-
-/**
- * Record vertex positions for a layer into the subframe engine
- * @param {Object} layer Layer to record positions for
- * @param {number} timestamp Current time in seconds
- */
-function recordLayerVertexPositions(layer, timestamp) {
-  if (!layer || !layer.group) return;
-  
-  const state = layer.state;
-  const group = layer.group;
-  
-  // Skip if group is not visible
-  if (!group.visible) return;
-  
-  // Check how many copies we have
-  let copies = 0;
-  if (state.copies) {
-    copies = state.copies;
-  } else if (group.children) {
-    // Count real copies (excluding intersection marker groups)
-    copies = group.children.filter(child => 
-      !(child.userData && child.userData.isIntersectionGroup)
-    ).length - 1; // Subtract 1 for the debug sphere
-  }
-  
-  // Skip if no copies or zero segments
-  if (copies <= 0 || state.segments <= 0) return;
-  
-  // Get angle for rotation calculations
-  const angle = layer.currentAngle || 0;
-  
-  // Create matrices for calculations
-  const inverseRotationMatrix = new THREE.Matrix4().makeRotationZ(-angle);
-  const rotationMatrix = new THREE.Matrix4().makeRotationZ(angle);
-  
-  // Process each copy
-  for (let ci = 0; ci < copies; ci++) {
-    // Find the correct copy group
-    let copyIndex = ci;
-    let copyGroup = null;
-    let foundCopyCount = 0;
-    
-    // Find the copy group, skipping non-copy groups
-    for (let i = 0; i < group.children.length; i++) {
-      const child = group.children[i];
-      // Skip debug objects and intersection groups
-      if (child.userData && child.userData.isIntersectionGroup) continue;
-      if (child.type === 'Mesh' && child.geometry && child.geometry.type === 'SphereGeometry') continue;
-      if (child.type === 'Line') continue;
-      
-      // Count this as a valid copy group
-      if (foundCopyCount === ci) {
-        copyGroup = child;
-        break;
-      }
-      
-      // Otherwise, increment our counter and continue
-      foundCopyCount++;
-    }
-    
-    // Skip if we couldn't find a valid copy group
-    if (!copyGroup || !copyGroup.children || copyGroup.children.length === 0) {
-      continue;
-    }
-    
-    // Find the LineLoop (main geometry)
-    const mesh = copyGroup.children.find(child => child.type === 'LineLoop');
-    if (!mesh) {
-      continue;
-    }
-    
-    // Validate geometry and attributes
-    if (!mesh.geometry || !mesh.geometry.getAttribute('position')) {
-      continue;
-    }
-    
-    const positions = mesh.geometry.getAttribute('position');
-    if (!positions || !positions.count) {
-      continue;
-    }
-    
-    const count = positions.count;
-    
-    // Calculate world matrix without rotation
-    const tempWorldMatrix = new THREE.Matrix4();
-    mesh.updateMatrixWorld();
-    tempWorldMatrix.copy(mesh.matrixWorld);
-    tempWorldMatrix.premultiply(inverseRotationMatrix);
-    
-    // Temp vector for calculations
-    const worldPos = new THREE.Vector3();
-    
-    // Process each vertex in this copy
-    for (let vi = 0; vi < count; vi++) {
-      // Create a unique vertex ID
-      const vertexId = `${layer.id}-${ci}-${vi}`;
-      
-      try {
-        // Get current vertex world position (unrotated)
-        worldPos.fromBufferAttribute(positions, vi);
-        
-        // Skip invalid vertices
-        if (isNaN(worldPos.x) || isNaN(worldPos.y) || isNaN(worldPos.z)) {
-          continue;
-        }
-        
-        // Apply unrotated world matrix to get position in world space
-        worldPos.applyMatrix4(tempWorldMatrix);
-        
-        // Apply rotation for trigger detection
-        const rotatedPos = worldPos.clone().applyMatrix4(rotationMatrix);
-        
-        // Record position in subframe engine
-        subframeEngine.recordVertexPosition(
-          vertexId,
-          {
-            x: rotatedPos.x,
-            y: rotatedPos.y,
-            z: rotatedPos.z
-          },
-          timestamp
-        );
-      } catch (error) {
-        console.error(`Error recording vertex position for layer ${layer.id}, copy ${ci}, vertex ${vi}:`, error);
-      }
-    }
-    
-    // Also record intersection points
-    recordIntersectionPoints(copyGroup, layer, ci, angle, timestamp, inverseRotationMatrix, rotationMatrix);
-  }
-}
-
-/**
- * Record intersection points for subframe detection
- * @param {THREE.Group} copyGroup Group containing intersection markers
- * @param {Layer} layer Layer object that owns this copy
- * @param {number} ci Copy index
- * @param {number} angle Current rotation angle
- * @param {number} timestamp Current time in seconds
- * @param {THREE.Matrix4} inverseRotationMatrix Matrix to remove rotation
- * @param {THREE.Matrix4} rotationMatrix Matrix to apply rotation
- */
-function recordIntersectionPoints(copyGroup, layer, ci, angle, timestamp, inverseRotationMatrix, rotationMatrix) {
-  // Skip if layer has no intersections
-  if (typeof layer.hasIntersections === 'function' && !layer.hasIntersections()) {
-    return;
-  }
-  
-  // Improved detection of intersection marker group
-  let intersectionGroup = null;
-  
-  // First, check the standard location
-  if (copyGroup.userData && copyGroup.userData.intersectionMarkerGroup) {
-    intersectionGroup = copyGroup.userData.intersectionMarkerGroup;
-  } else {
-    // Try to find an intersection group as a direct child
-    for (let i = 0; copyGroup.children && i < copyGroup.children.length; i++) {
-      const child = copyGroup.children[i];
-      if (child.userData && child.userData.isIntersectionGroup) {
-        intersectionGroup = child;
-        break;
-      }
-    }
-  }
-  
-  if (!intersectionGroup || !intersectionGroup.children) {
-    return;
-  }
-  
-  // Get the current world matrix of the copy group
-  const tempWorldMatrix = new THREE.Matrix4();
-  intersectionGroup.updateMatrixWorld();
-  tempWorldMatrix.copy(intersectionGroup.matrixWorld);
-  
-  // Apply the inverse rotation to get the unrotated world positions
-  tempWorldMatrix.premultiply(inverseRotationMatrix);
-  
-  // Temp vector for calculations
-  const worldPos = new THREE.Vector3();
-  
-  // Get layer's intersection points array if available
-  const intersectionPoints = layer.intersectionPoints || [];
-  
-  // Process each intersection marker
-  for (let i = 0; i < intersectionGroup.children.length; i++) {
-    const marker = intersectionGroup.children[i];
-    
-    // Skip non-mesh objects
-    if (marker.type !== 'Mesh') {
-      continue;
-    }
-    
-    // Create a unique key for this intersection point
-    const vertexId = `${layer.id}-intersection-${ci}-${i}`;
-    
-    try {
-      // Get current marker world position (unrotated)
-      worldPos.copy(marker.position);
-      
-      // Skip invalid positions
-      if (isNaN(worldPos.x) || isNaN(worldPos.y) || isNaN(worldPos.z)) {
-        continue;
-      }
-      
-      // Apply unrotated world matrix to get position in world space
-      worldPos.applyMatrix4(tempWorldMatrix);
-      
-      // Store the position in layer's intersectionPoints array if it doesn't exist
-      if (i >= intersectionPoints.length) {
-        // Ensure layer has intersectionPoints array
-        if (!layer.intersectionPoints) {
-          layer.intersectionPoints = [];
-        }
-        
-        // Add the point to the layer's intersectionPoints
-        layer.intersectionPoints.push({
-          x: worldPos.x,
-          y: worldPos.y,
-          z: worldPos.z
-        });
-      }
-      
-      // Apply rotation for trigger detection
-      const rotatedPos = worldPos.clone().applyMatrix4(rotationMatrix);
-      
-      // Record position in subframe engine
-      subframeEngine.recordVertexPosition(
-        vertexId,
-        {
-          x: rotatedPos.x,
-          y: rotatedPos.y,
-          z: rotatedPos.z
-        },
-        timestamp
-      );
-    } catch (error) {
-      console.error(`Error recording intersection position for layer ${layer.id}, copy ${ci}, intersection ${i}:`, error);
-    }
-  }
-  
-  // Update the last intersection update timestamp
-  if (typeof layer.updateLastIntersectionTime === 'function') {
-    layer.updateLastIntersectionTime();
-  } else {
-    layer.lastIntersectionUpdate = timestamp;
-  }
-}
-
-/**
- * Detect triggers using subframe precision
- * @param {Object} layer Layer to detect triggers for
- * @param {number} timestamp Current time in seconds
- * @param {Function} audioCallback Callback for triggered audio
- * @param {THREE.Camera} camera Camera for visual feedback
- * @param {THREE.WebGLRenderer} renderer Renderer for visual feedback
- * @param {THREE.Scene} scene Scene for adding visual markers
- * @returns {boolean} True if any triggers were detected
- */
-function detectSubframeTriggers(layer, timestamp, audioCallback, camera, renderer, scene) {
-  if (!layer || !layer.group || !audioCallback) return false;
-  
-  const state = layer.state;
-  const group = layer.group;
-  
-  // FIXED: Additional early return for layers with 0 copies
-  if (!state || state.copies <= 0) {
-    return false;
-  }
-  
-  // Skip if group is not visible
-  if (!group.visible) return false;
-  
-  // FIXED: Ensure we have the correct layer ID
-  const layerId = layer.id;
-  
-  // Get cooldown time from state or use default
-  const cooldownTime = state.triggerCooldown || DEFAULT_COOLDOWN_TIME;
-  
-  // Check how many copies we have
-  let copies = 0;
-  if (state.copies) {
-    copies = state.copies;
-  } else if (group.children) {
-    // Count real copies (excluding intersection marker groups)
-    copies = group.children.filter(child => 
-      !(child.userData && child.userData.isIntersectionGroup)
-    ).length - 1; // Subtract 1 for the debug sphere
-  }
-  
-  // Skip if no copies or zero segments
-  if (copies <= 0 || state.segments <= 0) return false;
-  
-  // Get angle for calculations
-  const angle = layer.currentAngle || 0;
-  
-  // Setup variables for tracking triggers
-  const triggeredNow = new Set();
-  const triggeredPoints = [];
-  let anyTriggers = false;
-  
-  // Process each copy
-  for (let ci = 0; ci < copies; ci++) {
-    // Process each vertex in this copy
-    for (let vi = 0; vi < state.segments; vi++) {
-      // Create a unique vertex ID that includes the layer ID
-      const vertexId = `${layerId}-${ci}-${vi}`;
-      
-      try {
-        // Skip if this trigger is in the recent triggers map and still in cooldown
-        if (recentTriggers.has(vertexId)) {
-          const triggerData = recentTriggers.get(vertexId);
-          const timeSinceLastTrigger = timestamp - triggerData.time;
-          
-          // Skip if cooldown hasn't elapsed
-          if (timeSinceLastTrigger < cooldownTime) {
-            continue;
-          }
-        }
-        
-        // Check for trigger crossing with subframe precision
-        const crossingResult = subframeEngine.detectCrossing(vertexId, cooldownTime);
-        
-        // Process if crossing detected
-        if (crossingResult.hasCrossed) {
-          // Get the base geometry for frequency calculation
-          if (!layer.baseGeo || !layer.baseGeo.getAttribute('position') || !layer.baseGeo.getAttribute('position').array) {
-            continue;
-          }
-          
-          const basePositions = layer.baseGeo.getAttribute('position').array;
-          
-          // Check base geometry bounds
-          if (vi * 3 + 1 >= basePositions.length) {
-            continue;
-          }
-          
-          // Use the position from the crossing result
-          const nonRotatedX = crossingResult.position.x;
-          const nonRotatedY = crossingResult.position.y;
-          
-          // Add to recent triggers with current timestamp
-          recentTriggers.set(vertexId, {
-            time: timestamp,
-            position: {
-              x: nonRotatedX,
-              y: nonRotatedY
-            }
-          });
-          
-          // Create note based on existing system
-          let note;
-          
-          // Try to use createNote from original system if available
-          try {
-            note = createNote({
-              x: nonRotatedX,
-              y: nonRotatedY,
-              copyIndex: ci,
-              vertexIndex: vi,
-              isIntersection: false,
-              layerId: layerId // FIXED: Explicitly use layerId
-            }, state);
-            
-            // Add subframe-specific properties
-            note.time = crossingResult.exactTime;
-            note.isSubframe = true;
-            note.crossingFactor = crossingResult.crossingFactor;
-            note.position = crossingResult.position;
-            note.layerId = layerId; // FIXED: Always include layerId in the note
-          } catch (e) {
-            // Fallback if createNote fails
-            const frequency = Math.hypot(nonRotatedX, nonRotatedY) * 2;
-            note = {
-              frequency: frequency,
-              noteName: state.useEqualTemperament ? getNoteName(frequency, state.referenceFrequency || 440) : null,
-              duration: state.maxDuration || 0.5,
-              velocity: state.maxVelocity || 0.8,
-              pan: Math.sin(angle),
-              x: crossingResult.position.x,
-              y: crossingResult.position.y,
-              z: crossingResult.position.z,
-              time: crossingResult.exactTime,
-              isSubframe: true,
-              vertexId: vertexId,
-              layerId: layerId // FIXED: Include layerId in fallback note
-            };
-          }
-          
-          // Check for overlap with previously triggered points
-          if (!isPointOverlapping(crossingResult.position.x, crossingResult.position.y, triggeredPoints)) {
-            // Add to triggered points
-            triggeredPoints.push({ 
-              x: crossingResult.position.x, 
-              y: crossingResult.position.y 
-            });
-            
-            // Handle quantization if enabled
-            if (state.useQuantization) {
-              // Create trigger info
-              const triggerInfo = {
-                note: {...note},
-                worldRot: angle,
-                camera,
-                renderer,
-                isQuantized: true,
-                layer: layer // FIXED: Pass the whole layer, not just the ID
-              };
-              
-              // Handle quantization
-              const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(timestamp, state, triggerInfo);
-              
-              if (shouldTrigger) {
-                // Trigger with precise time
-                const noteCopy = {...note};
-                noteCopy.time = triggerTime;
-                noteCopy.layerId = layerId; // FIXED: Ensure layerId is set
-                
-                // Trigger audio
-                audioCallback(noteCopy);
-                
-                // Create visual marker
-                createMarker(
-                  angle, 
-                  crossingResult.position.x, 
-                  crossingResult.position.y, 
-                  scene, 
-                  noteCopy, 
-                  camera, 
-                  renderer, 
-                  isQuantized, 
-                  layer // FIXED: Explicitly pass the layer
-                );
-                
-                // Set as triggered
-                anyTriggers = true;
-              }
-            } else {
-              // Regular non-quantized trigger
-              // FIXED: Ensure layerId is set before calling audioCallback
-              if (!note.layerId) note.layerId = layerId;
-              
-              audioCallback(note);
-              
-              // Create visual marker
-              createMarker(
-                angle, 
-                crossingResult.position.x, 
-                crossingResult.position.y, 
-                scene, 
-                note, 
-                camera, 
-                renderer, 
-                false, // not quantized
-                layer // FIXED: Explicitly pass the layer
-              );
-              
-              // Set as triggered
-              anyTriggers = true;
-            }
-          }
-        }
-      } catch (error) {
-        // Log error but continue processing other vertices
-        console.error(`Error processing vertex trigger for layer ${layerId}, copy ${ci}, vertex ${vi}:`, error);
-      }
-    }
-    
-    // Process intersection triggers for this copy if we have more than one copy
-    if (copies > 1 && state.useIntersections === true) {
-      const isIntersectionTriggered = detectIntersectionSubframeTriggers(
-        layer, ci, angle, timestamp, audioCallback, 
-        triggeredNow, triggeredPoints, camera, renderer, scene, cooldownTime
-      );
-      
-      if (isIntersectionTriggered) {
-        anyTriggers = true;
-      }
-    }
-  }
-  
-  return anyTriggers;
-}
-
-/**
- * Detect intersection triggers with subframe precision
- * @param {Layer} layer Layer to detect triggers for
- * @param {number} ci Copy index
- * @param {number} angle Current rotation angle
- * @param {number} timestamp Current time in seconds
- * @param {Function} audioCallback Callback for triggered audio
- * @param {Set} triggeredNow Set of already triggered points in this frame
- * @param {Array} triggeredPoints Array of triggered point positions
- * @param {THREE.Camera} camera Camera for visual feedback
- * @param {THREE.WebGLRenderer} renderer Renderer for visual feedback
- * @param {THREE.Scene} scene Scene for adding visual markers
- * @param {number} cooldownTime Cooldown time between triggers
- * @returns {boolean} True if any triggers were detected
- */
-function detectIntersectionSubframeTriggers(
-  layer, ci, angle, timestamp, audioCallback, 
-  triggeredNow, triggeredPoints, camera, renderer, scene, cooldownTime
-) {
-  if (!layer || !layer.group) return false;
-  
-  const state = layer.state;
-  
-  // Skip if layer has no intersections
-  if (typeof layer.hasIntersections === 'function' && !layer.hasIntersections()) {
-    return false;
-  }
-  
-  // Determine if these are star cut intersections
-  const isStarCuts = state.useStars && state.useCuts && state.starSkip > 1;
-  
-  let anyTriggers = false;
-  
-  // Get intersection points directly from the layer
-  const intersectionPoints = layer.intersectionPoints || [];
-  const maxIntersections = Math.min(intersectionPoints.length, 100); // Use reasonable upper limit
-  
-  // Process each intersection point
-  for (let i = 0; i < maxIntersections; i++) {
-    // Create a unique vertex ID for the intersection point
-    const vertexId = `${layer.id}-intersection-${ci}-${i}`;
-    
-    try {
-      // Check for trigger crossing with subframe precision
-      const crossingResult = subframeEngine.detectCrossing(vertexId, cooldownTime);
-      
-      // Process if crossing detected
-      if (crossingResult.hasCrossed) {
-        // Skip if already triggered in this frame
-        if (triggeredNow.has(vertexId)) continue;
-        
-        // Skip if this trigger is in the recent triggers map and still in cooldown
-        if (recentTriggers.has(vertexId)) {
-          const triggerData = recentTriggers.get(vertexId);
-          const timeSinceLastTrigger = timestamp - triggerData.time;
-          
-          // Skip if cooldown hasn't elapsed
-          if (timeSinceLastTrigger < cooldownTime) {
-            continue;
-          }
-        }
-        
-        // Check for overlap with previously triggered points
-        if (!isPointOverlapping(crossingResult.position.x, crossingResult.position.y, triggeredPoints)) {
-          // Add to triggered points
-          triggeredPoints.push({ 
-            x: crossingResult.position.x, 
-            y: crossingResult.position.y 
-          });
-          
-          // Add to recent triggers with current timestamp
-          recentTriggers.set(vertexId, {
-            time: timestamp,
-            position: {
-              x: crossingResult.position.x,
-              y: crossingResult.position.y
-            }
-          });
-          
-          // Get intersection data from layer if available
-          const intersectionPoint = intersectionPoints[i] || {
-            x: crossingResult.position.x,
-            y: crossingResult.position.y
-          };
-          
-          // Create note based on intersection properties
-          const note = createNote({
-            x: intersectionPoint.x,
-            y: intersectionPoint.y,
-            isIntersection: true,
-            isStarCut: isStarCuts,
-            intersectionIndex: i,
-            copyIndex: ci,
-            frequency: Math.hypot(intersectionPoint.x, intersectionPoint.y) * 2,
-            layerId: layer.id // Include layer ID in the note data
-          }, state);
-          
-          // Add subframe-specific properties
-          note.time = crossingResult.exactTime;
-          note.isSubframe = true;
-          note.crossingFactor = crossingResult.crossingFactor;
-          note.position = crossingResult.position;
-          
-          // Handle quantization if enabled
-          if (state.useQuantization) {
-            // Create trigger info
-            const triggerInfo = {
-              note: {...note},
-              worldRot: angle,
-              camera,
-              renderer,
-              isQuantized: true,
-              layer
-            };
-            
-            // Handle quantization
-            const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(timestamp, state, triggerInfo);
-            
-            if (shouldTrigger) {
-              // Trigger with precise time
-              const noteCopy = {...note};
-              noteCopy.time = triggerTime;
-              
-              // Trigger audio
-              audioCallback(noteCopy);
-              
-              // Create visual marker
-              createMarker(
-                angle, 
-                crossingResult.position.x, 
-                crossingResult.position.y, 
-                scene, 
-                noteCopy, 
-                camera, 
-                renderer, 
-                isQuantized, 
-                layer // Pass layer for layer-specific styling
-              );
-              
-              // Mark as triggered
-              triggeredNow.add(vertexId);
-              anyTriggers = true;
-            }
-          } else {
-            // Regular non-quantized trigger
-            audioCallback(note);
-            
-            // Create visual marker
-            createMarker(
-              angle, 
-              crossingResult.position.x, 
-              crossingResult.position.y, 
-              scene, 
-              note, 
-              camera, 
-              renderer, 
-              false, // not quantized
-              layer // Pass layer for layer-specific styling
-            );
-            
-            // Mark as triggered
-            triggeredNow.add(vertexId);
-            anyTriggers = true;
-          }
-        }
-      }
-    } catch (error) {
-      // Log error but continue processing other intersections
-      console.error(`Error processing intersection ${i} in copy ${ci} of layer ${layer.id}:`, error);
-    }
-  }
-  
-  return anyTriggers;
-}
-
-/**
- * Clean up expired markers with fading
- * @param {Object} layer Layer to process markers for
+ * Clear all markers for a layer
+ * @param {Layer} layer Layer to clear markers for
  */
 export function clearLayerMarkers(layer) {
-  if (!layer || !Array.isArray(layer.markers)) return;
+  // Skip if layer doesn't exist
+  if (!layer) {
+    return;
+  }
   
-  const scene = layer.group?.parent;
-  if (!scene) return;
-  
-  const markers = layer.markers;
-  
-  // Process each marker
-  for (let j = markers.length - 1; j >= 0; j--) {
-    const marker = markers[j];
-    marker.life--;
+  // If layer has markers array, properly dispose of each marker
+  if (layer.markers && Array.isArray(layer.markers)) {
+    // Get a reference to the scene from the first marker, if available
+    const scene = layer.markers.length > 0 && layer.markers[0].parent ? 
+      layer.markers[0].parent : null;
     
-    // Update opacity for fading
-    if (marker.mesh && marker.mesh.material) {
-      // Calculate fade factor
-      const fadeProgress = marker.life / (marker.originalLife || MARK_LIFE);
-      const baseOpacity = marker.noteInfo?.velocity || 0.7;
+    // Process each marker
+    for (const marker of layer.markers) {
+      // Remove from scene if still attached
+      if (marker.parent) {
+        marker.parent.remove(marker);
+      } else if (scene) {
+        scene.remove(marker);
+      }
       
-      // Apply fade
-      marker.mesh.material.opacity = baseOpacity * fadeProgress;
+      // Remove any associated label
+      if (marker.userData && marker.userData.label) {
+        removeLabel(marker.userData.label.id);
+      }
       
-      // Update color based on state, but only change color for hit markers
-      if (marker.animState === ANIMATION_STATES.HIT) {
-        marker.mesh.material.color.setRGB(1, 1, 0); // Yellow for hit markers
+      // Dispose of geometry
+      if (marker.geometry) {
+        marker.geometry.dispose();
+      }
+      
+      // Dispose of material(s)
+      if (marker.material) {
+        if (Array.isArray(marker.material)) {
+          marker.material.forEach(mat => {
+            if (mat) mat.dispose();
+          });
+        } else {
+          marker.material.dispose();
+        }
       }
     }
     
-    // Remove expired markers
-    if (marker.life <= 0) {
-      // Clean up mesh
-      if (marker.mesh) {
-        scene.remove(marker.mesh);
-        
-        if (marker.mesh.geometry) marker.mesh.geometry.dispose();
-        if (marker.mesh.material) marker.mesh.material.dispose();
+    // Clear the markers array
+    layer.markers = [];
+  } else {
+    // Initialize empty markers array if not exists
+    layer.markers = [];
+  }
+  
+  // Also clean up any stored trigger state for this layer
+  if (layer.id) {
+    // Clean vertex positions for this layer in the subframe engine
+    if (subframeEngine) {
+      // Delete all vertexStates that start with this layer's ID
+      for (const [id, states] of subframeEngine.vertexStates.entries()) {
+        if (id.startsWith(`${layer.id}-`)) {
+          subframeEngine.vertexStates.delete(id);
+          subframeEngine.vertexLastAccessed.delete(id);
+          subframeEngine.recentCrossings.delete(id);
+        }
       }
-      
-      // Clean up text label
-      if (marker.textLabel && marker.textLabel.id) {
-        removeLabel(marker.textLabel.id);
+    }
+    
+    // Clean recent triggers for this layer
+    for (const [key, value] of recentTriggers.entries()) {
+      if (key.startsWith(`${layer.id}-`)) {
+        recentTriggers.delete(key);
       }
-      
-      // Remove from array
-      markers.splice(j, 1);
     }
   }
 }

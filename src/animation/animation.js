@@ -3,8 +3,7 @@ import * as THREE from 'three';
 import { getCurrentTime } from '../time/time.js';
 import { processPendingTriggers, clearLayerMarkers, detectLayerTriggers, resetTriggerSystem } from '../triggers/triggers.js';
 import { ANIMATION_STATES, MAX_VELOCITY } from '../config/constants.js';
-import { detectIntersections, applyVelocityToMarkers } from '../geometry/intersections.js';
-import { updateLabelPositions, updateAxisLabels } from '../ui/domLabels.js';
+import { updateLabelPositions, updateAxisLabels, clearAxisLabels } from '../ui/domLabels.js';
 
 // Frame counter and timing stats
 let frameCount = 0;
@@ -69,6 +68,11 @@ export function animate(props) {
   // Skip frame if delta is too small (prevents unnecessary processing)
   if (timeDelta < MIN_FRAME_TIME * 0.5) {
     return;
+  }
+  
+  // Debug logging periodically
+  if (frameCount % 300 === 0) {
+    console.log(`Animation running: frame=${frameCount}, time=${currentTime.toFixed(2)}, delta=${(timeDelta*1000).toFixed(2)}ms`);
   }
   
   // Update lastTime for next frame
@@ -167,7 +171,14 @@ export function animate(props) {
         const useStarCuts = activeLayer.state.useStars === true && activeLayer.state.useCuts === true;
         
         if (useIntersections || useStarCuts) {
-          detectIntersections(activeLayer);
+          // Remove call to detectIntersections and replace with appropriate handling
+          // Since we've refactored to integrate intersections directly in the geometry,
+          // we no longer need a separate detection step here
+          
+          // Just mark the state as needing intersection recalculation
+          if (activeLayer.baseGeo) {
+            activeLayer.recreateGeometry(true);
+          }
         } else {
           // If intersections are disabled, just clean up any existing markers
           // and clear the needsIntersectionUpdate flag to prevent continuous checking
@@ -185,9 +196,6 @@ export function animate(props) {
         activeLayer.state.needsIntersectionUpdate = false;
       }
     }
-    
-    // Apply velocity updates to markers with enhanced timing
-    applyVelocityToMarkers(activeLayer, timeDelta);
     
     // Ensure camera and renderer are set in the layer's group before updating
     if (activeLayer.group && cam && renderer) {
@@ -219,9 +227,22 @@ export function animate(props) {
       updateLabelPositions(activeLayer, cam, renderer);
     }
     
-    // Update and fade out axis labels
-    if (typeof updateAxisLabels === 'function') {
+    // Update and fade out axis labels - only if axis labels are enabled
+    const showAxisLabels = activeLayer.state?.showAxisFreqLabels !== false || 
+                          globalState?.showAxisFreqLabels !== false;
+    
+    if (typeof updateAxisLabels === 'function' && showAxisLabels) {
       updateAxisLabels();
+    } else if (typeof clearAxisLabels === 'function' && !showAxisLabels) {
+      // If labels are disabled, clear any existing ones
+      clearAxisLabels();
+    }
+    
+    // Periodically clean up axis labels regardless of settings
+    // This ensures old labels don't persist indefinitely
+    if (typeof clearAxisLabels === 'function' && frameCount % 300 === 0) {
+      // Clear axis labels every 5 seconds (at 60fps) as a failsafe
+      updateAxisLabels(); // This will remove expired labels
     }
   }
   
@@ -254,12 +275,14 @@ export function animate(props) {
     // Create animation parameters to pass to the layer manager
     const animationParams = {
       scene,
+      time: currentTime,        // Use seconds directly
+      deltaTime: timeDelta,     // Use seconds directly
       tNow: currentTime * 1000, // Convert to ms for backward compatibility
       dt: timeDelta * 1000,     // Convert to ms for backward compatibility
       angle: globalState?.lastAngle || 0,
       lastAngle: globalState?.previousAngle || 0, // Use the stored previous angle
       previousAngle: globalState?.previousAngle || 0, // Add the previous angle for subframe precision
-      triggerAudioCallback,
+      audioCallback: triggerAudioCallback, // Rename to match parameter name in updateLayers
       activeLayerId: scene._layerManager.activeLayerId,
       camera: cam,              // Pass camera reference
       renderer: renderer,       // Pass renderer reference

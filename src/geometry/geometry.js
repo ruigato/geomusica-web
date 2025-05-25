@@ -6,9 +6,10 @@ import {
   VERTEX_CIRCLE_COLOR,
   INTERSECTION_POINT_SIZE,
   INTERSECTION_POINT_COLOR,
-  INTERSECTION_POINT_OPACITY
+  INTERSECTION_POINT_OPACITY,
+  INTERSECTION_MERGE_THRESHOLD
 } from '../config/constants.js';
-import { findAllIntersections, processIntersections, createIntersectionMarkers } from './intersections.js';
+import { findIntersection, findAllIntersections } from './intersections.js';
 import { createOrUpdateLabel } from '../ui/domLabels.js';
 // Import the frequency utilities at the top of geometry.js
 import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils.js';
@@ -19,6 +20,9 @@ const DEBUG_LOGGING = false;
 
 // Set to true to enable debugging for the star cuts feature
 const DEBUG_STAR_CUTS = true;
+
+// Counter to track the number of updateGroup calls
+let updateGroupCallCounter = 0;
 
 // Reuse geometries for better performance
 const vertexCircleGeometry = new THREE.CircleGeometry(1, 12); // Fewer segments (12) for performance
@@ -31,6 +35,15 @@ const vertexCircleGeometry = new THREE.CircleGeometry(1, 12); // Fewer segments 
  * @returns {THREE.BufferGeometry} The created geometry
  */
 export function createPolygonGeometry(radius, segments, state = null) {
+  console.log(`Creating polygon geometry: radius=${radius}, segments=${segments}, copies=${state.copies}`);
+  
+  // Standardize inputs
+  const r = Number(radius) || 100;
+  const sides = Math.max(2, Math.floor(Number(segments)) || 3);
+  
+  // Create a buffer geometry
+  const geometry = new THREE.BufferGeometry();
+  
   // Ensure we have valid inputs
   radius = radius || 300;
   segments = segments || 2;
@@ -48,6 +61,9 @@ export function createPolygonGeometry(radius, segments, state = null) {
     
   }
   
+  // Create base points based on shape type
+  let points;
+  
   // Handle different shape types
   switch (shapeType) {
     case 'star':
@@ -56,27 +72,27 @@ export function createPolygonGeometry(radius, segments, state = null) {
         
       }
       
-      const starPoints = createStarPolygonPoints(radius, segments, state?.starSkip || 1, state);
+      points = createStarPolygonPoints(radius, segments, state?.starSkip || 1, state);
       if (DEBUG_STAR_CUTS) {
         
       }
-      return createGeometryFromPoints(starPoints, state);
+      break;
       
     case 'fractal':
       // Create a fractal-like shape
       if (DEBUG_LOGGING) {
         
       }
-      const fractalPoints = createFractalPolygonPoints(radius, segments, state?.fractalValue || 1, state);
-      return createGeometryFromPoints(fractalPoints, state);
+      points = createFractalPolygonPoints(radius, segments, state?.fractalValue || 1, state);
+      break;
       
     case 'euclidean':
       // Create a polygon with Euclidean rhythm
       if (DEBUG_LOGGING) {
         
       }
-      const euclidPoints = createEuclideanPoints(radius, segments, state?.euclidValue || 3, state);
-      return createGeometryFromPoints(euclidPoints, state);
+      points = createEuclideanPoints(radius, segments, state?.euclidValue || 3, state);
+      break;
       
     case 'regular':
     default:
@@ -85,24 +101,68 @@ export function createPolygonGeometry(radius, segments, state = null) {
         if (DEBUG_STAR_CUTS) {
           
         }
-        const starPoints = createStarPolygonPoints(radius, segments, state.starSkip, state);
-        return createGeometryFromPoints(starPoints, state);
+        points = createStarPolygonPoints(radius, segments, state.starSkip, state);
+      } else {
+        // Create a regular polygon
+        points = createRegularPolygonPoints(radius, segments, state);
+      }
+      break;
+  }
+  
+  // Calculate intersections if needed and available from state
+  let intersectionPoints = [];
+  
+  // Only calculate intersections if there are multiple copies and either
+  // state.useIntersections is true OR we're using star cuts
+  const useIntersections = state?.useIntersections === true;
+  const useStarCuts = state?.useStars === true && state?.useCuts === true && state?.starSkip > 1;
+  
+  if ((useIntersections || useStarCuts) && state?.copies > 1) {
+    console.log(`Calculating intersections: useIntersections=${useIntersections}, useStarCuts=${useStarCuts}`);
+    // First, create transformed copies of the base polygon with all rotations applied
+    const copyPolygons = [];
+    
+    for (let i = 0; i < state.copies; i++) {
+      // Calculate scale factor
+      let scaleFactor = Math.pow(state.stepScale || 1.05, i);
+      
+      // Apply modulus scaling if enabled
+      if (state.useModulus) {
+        const modulusScale = state.getScaleFactorForCopy ? state.getScaleFactorForCopy(i) : 1.0;
+        scaleFactor = modulusScale * scaleFactor;
+      }
+      // Apply alt scale if enabled
+      else if (state.useAltScale && ((i + 1) % state.altStepN === 0)) {
+        scaleFactor = scaleFactor * state.altScale;
       }
       
-      // Create a regular polygon
-      return createRegularPolygonGeometry(radius, segments, state);
+      // Each copy gets a cumulative angle in radians
+      const cumulativeAngle = i * ((state.rotation || 0) * Math.PI / 180);
+      
+      // Calculate transformed points for this copy
+      const transformedPoints = calculateCopyPositions(points, scaleFactor, cumulativeAngle);
+      
+      // Add to copy polygons array
+      copyPolygons.push(transformedPoints);
+    }
+    
+    // Calculate intersections between all copies
+    intersectionPoints = calculatePolygonIntersections(copyPolygons);
   }
+  
+  // Create geometry from points and intersections
+  return createGeometryFromPoints(points, state, intersectionPoints);
 }
 
 /**
  * Create a regular polygon geometry
  * @param {number} radius Radius of the polygon
- * @param {number} segments Number of segments
+ * @param {number} segments Number of segments in the polygon
  * @param {Object} state Application state
  * @returns {THREE.BufferGeometry} The created geometry
  */
-function createRegularPolygonGeometry(radius, segments, state) {
-  // Create points for a regular polygon
+function createRegularPolygonGeometry(radius, segments, state = null) {
+  // Get points for a regular polygon
   const points = createRegularPolygonPoints(radius, segments, state);
   
   // Create geometry from points
@@ -111,21 +171,30 @@ function createRegularPolygonGeometry(radius, segments, state) {
 
 /**
  * Create geometry from an array of points
- * @param {Array<THREE.Vector2>} points Array of 2D points
+ * @param {Array<THREE.Vector2|THREE.Vector3>} points Array of 2D or 3D points
  * @param {Object} state Application state
+ * @param {Array<THREE.Vector3>} intersectionPoints Optional array of intersection points to include
  * @returns {THREE.BufferGeometry} The created geometry
  */
-function createGeometryFromPoints(points, state) {
+function createGeometryFromPoints(points, state, intersectionPoints = []) {
   // Create geometry
   const geometry = new THREE.BufferGeometry();
   
-  // Convert points to Float32Array for position attribute
-  const positionArray = new Float32Array(points.length * 3);
+  // Combine regular points with intersection points if provided
+  const allPoints = [...points];
   
-  for (let i = 0; i < points.length; i++) {
-    positionArray[i * 3] = points[i].x;
-    positionArray[i * 3 + 1] = points[i].y;
-    positionArray[i * 3 + 2] = 0; // Z-coordinate is always 0 in 2D
+  // Add intersection points to the vertex array
+  if (intersectionPoints && intersectionPoints.length > 0) {
+    allPoints.push(...intersectionPoints);
+  }
+  
+  // Convert points to Float32Array for position attribute
+  const positionArray = new Float32Array(allPoints.length * 3);
+  
+  for (let i = 0; i < allPoints.length; i++) {
+    positionArray[i * 3] = allPoints[i].x;
+    positionArray[i * 3 + 1] = allPoints[i].y;
+    positionArray[i * 3 + 2] = allPoints[i].z || 0; // Z-coordinate is 0 in 2D if not specified
   }
   
   // Set the position attribute
@@ -142,7 +211,12 @@ function createGeometryFromPoints(points, state) {
   }
   
   // Store number of vertices for use in trigger detection
-  geometry.userData.vertexCount = points.length;
+  geometry.userData.vertexCount = allPoints.length;
+  
+  // Store metadata about which vertices are original vs intersections
+  geometry.userData.originalVertexCount = points.length;
+  geometry.userData.intersectionVertexCount = intersectionPoints.length;
+  geometry.userData.hasIntersections = intersectionPoints.length > 0;
   
   return geometry;
 }
@@ -285,14 +359,14 @@ export function calculateBoundingSphere(group, state) {
 }
 
 /**
- * Create a frequency label
- * @param {string} text - Label text
- * @param {THREE.Vector3} position - Label position
- * @param {THREE.Object3D} parent - Parent object
+ * Create a text label for a position
+ * @param {string} text - Text to display
+ * @param {THREE.Vector3} position - Position to place label
+ * @param {THREE.Object3D} parent - Parent object to attach label to
  * @param {boolean} isAxisLabel - Whether this is an axis label
- * @param {THREE.Camera} camera - Camera for positioning
- * @param {THREE.WebGLRenderer} renderer - Renderer for positioning
- * @returns {Object} Label info object
+ * @param {THREE.Camera} camera - Camera for perspective calculation
+ * @param {THREE.WebGLRenderer} renderer - Renderer
+ * @returns {Object} Created label object
  */
 export function createTextLabel(text, position, parent, isAxisLabel = true, camera = null, renderer = null) {
   // For DOM-based labels, we don't actually create a Three.js object
@@ -331,214 +405,9 @@ export function createTextLabel(text, position, parent, isAxisLabel = true, came
 }
 
 /**
- * Clean up intersection markers
- * @param {THREE.Scene} scene - Scene containing markers
- * @param {Layer} [layer=null] - Optional specific layer to clean up markers for
- */
-export function cleanupIntersectionMarkers(scene, layer = null) {
-  // Skip if scene doesn't exist
-  if (!scene) return;
-  
-  // If a specific layer is provided, only clean up markers for that layer
-  if (layer) {
-    // Use the layer's clearIntersections method if available
-    if (layer.clearIntersections && typeof layer.clearIntersections === 'function') {
-      layer.clearIntersections();
-      return;
-    }
-    
-    // Otherwise, find and clean up markers with this layer's ID
-    const layerId = layer.id;
-    
-    // Clean up marker groups in the scene that belong to this layer
-    scene.traverse(object => {
-      // Check if this is an intersection marker group for the specified layer
-      if (object.userData && 
-          object.userData.isIntersectionGroup && 
-          object.userData.layerId === layerId) {
-        
-        // Remove from parent
-        if (object.parent) {
-          object.parent.remove(object);
-        }
-        
-        // Clean up resources
-        object.traverse(child => {
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) {
-            if (Array.isArray(child.material)) {
-              child.material.forEach(m => m.dispose());
-            } else {
-              child.material.dispose();
-            }
-          }
-        });
-      }
-      
-      // Clean up any intersection marker groups in this object that belong to the layer
-      if (object.userData && 
-          object.userData.intersectionMarkerGroup && 
-          object.userData.intersectionMarkerGroup.userData && 
-          object.userData.intersectionMarkerGroup.userData.layerId === layerId) {
-        
-        const markerGroup = object.userData.intersectionMarkerGroup;
-        object.remove(markerGroup);
-        
-        markerGroup.traverse(obj => {
-          if (obj.geometry) obj.geometry.dispose();
-          if (obj.material) {
-            if (Array.isArray(obj.material)) {
-              obj.material.forEach(m => m.dispose());
-            } else {
-              obj.material.dispose();
-            }
-          }
-        });
-        
-        object.userData.intersectionMarkerGroup = null;
-      }
-    });
-    
-    // Clean up individual markers for this layer if present
-    if (scene.userData && scene.userData.intersectionMarkers) {
-      // Filter out and clean up only markers for this layer
-      const markersToRemove = scene.userData.intersectionMarkers.filter(
-        marker => marker.userData && marker.userData.layerId === layerId
-      );
-      
-      for (const marker of markersToRemove) {
-        if (marker.parent) {
-          marker.parent.remove(marker);
-        } else {
-          scene.remove(marker);
-        }
-        if (marker.geometry) marker.geometry.dispose();
-        if (marker.material) {
-          if (Array.isArray(marker.material)) {
-            marker.material.forEach(m => m.dispose());
-          } else {
-            marker.material.dispose();
-          }
-        }
-      }
-      
-      // Keep markers from other layers
-      scene.userData.intersectionMarkers = scene.userData.intersectionMarkers.filter(
-        marker => !(marker.userData && marker.userData.layerId === layerId)
-      );
-    }
-    
-    return;
-  }
-  
-  // If no specific layer is provided, clean up all intersection markers
-  
-  // Clean up the marker group in the scene
-  if (scene.userData && scene.userData.intersectionMarkerGroup) {
-    const group = scene.userData.intersectionMarkerGroup;
-    const parent = group.parent;
-    
-    if (parent) {
-      parent.remove(group);
-    } else {
-      scene.remove(group);
-    }
-    
-    // Clean up resources
-    group.traverse(child => {
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) {
-        if (Array.isArray(child.material)) {
-          child.material.forEach(m => m.dispose());
-        } else {
-          child.material.dispose();
-        }
-      }
-    });
-    
-    scene.userData.intersectionMarkerGroup = null;
-  }
-  
-  // Clean up any marker groups in child objects
-  if (scene.children) {
-    scene.traverse(child => {
-      if (child.userData && child.userData.intersectionMarkerGroup) {
-        const markerGroup = child.userData.intersectionMarkerGroup;
-        child.remove(markerGroup);
-        
-        markerGroup.traverse(obj => {
-          if (obj.geometry) obj.geometry.dispose();
-          if (obj.material) {
-            if (Array.isArray(obj.material)) {
-              obj.material.forEach(m => m.dispose());
-            } else {
-              obj.material.dispose();
-            }
-          }
-        });
-        
-        child.userData.intersectionMarkerGroup = null;
-      }
-      
-      // Also clean up groups with isIntersectionGroup flag
-      if (child.userData && child.userData.isIntersectionGroup) {
-        const parent = child.parent;
-        if (parent) {
-          parent.remove(child);
-        } else {
-          scene.remove(child);
-        }
-        
-        child.traverse(obj => {
-          if (obj.geometry) obj.geometry.dispose();
-          if (obj.material) {
-            if (Array.isArray(obj.material)) {
-              obj.material.forEach(m => m.dispose());
-            } else {
-              obj.material.dispose();
-            }
-          }
-        });
-      }
-    });
-  }
-  
-  // Clean up individual markers if present
-  if (scene && scene.userData && scene.userData.intersectionMarkers) {
-    for (const marker of scene.userData.intersectionMarkers) {
-      if (marker.parent) {
-        marker.parent.remove(marker);
-      } else {
-        scene.remove(marker);
-      }
-      if (marker.geometry) marker.geometry.dispose();
-      if (marker.material) {
-        if (Array.isArray(marker.material)) {
-          marker.material.forEach(m => m.dispose());
-        } else {
-          marker.material.dispose();
-        }
-      }
-    }
-    scene.userData.intersectionMarkers = [];
-  }
-}
-
-// Keep track of how many times we've called updateGroup
-let updateGroupCallCounter = 0;
-
-/**
- * Update the display group with copies of the base geometry
- * @param {number} copies Number of copies to create
- * @param {number} stepScale Scale factor between copies
- * @param {THREE.BufferGeometry} baseGeo Base geometry
- * @param {THREE.Material} mat Material to use
- * @param {number} segments Number of segments
- * @param {number} angle Angle between copies in degrees
- * @param {Object} state Application state
- * @param {boolean} isLerping Whether values are currently being lerped
- * @param {boolean} justCalculatedIntersections Whether intersections were just calculated
- * @param {Layer} [layer=null] The layer object this group belongs to
+ * Update group based on state changes
+ * @param {Object} options - Options object containing various parameters
+ * @returns {THREE.Group} Updated group
  */
 export function updateGroup(options = {}) {
   const { state, group, layer, scene } = options;
@@ -554,34 +423,95 @@ export function updateGroup(options = {}) {
     isLerping = false
   } = options;
   
+  // Reduce excessive logging
+  const DEBUG_LOGGING = false;
+  
+  // Only log parameters when debug logging is enabled
+  if (DEBUG_LOGGING) {
+    console.log(`updateGroup called with copies=${copies}, radius=${state?.radius}, segments=${segments}, angle=${angle}`);
+    console.log(`State copies=${state?.copies}, radius=${state?.radius}, segments=${state?.segments}`);
+  }
+  
   if (!state || !group) {
     console.warn('Cannot update group: Invalid state or group');
     return;
   }
   
+  // Use parameters passed to the function rather than reading from state where possible
+  // This ensures that we're using the correct values each time updateGroup is called
+  const copyCount = copies !== undefined ? copies : (state.copies || 1);
+  const radiusValue = state.radius || 300; // Always use state for radius as it's not directly applied here
+  const segmentCount = segments !== undefined ? segments : (state.segments || 3);
+  const angleValue = angle !== undefined ? angle : (state.angle || 0);
+  const stepScaleValue = stepScale !== undefined ? stepScale : (state.stepScale || 1);
+  
+  // Store previous values to detect actual changes
+  if (!group.userData.previousValues) {
+    group.userData.previousValues = {
+      copies: copyCount,
+      radius: radiusValue,
+      segments: segmentCount,
+      angle: angleValue,
+      stepScale: stepScaleValue
+    };
+  }
+  
+  // Check if any parameters have meaningfully changed - use larger thresholds to prevent
+  // floating point differences from triggering updates
+  const hasChanges = 
+    Math.abs(group.userData.previousValues.copies - copyCount) >= 1 ||
+    Math.abs(group.userData.previousValues.radius - radiusValue) >= 1.0 ||
+    Math.abs(group.userData.previousValues.segments - segmentCount) >= 1 ||
+    Math.abs(group.userData.previousValues.angle - angleValue) >= 1.0 ||
+    Math.abs(group.userData.previousValues.stepScale - stepScaleValue) >= 0.01;
+    
+  // If nothing has changed, we can avoid a lot of unnecessary work
+  if (!hasChanges && !isLerping && !state.needsIntersectionUpdate && group.children.length > 0) {
+    if (DEBUG_LOGGING) {
+      console.log("No meaningful parameter changes detected, skipping geometry update");
+    }
+    return;
+  }
+  
+  // Update the stored previous values
+  group.userData.previousValues = {
+    copies: copyCount,
+    radius: radiusValue,
+    segments: segmentCount,
+    angle: angleValue,
+    stepScale: stepScaleValue
+  };
+  
+  if (DEBUG_LOGGING) {
+    console.log(`Using values: copies=${copyCount}, radius=${radiusValue}, segments=${segmentCount}, angle=${angleValue}, stepScale=${stepScaleValue}`);
+  }
+  
   // Process intersections if needed
   if (layer && state.needsIntersectionUpdate) {
-    console.log("updateGroup - Processing intersections for layer:", layer.id);
-    console.log("Layer state:", {
-      useIntersections: state.useIntersections,
-      useStars: state.useStars,
-      useCuts: state.useCuts,
-      needsIntersectionUpdate: state.needsIntersectionUpdate
-    });
+    if (DEBUG_LOGGING) {
+      console.log("updateGroup - Processing intersections for layer:", layer.id);
+      console.log("Layer state:", {
+        useIntersections: state.useIntersections,
+        useStars: state.useStars,
+        useCuts: state.useCuts,
+        needsIntersectionUpdate: state.needsIntersectionUpdate
+      });
+    }
     
     // CRITICAL: Skip intersection processing entirely when copies is 0
     if (!state.copies || state.copies <= 0) {
-      console.log(`updateGroup - Skipping intersection processing because copies is ${state.copies}`);
+      if (DEBUG_LOGGING) {
+        console.log(`updateGroup - Skipping intersection processing because copies is ${state.copies}`);
+      }
       state.needsIntersectionUpdate = false;
       
       // Clear any existing intersections
-      if (layer.clearIntersections && typeof layer.clearIntersections === 'function') {
+      if (layer && typeof layer.clearIntersections === 'function') {
+        if (DEBUG_LOGGING && options.useStarCuts) {
+          console.log("Calling layer.clearIntersections in updateGroup");
+        }
         layer.clearIntersections();
       }
-    } 
-    else if (typeof processIntersections === 'function') {
-      // Process intersections for this layer
-      processIntersections(layer);
     }
   }
   
@@ -649,7 +579,7 @@ export function updateGroup(options = {}) {
     }
     
     // Handle case where copies is 0 or less
-    if (copies <= 0) {
+    if (copyCount <= 0) {
       // Make the group invisible when no copies
       group.visible = false;
       
@@ -658,8 +588,13 @@ export function updateGroup(options = {}) {
         group.add(debugObj);
       }
       
+      console.log(`No copies (${copyCount}), making group invisible`);
       return;
     }
+    
+    // Ensure we're using the copies parameter passed to the function, not from state
+    const copiesCount = copyCount > 0 ? copyCount : (state?.copies > 0 ? state.copies : 1);
+    console.log(`Using copiesCount=${copiesCount} (from copies=${copyCount}, state.copies=${state?.copies})`);
     
     // Make sure the group is visible
     group.visible = true;
@@ -668,7 +603,7 @@ export function updateGroup(options = {}) {
     updateGroupCallCounter++;
     
     // Ensure segments is a proper integer
-    const numSegments = Math.round(segments);
+    const numSegments = Math.round(segmentCount);
     
     // Clean up existing point frequency labels if they exist
     if (state && state.pointFreqLabels) {
@@ -697,9 +632,9 @@ export function updateGroup(options = {}) {
     }
     
     // Now create the actual polygon copies for display
-    for (let i = 0; i < copies; i++) {
+    for (let i = 0; i < copiesCount; i++) {
       // Base scale factor from step scale
-      let stepScaleFactor = Math.pow(stepScale, i);
+      let stepScaleFactor = Math.pow(stepScaleValue, i);
       
       // Apply modulus scaling if enabled
       let finalScale = stepScaleFactor;
@@ -713,7 +648,7 @@ export function updateGroup(options = {}) {
       }
       
       // Each copy gets a cumulative angle (i * angle) in degrees
-      const cumulativeAngleDegrees = i * angle;
+      const cumulativeAngleDegrees = i * angleValue;
       
       // Convert to radians only when setting the actual Three.js rotation
       const cumulativeAngleRadians = (cumulativeAngleDegrees * Math.PI) / 180;
@@ -944,7 +879,7 @@ export function updateGroup(options = {}) {
 }
 
 /**
- * Get vertex positions for a specific copy
+ * Get vertex positions from a geometry with transformations applied
  * @param {THREE.BufferGeometry} baseGeo - Base geometry
  * @param {number} scale - Scale factor
  * @param {number} rotationAngle - Rotation angle in radians
@@ -972,10 +907,10 @@ export function getVertexPositions(baseGeo, scale, rotationAngle) {
 }
 
 /**
- * Get frequency for a point
+ * Calculate frequency for a point in space
  * @param {number} x - X coordinate
  * @param {number} y - Y coordinate
- * @returns {number} Frequency value
+ * @returns {number} Frequency in Hz
  */
 export function getFrequency(x, y) {
   return Math.hypot(x, y);
@@ -1079,20 +1014,22 @@ function calculateEuclideanRhythm(n, k) {
 /**
  * Create points for a regular polygon
  * @param {number} radius Radius of the polygon
- * @param {number} numSegments Number of segments
+ * @param {number} segments Number of segments in the polygon
  * @param {Object} state Application state
- * @returns {Array<THREE.Vector2>} Array of points
+ * @returns {Array<THREE.Vector3>} Array of vertices
  */
-function createRegularPolygonPoints(radius, numSegments, state = null) {
-  const points = [];
-  const angleStep = (Math.PI * 2) / numSegments;
+function createRegularPolygonPoints(radius, segments, state) {
+  // Round segments to an integer
+  segments = Math.max(2, Math.round(segments));
   
-  // Create a regular polygon
-  for (let i = 0; i < numSegments; i++) {
-    const angle = i * angleStep;
-    const x = Math.cos(angle) * radius;
-    const y = Math.sin(angle) * radius;
-    points.push(new THREE.Vector2(x, y));
+  // Create points array for a regular polygon
+  const points = [];
+  const angle = (Math.PI * 2) / segments;
+  
+  for (let i = 0; i < segments; i++) {
+    const x = Math.cos(angle * i) * radius;
+    const y = Math.sin(angle * i) * radius;
+    points.push(new THREE.Vector3(x, y, 0));
   }
   
   return points;
@@ -1309,4 +1246,118 @@ function generateEuclideanRhythm(n, k) {
   // This function is now obsolete - replaced by calculateEuclideanRhythm
   
   return calculateEuclideanRhythm(n, k);
+}
+
+/**
+ * Calculate positions for a copy with rotation applied
+ * @param {Array<THREE.Vector2|THREE.Vector3>} basePoints Array of base points
+ * @param {number} scale Scale factor for this copy
+ * @param {number} angleRadians Rotation angle in radians
+ * @returns {Array<THREE.Vector3>} Array of transformed points
+ */
+function calculateCopyPositions(basePoints, scale, angleRadians) {
+  const transformedPoints = [];
+  
+  // Calculate rotation matrix components
+  const cos = Math.cos(angleRadians);
+  const sin = Math.sin(angleRadians);
+  
+  // Apply transformation to each point
+  for (const point of basePoints) {
+    // Apply scale
+    const scaledX = point.x * scale;
+    const scaledY = point.y * scale;
+    
+    // Apply rotation
+    const rotatedX = scaledX * cos - scaledY * sin;
+    const rotatedY = scaledX * sin + scaledY * cos;
+    
+    // Create a new Vector3 with the transformed coordinates
+    transformedPoints.push(new THREE.Vector3(rotatedX, rotatedY, point.z || 0));
+  }
+  
+  return transformedPoints;
+}
+
+/**
+ * Calculate intersections between multiple copy polygons
+ * @param {Array<Array<THREE.Vector3>>} copyPolygons Array of polygon vertex arrays
+ * @returns {Array<THREE.Vector3>} Array of unique intersection points
+ */
+function calculatePolygonIntersections(copyPolygons) {
+  const intersections = [];
+  
+  // Helper function to check if a point is too close to existing points
+  function isPointTooClose(point, existingPoints, threshold = INTERSECTION_MERGE_THRESHOLD) {
+    for (const existing of existingPoints) {
+      if (!existing || !point) continue;
+      
+      // Calculate distance in 2D space
+      const dx = existing.x - point.x;
+      const dy = existing.y - point.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      if (distance < threshold) {
+        return true;
+      }
+    }
+    return false;
+  }
+  
+  // Check for intersections between all pairs of polygons
+  for (let i = 0; i < copyPolygons.length; i++) {
+    const polyA = copyPolygons[i];
+    
+    // Check for self-intersections within this polygon
+    for (let a1 = 0; a1 < polyA.length; a1++) {
+      const a1next = (a1 + 1) % polyA.length;
+      
+      for (let a2 = a1 + 2; a2 < polyA.length; a2++) {
+        // Skip adjacent segments (including wraparound)
+        if (a2 === a1 || a2 === a1next || (a2 + 1) % polyA.length === a1) {
+          continue;
+        }
+        
+        const a2next = (a2 + 1) % polyA.length;
+        
+        // Find intersection between segments
+        const intersection = findIntersection(
+          polyA[a1], polyA[a1next], 
+          polyA[a2], polyA[a2next]
+        );
+        
+        // Add unique intersection point
+        if (intersection && !isPointTooClose(intersection, intersections)) {
+          intersections.push(intersection);
+        }
+      }
+    }
+    
+    // Check for intersections with other polygons
+    for (let j = i + 1; j < copyPolygons.length; j++) {
+      const polyB = copyPolygons[j];
+      
+      // Check all segment pairs between the two polygons
+      for (let a = 0; a < polyA.length; a++) {
+        const aNext = (a + 1) % polyA.length;
+        
+        for (let b = 0; b < polyB.length; b++) {
+          const bNext = (b + 1) % polyB.length;
+          
+          // Find intersection between segments
+          const intersection = findIntersection(
+            polyA[a], polyA[aNext],
+            polyB[b], polyB[bNext]
+          );
+          
+          // Add unique intersection point
+          if (intersection && !isPointTooClose(intersection, intersections)) {
+            intersections.push(intersection);
+          }
+        }
+      }
+    }
+  }
+  
+  return intersections;
 }
