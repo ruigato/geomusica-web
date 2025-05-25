@@ -978,18 +978,17 @@ export function createAppState() {
         this.needsIntersectionUpdate = true;
         
         // Update shape type when fractal is toggled
-        if (newValue && this.shapeType === 'regular') {
+        if (newValue && this.shapeType === 'regular' && !this.useEuclid && !this.useStars) {
+          // Only change to fractal shape type if no other shape type is active
           this.shapeType = 'fractal';
-          
         } else if (!newValue && this.shapeType === 'fractal') {
-          this.shapeType = 'regular';
-          
+          // If turning off fractal and shape type is fractal, revert to regular or other active type
+          this.shapeType = this.useEuclid ? 'euclidean' : (this.useStars ? 'star' : 'regular');
         }
+        // Do not change shape type if Euclidean or Stars is already active
         
         // Force recreation of base geometry when available
         if (this.baseGeo) {
-          
-          
           // Set flags to signal that geometry needs recreation
           this.segmentsChanged = true;
           this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
@@ -1032,18 +1031,17 @@ export function createAppState() {
         this.needsIntersectionUpdate = true;
         
         // Update shape type when Euclidean is toggled
-        if (newValue && this.shapeType === 'regular') {
+        if (newValue) {
+          // When enabling Euclidean, always set shapeType to euclidean,
+          // regardless of whether fractal is enabled
           this.shapeType = 'euclidean';
-          
         } else if (!newValue && this.shapeType === 'euclidean') {
-          this.shapeType = 'regular';
-          
+          // Only revert to regular if no other shape type is active
+          this.shapeType = this.useFractal ? 'fractal' : (this.useStars ? 'star' : 'regular');
         }
         
         // Force recreation of base geometry when available
         if (this.baseGeo) {
-          
-          
           // Set flags to signal that geometry needs recreation
           this.segmentsChanged = true;
           this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
@@ -1192,26 +1190,32 @@ export function createAppState() {
     setShapeType(type) {
       const validTypes = ['regular', 'fractal', 'star', 'euclidean'];
       if (validTypes.includes(type) && this.shapeType !== type) {
+        // Remember if fractal was enabled before the shape type change
+        const wasFractalEnabled = this.useFractal;
+        
         this.shapeType = type;
         
-        
-        // Update corresponding feature flags
+        // Update corresponding feature flags based on the new shape type
         if (type === 'fractal') {
+          // Fractal shape type always enables fractal subdivision
           this.useFractal = true;
           this.useStars = false;
           this.useEuclid = false;
         } else if (type === 'star') {
-          this.useFractal = false;
+          // Enable stars, maintain previous fractal state
           this.useStars = true;
           this.useEuclid = false;
+          this.useFractal = wasFractalEnabled; // Keep fractal state
         } else if (type === 'euclidean') {
-          this.useFractal = false;
+          // Enable euclidean, maintain previous fractal state
           this.useStars = false;
           this.useEuclid = true;
-        } else {
-          this.useFractal = false;
+          this.useFractal = wasFractalEnabled; // Keep fractal state
+        } else { // regular
+          // Turn off stars and euclidean, maintain previous fractal state
           this.useStars = false;
           this.useEuclid = false;
+          this.useFractal = wasFractalEnabled; // Keep fractal state
         }
         
         // Force recreation of base geometry when available

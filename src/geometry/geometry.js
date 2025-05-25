@@ -24,6 +24,44 @@ const DEBUG_STAR_CUTS = true;
 const vertexCircleGeometry = new THREE.CircleGeometry(1, 12); // Fewer segments (12) for performance
 
 /**
+ * Apply fractal subdivision to an array of points
+ * @param {Array<THREE.Vector2>} points Array of 2D points to subdivide
+ * @param {number} fractalValue Fractal iteration value
+ * @returns {Array<THREE.Vector2>} Subdivided points
+ */
+function applyFractalSubdivision(points, fractalValue) {
+  // If fractal value is 1 or less, just return the original points
+  if (fractalValue <= 1 || !points || points.length < 2) {
+    return points;
+  }
+  
+  // Number of divisions per segment (rounded to nearest integer)
+  const divisions = Math.max(2, Math.round(fractalValue));
+  
+  const newPoints = [];
+  
+  // For each pair of points, create divisions-1 new points between them
+  for (let i = 0; i < points.length; i++) {
+    const currentPoint = points[i];
+    const nextPoint = points[(i + 1) % points.length];
+    
+    // Add the current point
+    newPoints.push(currentPoint);
+    
+    // Add divisions-1 new points between current and next
+    for (let div = 1; div < divisions; div++) {
+      const factor = div / divisions;
+      const midX = currentPoint.x + (nextPoint.x - currentPoint.x) * factor;
+      const midY = currentPoint.y + (nextPoint.y - currentPoint.y) * factor;
+      
+      newPoints.push(new THREE.Vector2(midX, midY));
+    }
+  }
+  
+  return newPoints;
+}
+
+/**
  * Create a polygon geometry with the given parameters
  * @param {number} radius Radius of the polygon
  * @param {number} segments Number of segments in the polygon
@@ -48,6 +86,8 @@ export function createPolygonGeometry(radius, segments, state = null) {
     
   }
   
+  let points = [];
+  
   // Handle different shape types
   switch (shapeType) {
     case 'star':
@@ -56,27 +96,39 @@ export function createPolygonGeometry(radius, segments, state = null) {
         
       }
       
-      const starPoints = createStarPolygonPoints(radius, segments, state?.starSkip || 1, state);
+      points = createStarPolygonPoints(radius, segments, state?.starSkip || 1, state);
+      
+      // Apply fractal subdivision if enabled
+      if (state?.useFractal && state?.fractalValue > 1) {
+        points = applyFractalSubdivision(points, state.fractalValue);
+      }
+      
       if (DEBUG_STAR_CUTS) {
         
       }
-      return createGeometryFromPoints(starPoints, state);
+      break;
       
     case 'fractal':
       // Create a fractal-like shape
       if (DEBUG_LOGGING) {
         
       }
-      const fractalPoints = createFractalPolygonPoints(radius, segments, state?.fractalValue || 1, state);
-      return createGeometryFromPoints(fractalPoints, state);
+      points = createFractalPolygonPoints(radius, segments, state?.fractalValue || 1, state);
+      break;
       
     case 'euclidean':
       // Create a polygon with Euclidean rhythm
       if (DEBUG_LOGGING) {
         
       }
-      const euclidPoints = createEuclideanPoints(radius, segments, state?.euclidValue || 3, state);
-      return createGeometryFromPoints(euclidPoints, state);
+      // First create the euclidean points
+      points = createEuclideanPoints(radius, segments, state?.euclidValue || 3, state);
+      
+      // Then apply fractal subdivision if enabled
+      if (state?.useFractal && state?.fractalValue > 1) {
+        points = applyFractalSubdivision(points, state.fractalValue);
+      }
+      break;
       
     case 'regular':
     default:
@@ -85,13 +137,25 @@ export function createPolygonGeometry(radius, segments, state = null) {
         if (DEBUG_STAR_CUTS) {
           
         }
-        const starPoints = createStarPolygonPoints(radius, segments, state.starSkip, state);
-        return createGeometryFromPoints(starPoints, state);
+        points = createStarPolygonPoints(radius, segments, state.starSkip, state);
+        
+        // Apply fractal subdivision if enabled
+        if (state?.useFractal && state?.fractalValue > 1) {
+          points = applyFractalSubdivision(points, state.fractalValue);
+        }
+      } else {
+        // Create a regular polygon (with fractal if enabled)
+        if (state?.useFractal && state?.fractalValue > 1) {
+          points = createFractalPolygonPoints(radius, segments, state?.fractalValue || 1, state);
+        } else {
+          points = createRegularPolygonPoints(radius, segments, state);
+        }
       }
-      
-      // Create a regular polygon
-      return createRegularPolygonGeometry(radius, segments, state);
+      break;
   }
+  
+  // Create geometry from the calculated points
+  return createGeometryFromPoints(points, state);
 }
 
 /**
@@ -1241,40 +1305,8 @@ function createFractalPolygonPoints(radius, numSegments, fractalValue, state = n
   // Start with a regular polygon
   const basePoints = createRegularPolygonPoints(radius, numSegments, state);
   
-  
-  
-  
-  // If fractal value is 1 or less, just return the base polygon
-  if (fractalValue <= 1) {
-    return basePoints;
-  }
-  
-  // Number of divisions per segment (rounded to nearest integer)
-  const divisions = Math.max(2, Math.round(fractalValue));
-  
-  
-  const newPoints = [];
-  
-  // For each pair of original points, create divisions-1 new points between them
-  for (let i = 0; i < basePoints.length; i++) {
-    const currentPoint = basePoints[i];
-    const nextPoint = basePoints[(i + 1) % basePoints.length];
-    
-    // Add the current original point
-    newPoints.push(currentPoint);
-    
-    // Add divisions-1 new points between current and next
-    for (let div = 1; div < divisions; div++) {
-      const factor = div / divisions;
-      const midX = currentPoint.x + (nextPoint.x - currentPoint.x) * factor;
-      const midY = currentPoint.y + (nextPoint.y - currentPoint.y) * factor;
-      
-      newPoints.push(new THREE.Vector2(midX, midY));
-    }
-  }
-  
-  
-  return newPoints;
+  // Apply fractal subdivision
+  return applyFractalSubdivision(basePoints, fractalValue);
 }
 
 /**
