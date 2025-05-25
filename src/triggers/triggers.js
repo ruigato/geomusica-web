@@ -1164,7 +1164,6 @@ function recordLayerVertexPositions(layer, timestamp) {
   // Process each copy
   for (let ci = 0; ci < copies; ci++) {
     // Find the correct copy group
-    let copyIndex = ci;
     let copyGroup = null;
     let foundCopyCount = 0;
     
@@ -1207,6 +1206,7 @@ function recordLayerVertexPositions(layer, timestamp) {
       continue;
     }
     
+    // Use actual vertex count from geometry, which will include all fractal subdivision points
     const count = positions.count;
     
     // Calculate world matrix without rotation
@@ -1218,7 +1218,7 @@ function recordLayerVertexPositions(layer, timestamp) {
     // Temp vector for calculations
     const worldPos = new THREE.Vector3();
     
-    // Process each vertex in this copy
+    // Process each vertex in this copy using the actual vertex count from geometry
     for (let vi = 0; vi < count; vi++) {
       // Create a unique vertex ID
       const vertexId = `${layer.id}-${ci}-${vi}`;
@@ -1398,8 +1398,49 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
   
   // Process each copy
   for (let ci = 0; ci < copies; ci++) {
-    // Process each vertex in this copy
-    for (let vi = 0; vi < state.segments; vi++) {
+    // Find the correct copy group to determine actual vertex count for fractal shapes
+    let copyGroup = null;
+    let foundCopyCount = 0;
+    
+    // Find the copy group, skipping non-copy groups
+    for (let i = 0; i < group.children.length; i++) {
+      const child = group.children[i];
+      // Skip debug objects and intersection groups
+      if (child.userData && child.userData.isIntersectionGroup) continue;
+      if (child.type === 'Mesh' && child.geometry && child.geometry.type === 'SphereGeometry') continue;
+      if (child.type === 'Line') continue;
+      
+      // Count this as a valid copy group
+      if (foundCopyCount === ci) {
+        copyGroup = child;
+        break;
+      }
+      
+      // Otherwise, increment our counter and continue
+      foundCopyCount++;
+    }
+    
+    // Skip if we couldn't find a valid copy group
+    if (!copyGroup || !copyGroup.children || copyGroup.children.length === 0) {
+      continue;
+    }
+    
+    // Find the LineLoop (main geometry) to determine actual vertex count
+    const mesh = copyGroup.children.find(child => child.type === 'LineLoop');
+    if (!mesh || !mesh.geometry || !mesh.geometry.getAttribute('position')) {
+      continue;
+    }
+    
+    const positions = mesh.geometry.getAttribute('position');
+    if (!positions || !positions.count) {
+      continue;
+    }
+    
+    // FIXED: Use actual vertex count from geometry instead of state.segments for fractal shapes
+    const vertexCount = positions.count;
+    
+    // Process each vertex in this copy using the actual vertex count
+    for (let vi = 0; vi < vertexCount; vi++) {
       // Create a unique vertex ID that includes the layer ID
       const vertexId = `${layerId}-${ci}-${vi}`;
       
@@ -1427,8 +1468,12 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
           
           const basePositions = layer.baseGeo.getAttribute('position').array;
           
+          // FIXED: For fractal shapes, we need to handle indices that are outside the base geometry
+          // Use modulo to wrap around to the original vertices for frequency calculation
+          const baseVertexIndex = state.useFractal ? (vi % state.segments) : vi;
+          
           // Check base geometry bounds
-          if (vi * 3 + 1 >= basePositions.length) {
+          if (baseVertexIndex * 3 + 1 >= basePositions.length) {
             continue;
           }
           
