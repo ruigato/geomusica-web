@@ -482,6 +482,7 @@ export function setupUI(state) {
   if (useFractalCheckbox) useFractalCheckbox.checked = state.useFractal;
   if (useStarsCheckbox) useStarsCheckbox.checked = state.useStars;
   if (useCutsCheckbox) useCutsCheckbox.checked = state.useCuts;
+  if (useLerpCheckbox) useLerpCheckbox.checked = state.useLerp;
   
   // Set initial values for scale mod controls from state with null checks
   if (altScaleRange && altScaleNumber && altScaleValue) {
@@ -1230,34 +1231,74 @@ export function setupUI(state) {
   window.addEventListener('layerChanged', (event) => {
     const { layerId, state } = event.detail;
     
+    // Pass all UI elements to ensure complete update
     updateUIFromState(state, {
+      bpmRange, bpmNumber, bpmValue,
       radiusRange, radiusNumber, radiusValue,
       copiesRange, copiesNumber, copiesValue,
-      numberRange, numberNumber, numberValue,
       stepScaleRange, stepScaleNumber, stepScaleValue,
       angleRange, angleNumber, angleValue,
-      useModulusCheckbox, useLerpCheckbox,
-      useTimeSubdivisionCheckbox, useEuclidCheckbox,
-      useFractalCheckbox, useStarsCheckbox,
-      useCutsCheckbox, useAltScaleCheckbox,
-      useIntersectionsCheckbox
+      numberRange, numberNumber, numberValue,
+      useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
+      useModulusCheckbox, modulusRadioGroup,
+      useTimeSubdivisionCheckbox, timeSubdivisionRadioGroup,
+      useQuantizationCheckbox, quantizationRadioGroup,
+      altScaleRange, altScaleNumber, altScaleValue,
+      altStepNRange, altStepNNumber, altStepNValue,
+      useAltScaleCheckbox, useIntersectionsCheckbox, 
+      showAxisFreqLabelsCheckbox, showPointsFreqLabelsCheckbox,
+      useEqualTemperamentCheckbox,
+      referenceFreqRange, referenceFreqNumber, referenceFreqValue,
+      fractalRange, fractalNumber, fractalValue,
+      useFractalCheckbox,
+      euclidRange, euclidNumber, euclidValue,
+      useEuclidCheckbox, validEuclidInfo,
+      starSkipRadioGroup, useStarsCheckbox, validSkipsInfo,
+      useCutsCheckbox,
+      durationModeRadios, durationModuloRadioGroup,
+      minDurationRange, minDurationNumber, minDurationValue,
+      maxDurationRange, maxDurationNumber, maxDurationValue,
+      durationPhaseRange, durationPhaseNumber, durationPhaseValue,
+      velocityModeRadios, velocityModuloRadioGroup,
+      minVelocityRange, minVelocityNumber, minVelocityValue,
+      maxVelocityRange, maxVelocityNumber, maxVelocityValue
     });
   });
 
   window.addEventListener('layerActivated', (event) => {
     const { layerId, state } = event.detail;
     
+    // Pass all UI elements to ensure complete update
     updateUIFromState(state, {
+      bpmRange, bpmNumber, bpmValue,
       radiusRange, radiusNumber, radiusValue,
       copiesRange, copiesNumber, copiesValue,
-      numberRange, numberNumber, numberValue,
       stepScaleRange, stepScaleNumber, stepScaleValue,
       angleRange, angleNumber, angleValue,
-      useModulusCheckbox, useLerpCheckbox,
-      useTimeSubdivisionCheckbox, useEuclidCheckbox,
-      useFractalCheckbox, useStarsCheckbox,
-      useCutsCheckbox, useAltScaleCheckbox,
-      useIntersectionsCheckbox
+      numberRange, numberNumber, numberValue,
+      useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
+      useModulusCheckbox, modulusRadioGroup,
+      useTimeSubdivisionCheckbox, timeSubdivisionRadioGroup,
+      useQuantizationCheckbox, quantizationRadioGroup,
+      altScaleRange, altScaleNumber, altScaleValue,
+      altStepNRange, altStepNNumber, altStepNValue,
+      useAltScaleCheckbox, useIntersectionsCheckbox, 
+      showAxisFreqLabelsCheckbox, showPointsFreqLabelsCheckbox,
+      useEqualTemperamentCheckbox,
+      referenceFreqRange, referenceFreqNumber, referenceFreqValue,
+      fractalRange, fractalNumber, fractalValue,
+      useFractalCheckbox,
+      euclidRange, euclidNumber, euclidValue,
+      useEuclidCheckbox, validEuclidInfo,
+      starSkipRadioGroup, useStarsCheckbox, validSkipsInfo,
+      useCutsCheckbox,
+      durationModeRadios, durationModuloRadioGroup,
+      minDurationRange, minDurationNumber, minDurationValue,
+      maxDurationRange, maxDurationNumber, maxDurationValue,
+      durationPhaseRange, durationPhaseNumber, durationPhaseValue,
+      velocityModeRadios, velocityModuloRadioGroup,
+      minVelocityRange, minVelocityNumber, minVelocityValue,
+      maxVelocityRange, maxVelocityNumber, maxVelocityValue
     });
   });
 

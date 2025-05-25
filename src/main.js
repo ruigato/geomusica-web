@@ -856,6 +856,22 @@ function initializeApplication() {
         // Setup UI controls and bind events
         uiReferences = setupUI(state, syncStateAcrossSystems, silentAudioTrigger);
         
+        // Explicitly update UI with the active state to ensure saved values are reflected
+        try {
+          // Get the most up-to-date active state
+          const activeState = typeof window.getActiveState === 'function' 
+            ? window.getActiveState() 
+            : (layerManager?.getActiveLayer()?.state || state);
+          
+          // Update UI with the current state values - using the complete uiReferences
+          if (typeof updateUIFromState === 'function' && uiReferences) {
+            updateUIFromState(activeState, uiReferences);
+            console.log('Updated UI from loaded state');
+          }
+        } catch (error) {
+          console.error('Error updating UI from state:', error);
+        }
+        
         // Process any pending UI updates now that UI references are initialized
         if (window._pendingUIUpdates && window._pendingUIUpdates.length > 0) {
           console.log(`Processing ${window._pendingUIUpdates.length} pending UI updates`);
@@ -1209,10 +1225,20 @@ function setupGlobalUI(globalState) {
   const bpmNumber = document.getElementById('bpmNumber');
   const bpmValue = document.getElementById('bpmValue');
   
-  // Set initial values
-  if (bpmRange) bpmRange.value = globalState.bpm;
-  if (bpmNumber) bpmNumber.value = globalState.bpm;
-  if (bpmValue) bpmValue.textContent = globalState.bpm;
+  // Initialize UI controls with global state values
+  try {
+    // Create a references object with global UI elements
+    const globalUIReferences = {
+      bpmRange, bpmNumber, bpmValue
+    };
+    
+    // Update UI with global state values
+    if (typeof updateUIFromState === 'function') {
+      updateUIFromState(globalState, globalUIReferences);
+    }
+  } catch (error) {
+    console.error('Error updating global UI from state:', error);
+  }
   
   // Add event listeners
   if (bpmRange) {

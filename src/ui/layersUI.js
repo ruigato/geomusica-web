@@ -159,37 +159,6 @@ export function setupLayersUI(layerManager) {
   
   layerTab.appendChild(layerColorContainer);
   
-  // Layer visibility control
-  const layerVisibilityContainer = document.createElement('div');
-  layerVisibilityContainer.className = 'control';
-  
-  const layerVisibilityLabel = document.createElement('label');
-  layerVisibilityLabel.textContent = 'Layer Visible:';
-  layerVisibilityLabel.setAttribute('for', 'layerVisibleCheckbox');
-  layerVisibilityContainer.appendChild(layerVisibilityLabel);
-  
-  // Create checkbox
-  const layerVisibleCheckbox = document.createElement('input');
-  layerVisibleCheckbox.type = 'checkbox';
-  layerVisibleCheckbox.id = 'layerVisibleCheckbox';
-  layerVisibleCheckbox.checked = true;
-  layerVisibleCheckbox.addEventListener('change', (e) => {
-    const activeLayer = layerManager.getActiveLayer();
-    if (activeLayer) {
-      activeLayer.setVisible(e.target.checked);
-    }
-  });
-  
-  layerVisibilityContainer.appendChild(layerVisibleCheckbox);
-  
-  // Add help text
-  const visibilityHelpText = document.createElement('div');
-  visibilityHelpText.className = 'help-text';
-  visibilityHelpText.textContent = 'Toggle visibility of the active layer';
-  layerVisibilityContainer.appendChild(visibilityHelpText);
-  
-  layerTab.appendChild(layerVisibilityContainer);
-  
   // Initial UI update
   updateLayerButtons(layerManager);
   
@@ -201,8 +170,7 @@ export function setupLayersUI(layerManager) {
   // Return references to UI elements
   return {
     layerCountInput,
-    layerColorPicker,
-    layerVisibleCheckbox
+    layerColorPicker
   };
 }
 
@@ -310,12 +278,6 @@ export function updateLayerButtons(layerManager) {
         colorPicker.value = hexColor;
       }
       
-      // Update visibility checkbox
-      const visibleCheckbox = document.getElementById('layerVisibleCheckbox');
-      if (visibleCheckbox) {
-        visibleCheckbox.checked = layer.visible;
-      }
-      
       // Ensure UI reflects the newly selected layer's state
       if (typeof window.syncStateAcrossSystems === 'function') {
         // Pass true to indicate this is a layer switch operation
@@ -343,12 +305,6 @@ export function updateLayersUI(layerManager) {
   if (colorPicker) {
     const hexColor = '#' + activeLayer.color.getHexString();
     colorPicker.value = hexColor;
-  }
-  
-  // Update visibility checkbox
-  const visibleCheckbox = document.getElementById('layerVisibleCheckbox');
-  if (visibleCheckbox) {
-    visibleCheckbox.checked = activeLayer.visible;
   }
   
   // Update layer count
