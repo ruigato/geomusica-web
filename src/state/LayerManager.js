@@ -220,52 +220,14 @@ export class LayerManager {
   }
   
   /**
-   * Preload a layer's state before switching to it
-   * This helps reduce the visual jump when switching layers
-   * @param {number} targetLayerId ID of the layer to preload
-   * @private
-   */
-  preloadLayerState(targetLayerId) {
-    // Skip if invalid layer ID
-    if (targetLayerId < 0 || targetLayerId >= this.layers.length) {
-      return false;
-    }
-
-    // Get the target layer
-    const targetLayer = this.layers[targetLayerId];
-    
-    if (!targetLayer || !targetLayer.state) {
-      return false;
-    }
-    
-    console.log(`%c 🔄 PRELOADING layer ${targetLayerId} state`, 'background: purple; color: white; font-size: 14px; padding: 3px;');
-    
-    // Only set prevention flags - this is the most important part
-    // Set prevention flags to ensure no geometry recreation during preload
-    targetLayer._preventGeometryRecreation = true;
-    
-    // Global prevention registry
-    if (!window._preventGeometryRecreation) {
-      window._preventGeometryRecreation = {};
-    }
-    window._preventGeometryRecreation[targetLayerId] = true;
-    
-    return true;
-  }
-  
-  /**
    * Set the active layer
    * @param {number} layerId ID of the layer to make active
-   * @returns {Layer} The newly active layer
    */
   setActiveLayer(layerId) {
     // Skip if this is already the active layer
     if (this.activeLayerId === layerId) {
       return;
     }
-    
-    // TEMPORARY DEBUG: Log when layer switching happens
-    console.log(`%c 🔄 LAYER SWITCH from ${this.activeLayerId} to ${layerId}`, 'background: blue; color: white; font-size: 14px; padding: 3px;');
     
     if (DEBUG_LOGGING) {
       
@@ -276,32 +238,11 @@ export class LayerManager {
       }
     }
     
-    // First preload the target layer's state to reduce visual jumps
-    this.preloadLayerState(layerId);
-    
-    // FIXED: Store parameter changes from both layers to restore UI-only changes later
-    const previousLayer = this.activeLayerId !== undefined ? this.layers[this.activeLayerId] : null;
-    const nextLayer = this.layers[layerId];
-    
-    // Save parameter changes from both layers before activating/deactivating
-    const prevParamChanges = previousLayer && previousLayer.state ? 
-      { ...previousLayer.state.parameterChanges } : {};
-    
-    const nextParamChanges = nextLayer && nextLayer.state ?
-      { ...nextLayer.state.parameterChanges } : {};
-    
-    // FIXED: Temporarily set a flag on both layers to prevent geometry recreation during switch
-    if (previousLayer) {
-      previousLayer._preventGeometryRecreation = true;
-    }
-    
-    if (nextLayer) {
-      nextLayer._preventGeometryRecreation = true;
-      nextLayer._justSwitchedTo = true;
-    }
-    
     // Deactivate the current active layer
-    if (this.activeLayerId !== undefined && previousLayer) {
+    if (this.activeLayerId !== undefined && this.layers[this.activeLayerId]) {
+      const previousLayerId = this.activeLayerId;
+      const previousLayer = this.layers[previousLayerId];
+      
       previousLayer.deactivate();
       if (DEBUG_LOGGING) {
         
@@ -309,7 +250,7 @@ export class LayerManager {
     }
     
     // Make the new layer active
-    nextLayer.activate();
+    this.layers[layerId].activate();
     this.activeLayerId = layerId;
     if (DEBUG_LOGGING) {
       
@@ -319,21 +260,13 @@ export class LayerManager {
     this.syncWindowAppState();
 
     // Force UI update with the new layer's parameters
-    const newLayerState = nextLayer.state;
+    const newLayerState = this.layers[layerId].state;
     
-    // FIXED: Force parameter changes to trigger UI updates, but avoid geometry changes
+    // Force parameter changes to trigger UI updates
     if (newLayerState && newLayerState.parameterChanges) {
-      // First reset all parameter changes to prevent geometry changes
-      if (typeof newLayerState.resetParameterChanges === 'function') {
-        newLayerState.resetParameterChanges();
-      }
-      
-      // Then set UI-only parameter changes for the UI update
-      const uiOnlyParams = ['showLabels', 'showAxisLabels', 'showAxisFreqLabels', 'showColorLabels'];
-      uiOnlyParams.forEach(param => {
-        if (param in nextParamChanges) {
-          newLayerState.parameterChanges[param] = nextParamChanges[param];
-        }
+      // Mark all parameter changes to force UI updates
+      Object.keys(newLayerState.parameterChanges).forEach(key => {
+        newLayerState.parameterChanges[key] = true;
       });
       
       if (DEBUG_LOGGING) {
@@ -344,28 +277,7 @@ export class LayerManager {
     // Try direct UI update approaches
     this.forceUIUpdate(layerId, newLayerState);
     
-    // FIXED: Schedule cleanup of the prevention flags after UI updates are complete
-    setTimeout(() => {
-      if (previousLayer) {
-        previousLayer._preventGeometryRecreation = false;
-      }
-      
-      if (nextLayer) {
-        nextLayer._preventGeometryRecreation = false;
-        
-        // Clear the _justSwitchedTo flag after a longer delay
-        setTimeout(() => {
-          nextLayer._justSwitchedTo = false;
-        }, 100);
-      }
-    }, 50);
-    
-    // FIXED: Call syncStateAcrossSystems with isLayerSwitch=true to prevent geometry recreation
-    if (window.syncStateAcrossSystems && typeof window.syncStateAcrossSystems === 'function') {
-      window.syncStateAcrossSystems(true);
-    }
-    
-    return nextLayer;
+    return this.layers[layerId];
   }
   
   /**
@@ -399,9 +311,6 @@ export class LayerManager {
    * @private
    */
   forceUIUpdate(layerId, layerState) {
-    // TEMPORARY DEBUG: Log when UI updates are forced
-    console.log(`%c 🖌️ FORCE UI UPDATE for Layer ${layerId}`, 'background: green; color: white; font-size: 14px; padding: 3px;');
-    
     // First try using global UI update function
     if (window.updateUIFromState && typeof window.updateUIFromState === 'function') {
       try {

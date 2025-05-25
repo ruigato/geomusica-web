@@ -17,9 +17,6 @@ let sampleRate = 44100;
 // Path to the orchestra file
 const ORC_FILE_PATH = '/src/audio/GeoMusica.orc';
 
-// Flag to control Csound message logging
-let csoundLoggingEnabled = false;
-
 // We now have a single instrument with ID 1
 export const InstrumentType = {
   FM_BELL: 1 // Our only instrument
@@ -27,262 +24,6 @@ export const InstrumentType = {
 
 // Default instrument type
 let activeInstrument = InstrumentType.FM_BELL;
-
-/**
- * Disable Csound message logging to clean up the console
- */
-export async function disableCsoundLogs() {
-  if (!csoundInstance) return false;
-  
-  try {
-    // Set message level to suppress all messages
-    // Multiple approaches to ensure it works
-    await csoundInstance.setOption("-m0"); // General message level
-    await csoundInstance.setOption("--message-level=0"); // Alternative syntax
-    await csoundInstance.setOption("-+msg_color=0"); // Disable message colors
-    await csoundInstance.setOption("--no-warnings"); // Suppress warnings
-    await csoundInstance.setOption("-d"); // Suppress debug messages
-    await csoundInstance.setOption("-g"); // Suppress graph displays
-    
-    // Even more aggressive console suppression
-    // Override csoundInstance.message if it exists
-    if (csoundInstance.message) {
-      // Store the original message function for later restoration
-      csoundInstance._originalMessage = csoundInstance.message;
-      
-      csoundInstance.message = function() {
-        // Filter out all rtevent messages by not forwarding them
-        const args = Array.from(arguments);
-        const msgText = args[0] || '';
-        if (msgText.includes('rtevent') || msgText.includes('i 1')) {
-          return; // Don't forward rtevent messages
-        }
-        return csoundInstance._originalMessage.apply(csoundInstance, args);
-      };
-    }
-    
-    // ULTRA-AGGRESSIVE: Override console.log to filter Csound messages
-    if (!window._originalConsoleLog) {
-      // Store original console methods
-      window._originalConsoleLog = console.log;
-      window._originalConsoleWarn = console.warn;
-      window._originalConsoleInfo = console.info;
-      window._originalConsoleDebug = console.debug;
-      
-      // Create a filter function for Csound messages
-      const isCsoundMessage = (text) => {
-        if (typeof text !== 'string') return false;
-        
-        return text.includes('@csound_browser') || 
-               text.includes('rtevent') || 
-               text.includes('new alloc for instr') ||
-               (text.includes('T ') && text.includes('TT ') && text.includes('M:'));
-      };
-      
-      // Replace all console methods
-      console.log = function() {
-        const args = Array.from(arguments);
-        if (args.length > 0 && isCsoundMessage(String(args[0]))) {
-          return; // Skip Csound messages
-        }
-        return window._originalConsoleLog.apply(console, args);
-      };
-      
-      console.warn = function() {
-        const args = Array.from(arguments);
-        if (args.length > 0 && isCsoundMessage(String(args[0]))) {
-          return; // Skip Csound messages
-        }
-        return window._originalConsoleWarn.apply(console, args);
-      };
-      
-      console.info = function() {
-        const args = Array.from(arguments);
-        if (args.length > 0 && isCsoundMessage(String(args[0]))) {
-          return; // Skip Csound messages
-        }
-        return window._originalConsoleInfo.apply(console, args);
-      };
-      
-      console.debug = function() {
-        const args = Array.from(arguments);
-        if (args.length > 0 && isCsoundMessage(String(args[0]))) {
-          return; // Skip Csound messages
-        }
-        return window._originalConsoleDebug.apply(console, args);
-      };
-      
-      // Add filtering using Error.prepareStackTrace to catch direct console writes
-      const originalPrepareStackTrace = Error.prepareStackTrace;
-      Error._originalPrepareStackTrace = originalPrepareStackTrace; // Save for restoration
-      Error.prepareStackTrace = function(error, stack) {
-        // Check if this is coming from csound_browser.js
-        const csoundFrame = stack.find(frame => {
-          const fileName = frame.getFileName() || '';
-          return fileName.includes('csound_browser');
-        });
-        
-        // If it's from csound_browser.js, we might be able to block it
-        if (csoundFrame) {
-          const funcName = csoundFrame.getFunctionName() || '';
-          if (funcName.includes('log') || funcName.includes('print')) {
-            return ''; // Return empty stack trace to minimize impact
-          }
-        }
-        
-        // Otherwise use the original behavior
-        if (originalPrepareStackTrace) {
-          return originalPrepareStackTrace(error, stack);
-        }
-        return stack;
-      };
-      
-      // EXTREME: Inject style to hide csound console entries with CSS
-      try {
-        const style = document.createElement('style');
-        style.id = 'csound-console-filter';
-        style.textContent = `
-          /* Hide console messages from csound */
-          .console-message-wrapper:has(.console-message-text:contains('@csound_browser')),
-          .console-message-wrapper:has(.console-message-text:contains('rtevent')),
-          .console-message-wrapper:has(.console-message-text:contains('new alloc for instr')),
-          .console-message-wrapper:has(.console-message-text:contains('T ') + :contains('TT ') + :contains('M:')) {
-            display: none !important;
-          }
-        `;
-        document.head.appendChild(style);
-      } catch (styleError) {
-        // Style injection may fail in some browsers, that's ok
-        console.error('Style injection failed:', styleError);
-      }
-      
-      console.log("%c Console filtering enabled for Csound messages", "color: #444; font-style: italic;");
-    }
-    
-    // NUCLEAR OPTION: Monkey patch XMLHttpRequest and fetch to block csound_browser.js from loading
-    // Only as a last resort because it might break functionality
-    if (!window._originalXMLHttpRequest && !window._originalFetch) {
-      try {
-        // Save original methods
-        window._originalXMLHttpRequest = window.XMLHttpRequest;
-        window._originalFetch = window.fetch;
-        
-        // Create a blocker class that prevents loading of csound scripts
-        class FilteredXHR extends window._originalXMLHttpRequest {
-          open(method, url, ...args) {
-            if (typeof url === 'string' && url.includes('csound_browser')) {
-              // Log that we're blocking this
-              window._originalConsoleLog.call(console, "Blocking Csound script load:", url);
-              // Call open with a dummy URL that will fail silently
-              return super.open(method, 'about:blank', ...args);
-            }
-            return super.open(method, url, ...args);
-          }
-        }
-        
-        // Replace the global XMLHttpRequest
-        window.XMLHttpRequest = FilteredXHR;
-        
-        // Wrap fetch to filter csound scripts
-        window.fetch = function(resource, options) {
-          if (typeof resource === 'string' && resource.includes('csound_browser')) {
-            // Return a resolved promise with empty response to avoid errors
-            return Promise.resolve(new Response('', {
-              status: 200,
-              headers: { 'Content-Type': 'application/javascript' }
-            }));
-          }
-          return window._originalFetch.call(window, resource, options);
-        };
-      } catch (xhrError) {
-        console.error('XHR/fetch monkey patching failed:', xhrError);
-      }
-    }
-    
-    // Set flag to indicate logs are disabled
-    csoundLoggingEnabled = false;
-    console.log("%c Csound logs disabled to improve console readability", "color: #444; font-style: italic;");
-    return true;
-  } catch (error) {
-    console.error("Error disabling Csound logs:", error);
-    return false;
-  }
-}
-
-/**
- * Enable Csound message logging
- */
-export async function enableCsoundLogs() {
-  if (!csoundInstance) return false;
-  
-  try {
-    // Restore normal message levels
-    await csoundInstance.setOption("-m4"); // General message level (all messages)
-    await csoundInstance.setOption("--message-level=4"); // Alternative syntax
-    await csoundInstance.setOption("-+msg_color=1"); // Enable message colors
-    await csoundInstance.removeOption("--no-warnings"); // Allow warnings
-    await csoundInstance.removeOption("-d"); // Allow debug messages
-    await csoundInstance.removeOption("-g"); // Allow graph displays
-    
-    // Restore original message handler if we overrode it
-    if (csoundInstance._originalMessage) {
-      csoundInstance.message = csoundInstance._originalMessage;
-      delete csoundInstance._originalMessage;
-    }
-    
-    // Restore original console methods if we overrode them
-    if (window._originalConsoleLog) {
-      console.log = window._originalConsoleLog;
-      delete window._originalConsoleLog;
-    }
-    
-    if (window._originalConsoleWarn) {
-      console.warn = window._originalConsoleWarn;
-      delete window._originalConsoleWarn;
-    }
-    
-    if (window._originalConsoleInfo) {
-      console.info = window._originalConsoleInfo;
-      delete window._originalConsoleInfo;
-    }
-    
-    if (window._originalConsoleDebug) {
-      console.debug = window._originalConsoleDebug;
-      delete window._originalConsoleDebug;
-    }
-    
-    // Restore original Error.prepareStackTrace if we modified it
-    if (Error._originalPrepareStackTrace) {
-      Error.prepareStackTrace = Error._originalPrepareStackTrace;
-      delete Error._originalPrepareStackTrace;
-    }
-    
-    // Remove any CSS style we added
-    const styleElement = document.getElementById('csound-console-filter');
-    if (styleElement) {
-      styleElement.remove();
-    }
-    
-    // Restore original XMLHttpRequest and fetch if we replaced them
-    if (window._originalXMLHttpRequest) {
-      window.XMLHttpRequest = window._originalXMLHttpRequest;
-      delete window._originalXMLHttpRequest;
-    }
-    
-    if (window._originalFetch) {
-      window.fetch = window._originalFetch;
-      delete window._originalFetch;
-    }
-    
-    // Set flag to indicate logs are enabled
-    csoundLoggingEnabled = true;
-    console.log("%c Csound logs enabled", "color: #444; font-style: italic;");
-    return true;
-  } catch (error) {
-    console.error("Error enabling Csound logs:", error);
-    return false;
-  }
-}
 
 /**
  * Parameter manager for audio system to handle synchronization and validation
@@ -607,9 +348,6 @@ export async function setupAudio() {
           await csoundInstance.start();
           csoundStarted = true;
           
-          // Disable Csound logs immediately after starting
-          await disableCsoundLogs();
-          
           // Set default parameters
           await csoundInstance.setControlChannel("attack", DEFAULT_VALUES.ATTACK);
           await csoundInstance.setControlChannel("decay", DEFAULT_VALUES.DECAY);
@@ -652,9 +390,6 @@ export async function setupAudio() {
             await csoundInstance.start();
             csoundStarted = true;
             
-            // Disable Csound logs immediately after starting
-            await disableCsoundLogs();
-            
             // Set default parameters
             await csoundInstance.setControlChannel("attack", DEFAULT_VALUES.ATTACK);
             await csoundInstance.setControlChannel("decay", DEFAULT_VALUES.DECAY);
@@ -687,11 +422,6 @@ export async function setupAudio() {
         console.error("[AUDIO] Error in click handler:", error);
       }
     }, { once: false });
-    
-    // Call disableCsoundLogs again just to make sure
-    if (csoundInstance && csoundStarted) {
-      await disableCsoundLogs();
-    }
     
     return csoundInstance;
   } catch (error) {
