@@ -45,7 +45,7 @@ export function setupLayersUI(layerManager) {
   layerCountInput.id = 'layerCountNumber';
   layerCountInput.min = '1';
   layerCountInput.max = '10';
-  layerCountInput.value = '3';
+  layerCountInput.value = layerManager.layers.length.toString();
   layerCountInput.addEventListener('change', (e) => {
     const count = parseInt(e.target.value, 10);
     if (!isNaN(count) && count >= 1) {
