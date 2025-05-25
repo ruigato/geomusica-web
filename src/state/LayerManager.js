@@ -684,9 +684,8 @@ export class LayerManager {
         state.isLerping() || 
         state.justCalculatedIntersections ||
         this.frameCounter < 10 || // Always update during first few frames for stability
-        // FIXED: Force update if copies or angle is different from target AT ALL
-        (state.useLerp && (state.copies !== state.targetCopies || 
-                          Math.abs(state.angle - state.targetAngle) > 0.01));
+        // Force update if angle is different from target
+        (state.useLerp && Math.abs(state.angle - state.targetAngle) > 0.01);
       
       if (shouldUpdateGroup) {
         // Update the group with current parameters - angle here is for cumulative angle between copies

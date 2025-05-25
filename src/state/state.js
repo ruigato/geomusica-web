@@ -238,8 +238,7 @@ export function createAppState() {
       
       return Math.abs(this.radius - this.targetRadius) > 0.1 ||
              Math.abs(this.stepScale - this.targetStepScale) > 0.001 ||
-             Math.abs(this.angle - this.targetAngle) > 0.1 ||
-             Math.abs(this.copies - this.targetCopies) > 0.1;
+             Math.abs(this.angle - this.targetAngle) > 0.1;
     },
     
     /**
@@ -284,10 +283,8 @@ export function createAppState() {
       // Make sure both targetCopies and copies are properly set
       if (this.targetCopies !== newValue || this.copies !== newValue) {
         this.targetCopies = newValue;
+        this.copies = newValue; // Always update copies immediately, even when lerping
         this.parameterChanges.copies = true;
-        if (!this.useLerp) {
-          this.copies = this.targetCopies;
-        }
         this.needsIntersectionUpdate = true;
         
         // FIXED: Reset trigger state when copies change to prevent false triggers
@@ -566,7 +563,7 @@ export function createAppState() {
         this.targetStepScale = this.stepScale;
         this.targetAngle = this.angle;
         this.targetAltScale = this.altScale;
-        this.targetCopies = this.copies;
+        // Don't set targetCopies here since copies are always updated immediately
         
         // No need to clear lastTrig - we'll use rate limiting instead
         // Only reset vertex positions if we need to
@@ -585,7 +582,7 @@ export function createAppState() {
         this.stepScale = this.targetStepScale;
         this.angle = this.targetAngle;
         this.altScale = this.targetAltScale;
-        this.copies = this.targetCopies;
+        // Copies already set directly, no need to update here
         this.needsIntersectionUpdate = true;
       }
     },
@@ -891,7 +888,6 @@ export function createAppState() {
       const oldStepScale = this.stepScale;
       const oldAngle = this.angle;
       const oldAltScale = this.altScale;
-      const oldCopies = this.copies;
       
       const lerpFactor = Math.min(dt / this.lerpTime, 1.0);
       
@@ -901,17 +897,7 @@ export function createAppState() {
       this.angle = this.lerp(this.angle, this.targetAngle, lerpFactor);
       this.altScale = this.lerp(this.altScale, this.targetAltScale, lerpFactor);
       
-      // Special handling for copies parameter - needs to be an integer
-      const lerpedCopies = this.lerp(this.copies, this.targetCopies, lerpFactor);
-      // Round to nearest integer to prevent artifacts
-      const newCopies = Math.round(lerpedCopies);
-      
-      // Only update if the rounded value actually changed
-      if (newCopies !== oldCopies) {
-        this.copies = newCopies;
-        // Explicitly mark copies parameter as changed to force geometry update
-        this.parameterChanges.copies = true;
-      }
+      // Note: Copies parameter is now set directly and not affected by lerping
       
       // Check if significant changes occurred and explicitly mark parameters as changed
       if (Math.abs(oldRadius - this.radius) > 0.1) {
