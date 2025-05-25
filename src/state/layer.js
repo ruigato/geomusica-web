@@ -258,6 +258,16 @@ export class Layer {
    */
   activate() {
     this.active = true;
+    
+    // FIXED: Set flag to indicate this layer was just switched to
+    // This helps prevent unnecessary geometry recreation
+    this._justSwitchedTo = true;
+    
+    // Clear the flag after a short delay to allow normal updates after the switch
+    setTimeout(() => {
+      this._justSwitchedTo = false;
+    }, 100); // 100ms grace period
+    
     if (DEBUG_LOGGING) {
       
     }
@@ -295,11 +305,32 @@ export class Layer {
       return this.state._originalMethods.setCopies.call(this.state, value);
     };
     
-    // Mark all parameters as changed to force UI updates
+    // FIXED: Instead of marking all parameters as changed, only do this 
+    // for UI purposes but don't actually trigger geometry recreation
+    // Store the original parameter changes state for later restoration
     if (this.state.parameterChanges) {
+      // Temporary store the current parameter changes
+      this._savedParameterChanges = {};
+      Object.keys(this.state.parameterChanges).forEach(key => {
+        this._savedParameterChanges[key] = this.state.parameterChanges[key];
+      });
+      
+      // Mark all as changed for UI update purposes only
       Object.keys(this.state.parameterChanges).forEach(key => {
         this.state.parameterChanges[key] = true;
       });
+      
+      // Immediately reset parameter changes to prevent geometry recreation
+      // This happens after UI updates but before geometry checks
+      setTimeout(() => {
+        if (this._savedParameterChanges) {
+          // Restore the original parameter change states
+          Object.keys(this.state.parameterChanges).forEach(key => {
+            this.state.parameterChanges[key] = this._savedParameterChanges[key];
+          });
+          this._savedParameterChanges = null;
+        }
+      }, 50); // Short timeout to ensure UI updates first
       
       if (DEBUG_LOGGING) {
         
@@ -729,13 +760,55 @@ export class Layer {
    * This is used when geometry parameters change
    */
   recreateGeometry() {
-    // FIXED: Skip recreation if we just switched to this layer
-    if (this._justSwitchedTo) {
+    // TEMPORARY DEBUG: Log when geometry recreation is happening
+    console.log(`%c 🚨 GEOMETRY RECREATION for Layer ${this.id}`, 'background: red; color: white; font-size: 14px; padding: 3px;');
+    
+    // Log parameter changes that might have triggered this
+    if (this.state && this.state.parameterChanges) {
+      const changedParams = Object.entries(this.state.parameterChanges)
+        .filter(([_, isChanged]) => isChanged)
+        .map(([param, _]) => param);
+      
+      console.log(`Changed parameters:`, changedParams);
+      console.log(`Layer state:`, {
+        copies: this.state.copies,
+        segments: this.state.segments,
+        radius: this.state.radius,
+        active: this.active,
+        stack: new Error().stack.split('\n').slice(1, 4).join('\n')
+      });
+    }
+    
+    // FIXED: Enhanced prevention check with stronger protection against external calls
+    // Check both internal flags AND also global window flag if available
+    const shouldPreventRecreation = 
+      this._justSwitchedTo || 
+      this._preventGeometryRecreation ||
+      (window._preventGeometryRecreation && window._preventGeometryRecreation[this.id]);
+    
+    if (shouldPreventRecreation) {
       if (DEBUG_LOGGING) {
-        console.log(`[LAYER ${this.id}] Skipping geometry recreation after layer switch`);
+        console.log(`[LAYER ${this.id}] Skipping geometry recreation due to prevention flag`);
       }
       return;
     }
+    
+    // FIXED: Add a short-term flag to prevent multiple recreations in rapid succession
+    this._preventGeometryRecreation = true;
+    
+    // Also set a global flag that can be checked by other components
+    if (!window._preventGeometryRecreation) {
+      window._preventGeometryRecreation = {};
+    }
+    window._preventGeometryRecreation[this.id] = true;
+    
+    // Clear the prevention flags after a short delay
+    setTimeout(() => {
+      this._preventGeometryRecreation = false;
+      if (window._preventGeometryRecreation) {
+        window._preventGeometryRecreation[this.id] = false;
+      }
+    }, 50); // 50ms prevention window
     
     // Reset the trigger set to avoid false positives
     if (this.state.lastTrig) {

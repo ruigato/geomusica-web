@@ -18,7 +18,9 @@ import {
   setEnvelope, 
   setBrightness, 
   setMasterVolume,
-  applySynthParameters
+  applySynthParameters,
+  disableCsoundLogs,
+  enableCsoundLogs
 } from './audio/audio.js';
 import { createPolygonGeometry, createAxis } from './geometry/geometry.js';
 import { animate } from './animation/animation.js';
@@ -108,6 +110,9 @@ function syncStateAcrossSystems(isLayerSwitch = false) {
  */
 function performStateSync(isLayerSwitch = false) {
   try {
+    // TEMPORARY DEBUG: Log when state sync happens
+    console.log(`%c 🔄 STATE SYNC called (isLayerSwitch: ${isLayerSwitch})`, 'background: purple; color: white; font-size: 14px; padding: 3px;');
+    
     // FIXED: Use a more robust approach to get the active state
     let state = null;
     let activeLayerId = null;
@@ -189,27 +194,39 @@ function performStateSync(isLayerSwitch = false) {
     }
     
     // FIXED: Better handling of parameter changes during layer switches
-    if (isLayerSwitch && state && typeof state.resetParameterChanges === 'function') {
-      // Reset parameter changes to prevent unnecessary geometry recreation during layer switch
-      state.resetParameterChanges();
-      
-      // FIXED: Also prevent any geometry updates during layer switches
-      // Set a flag to indicate we just switched layers and don't need geometry updates
-      if (activeLayer) {
-        activeLayer._justSwitchedTo = true;
+    if (isLayerSwitch) {
+      // During layer switches, preserve parameter changes but don't act on them
+      if (state && typeof state.resetParameterChanges === 'function') {
+        // Cache current parameter changes
+        const paramChanges = {...state.parameterChanges};
         
-        // Clear the flag after a short delay to allow normal updates after the switch
-        setTimeout(() => {
-          activeLayer._justSwitchedTo = false;
-        }, 100); // 100ms grace period
+        // Reset parameters to prevent unnecessary updates
+        state.resetParameterChanges();
+        
+        // Set the _justSwitchedTo flag on the active layer
+        if (activeLayer) {
+          activeLayer._justSwitchedTo = true;
+          
+          // Clear the flag after a short delay to allow normal updates after the switch
+          setTimeout(() => {
+            activeLayer._justSwitchedTo = false;
+            
+            // After switch is complete, selectively restore only important UI parameter changes
+            // but not geometry-affecting ones
+            const uiOnlyParams = ['showLabels', 'showAxisLabels', 'showAxisFreqLabels', 'showColorLabels'];
+            uiOnlyParams.forEach(param => {
+              if (param in paramChanges) {
+                state.parameterChanges[param] = paramChanges[param];
+              }
+            });
+          }, 100); // 100ms grace period
+        }
       }
-    }
-    
-    // FIXED: Improved geometry update logic - skip if we're switching layers
-    if (!isLayerSwitch && state && state.parameterChanges) {
-      handleGeometryUpdates(state, activeLayer);
-    } else if (isLayerSwitch) {
-      // Skip geometry updates completely during layer switches
+    } else {
+      // FIXED: Improved geometry update logic for normal state changes (not layer switches)
+      if (state && state.parameterChanges && activeLayer && !activeLayer._justSwitchedTo) {
+        handleGeometryUpdates(state, activeLayer);
+      }
     }
     
   } catch (error) {
@@ -262,6 +279,26 @@ function updateGlobalUI(globalState) {
  */
 function handleGeometryUpdates(state, activeLayer) {
   try {
+    // TEMPORARY DEBUG: Log when geometry updates are attempted
+    console.log(`%c 🔍 GEOMETRY UPDATE CHECK for Layer ${activeLayer?.id}`, 'background: orange; color: black; font-size: 14px; padding: 3px;');
+    
+    // FIXED: Check for geometry recreation prevention flags
+    const preventionFlags = {
+      _justSwitchedTo: activeLayer?._justSwitchedTo,
+      _preventGeometryRecreation: activeLayer?._preventGeometryRecreation,
+      globalPrevention: window._preventGeometryRecreation && activeLayer ? window._preventGeometryRecreation[activeLayer.id] : undefined
+    };
+    console.log(`Prevention flags:`, preventionFlags);
+    
+    if (!activeLayer || 
+        activeLayer._justSwitchedTo || 
+        activeLayer._preventGeometryRecreation ||
+        (window._preventGeometryRecreation && window._preventGeometryRecreation[activeLayer.id])) {
+      // Skip geometry updates if any prevention flag is set
+      console.log(`%c Geometry update prevented by flags`, 'color: green; font-weight: bold;');
+      return;
+    }
+    
     // Force more immediate intersection update on critical parameter changes
     const criticalChanges = [
       'copies', 'modulus', 'useModulus', 'euclidValue', 'useEuclid',
@@ -634,9 +671,9 @@ function initializeApplication() {
             }
             
             // Apply color if available
-            if (firstLayer && layerData.color && firstLayer.setColor && window.THREE) {
+            if (firstLayer && layerData.color && firstLayer.setColor) {
               const { r, g, b } = layerData.color;
-              firstLayer.setColor(new window.THREE.Color(r, g, b));
+              firstLayer.setColor(new THREE.Color(r, g, b));
             }
             
             // Set visibility
@@ -788,6 +825,25 @@ function initializeApplication() {
         
         // Store Csound instance globally
         csoundInstance = csound;
+        
+        // Make sure Csound logs are disabled
+        if (typeof disableCsoundLogs === 'function') {
+          // Call immediately
+          disableCsoundLogs().catch(err => console.error("Failed to disable Csound logs:", err));
+          
+          // Also call after a short delay to catch any late initialization logs
+          setTimeout(() => {
+            disableCsoundLogs().catch(err => console.error("Failed to disable Csound logs on delay:", err));
+          }, 500);
+          
+          // And again after a longer delay for safety
+          setTimeout(() => {
+            disableCsoundLogs().catch(err => console.error("Failed to disable Csound logs on longer delay:", err));
+          }, 2000);
+        } else if (csoundInstance && typeof csoundInstance.setOption === 'function') {
+          // Alternative approach if function not available
+          csoundInstance.setOption("-m0").catch(err => console.error("Failed to set message level:", err));
+        }
         
         // Make sure all layers have the globalState attached
         if (layerManager && layerManager.layers) {
@@ -1315,3 +1371,14 @@ window.updateUIForActiveLayer = function(layerId) {
   // Update UI with the active layer state
   return window.updateUIFromState(layerState);
 };
+
+// Function to preload UI state for a layer without visual changes
+function preloadUIForLayer(layerId) {
+  // We've simplified this to avoid potential freezing issues
+  // Just log that we received the preload request
+  console.log(`%c Preload request for layer ${layerId} received`, 'color: gray; font-style: italic;');
+  return true;
+}
+
+// Make the preloadUIForLayer function available globally
+window.preloadUIForLayer = preloadUIForLayer;
