@@ -410,6 +410,9 @@ export function createTextLabel(text, position, parent, isAxisLabel = true, came
  * @returns {THREE.Group} Updated group
  */
 export function updateGroup(options = {}) {
+  // Add stack trace to find out where this is being called from
+  console.trace('updateGroup called from:');
+  
   const { state, group, layer, scene } = options;
   
   // FIXED: Extract all needed parameters from options
@@ -422,6 +425,9 @@ export function updateGroup(options = {}) {
     angle = 0,
     isLerping = false
   } = options;
+  
+  // Add debug logging to track the issue
+  console.log('updateGroup called:', {copies, group: !!group, baseGeo: !!baseGeo});
   
   // Reduce excessive logging
   const DEBUG_LOGGING = false;
@@ -691,8 +697,25 @@ export function updateGroup(options = {}) {
       pointFreqLabelsCreated = [];
     }
     
+    // ADDED: Enhanced debugging for copies creation
+    console.log(`COPY CREATION - About to create ${copiesCount} copies with baseGeo:`, 
+                baseGeo ? `valid (vertices: ${baseGeo.getAttribute('position').count})` : 'NULL',
+                `material:`, mat ? 'valid' : 'NULL',
+                `stepScale: ${stepScaleValue}`,
+                `layer ID: ${state?.layerId || layer?.id || 'unknown'}`);
+    
+    // ADDED: Verify if important dependencies are present
+    if (!baseGeo) console.error('ERROR: Missing baseGeo for copy creation');
+    if (!mat) console.error('ERROR: Missing material for copy creation');
+    
     // Now create the actual polygon copies for display
     for (let i = 0; i < copiesCount; i++) {
+      // ADDED: Track loop iteration
+      console.log(`Creating copy ${i+1}/${copiesCount}`);
+      
+      // Add the requested log statement
+      console.log('Creating copy', i, 'of', copiesCount);
+      
       // Base scale factor from step scale
       let stepScaleFactor = Math.pow(stepScaleValue, i);
       
@@ -876,6 +899,9 @@ export function updateGroup(options = {}) {
     for (const debugObj of debugObjects) {
       group.add(debugObj);
     }
+    
+    // ADDED: Summary of what was created
+    console.log(`COPY CREATION COMPLETE - Created ${group.children.length} total objects (${newChildren.length} copy groups). Layer ID: ${state?.layerId || layer?.id || 'unknown'}`);
     
   } catch (error) {
     console.error("Error in updateGroup:", error);

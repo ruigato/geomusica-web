@@ -167,8 +167,11 @@ export class LayerManager {
       this.setActiveLayer(id);
     }
     
-    // Create initial geometry for the layer
+    // FIXED: Create initial geometry for the layer AFTER it's been added to the layers array
+    // This ensures the layer is fully configured and can be referenced from other components
+    console.log(`Creating initial geometry for layer ${id}`);
     this.initializeLayerGeometry(layer);
+    console.log(`Layer ${id} creation complete`);
     
     return layer;
   }

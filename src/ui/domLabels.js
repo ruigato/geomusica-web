@@ -153,7 +153,32 @@ function releasePointLabel(label) {
  * @param {HTMLElement} label The label to release
  */
 function releaseAxisLabel(label) {
+  // FIXED: Ensure the element is properly detached from DOM using optional chaining
+  try {
+    label.parentNode?.removeChild(label);
+  } catch (e) {
+    console.warn(`Error removing label from DOM in releaseAxisLabel: ${e.message}`);
+  }
+  
+  // Clear any content and dataset values
+  label.textContent = '';
+  
+  // Reset styles that might accumulate
+  label.style.opacity = '1.0';
+  
+  // Clear dataset attributes to prevent stale data
+  if (label.dataset) {
+    delete label.dataset.createdAt;
+    delete label.dataset.lifespan;
+    delete label.dataset.worldX;
+    delete label.dataset.worldY;
+    delete label.dataset.worldZ;
+  }
+  
+  // Hide but keep in the pool for reuse
   label.style.display = 'none';
+  
+  // Add to the pool
   axisLabelPool.push(label);
 }
 
@@ -285,10 +310,35 @@ export function removePointLabel(id) {
  */
 export function removeAxisLabel(id) {
   const normalizedId = id.startsWith('axis-') ? id : 'axis-' + id;
+  
   if (activeAxisLabels.has(normalizedId)) {
     const label = activeAxisLabels.get(normalizedId);
+    
+    // FIXED: Make sure the DOM element is properly removed
+    // First check if the element is still in the DOM
+    if (label.parentNode) {
+      try {
+        // Remove from DOM before releasing to pool
+        label.parentNode.removeChild(label);
+      } catch (e) {
+        console.warn(`Error removing label from DOM: ${e.message}`);
+      }
+    }
+    
+    // Now release it back to the pool
     releaseAxisLabel(label);
+    
+    // Remove from the active labels map
     activeAxisLabels.delete(normalizedId);
+  } else {
+    // Try to find the element directly in the DOM if it wasn't in our map
+    const domElement = document.getElementById(normalizedId);
+    if (domElement) {
+      // Remove it directly
+      if (domElement.parentNode) {
+        domElement.parentNode.removeChild(domElement);
+      }
+    }
   }
 }
 
@@ -442,10 +492,23 @@ export function updateAxisLabels() {
     }
   });
   
+  // FIXED: Use proper id for removal in each iteration
   // Remove all labels marked for removal
-  labelsToRemove.forEach(id => {
+  for (const id of labelsToRemove) {
+    // Ensure we're using the correct ID format for the removeAxisLabel function
     removeAxisLabel(id);
-  });
+    
+    // Double-check that the label was actually removed from the activeAxisLabels Map
+    if (activeAxisLabels.has(id)) {
+      console.warn(`Failed to remove axis label with ID: ${id}`);
+      // Force remove by directly releasing and deleting
+      const label = activeAxisLabels.get(id);
+      if (label) {
+        releaseAxisLabel(label);
+        activeAxisLabels.delete(id);
+      }
+    }
+  }
   
   // If too many labels are active, remove the oldest ones
   const MAX_ACTIVE_LABELS = 20;
@@ -461,7 +524,23 @@ export function updateAxisLabels() {
     // Remove oldest labels
     sortedLabels.slice(MAX_ACTIVE_LABELS).forEach(([id]) => {
       removeAxisLabel(id);
+      
+      // FIXED: Verify removal succeeded
+      if (activeAxisLabels.has(id)) {
+        console.warn(`Failed to remove old axis label with ID: ${id}`);
+        // Force remove
+        const label = activeAxisLabels.get(id);
+        if (label) {
+          releaseAxisLabel(label);
+          activeAxisLabels.delete(id);
+        }
+      }
     });
+  }
+  
+  // FIXED: Debug count of active labels to verify cleanup is working
+  if (activeAxisLabels.size > 0 && Math.random() < 0.01) { // Only log occasionally
+    console.log(`Active axis labels: ${activeAxisLabels.size}`);
   }
 }
 
@@ -609,11 +688,39 @@ function hideOrphanedLabels(activeMarkers) {
 export function clearAxisLabels() {
   if (!axisLabelContainer) return;
   
-  // Clear axis labels
+  // FIXED: Check if container is empty first for efficiency
+  if (activeAxisLabels.size === 0 && !axisLabelContainer.hasChildNodes()) {
+    return;
+  }
+  
+  // FIXED: More thorough cleanup of active axis labels
+  // Clear axis labels from the map
   activeAxisLabels.forEach((label, id) => {
+    // First ensure label is removed from DOM
+    if (label.parentNode) {
+      try {
+        label.parentNode.removeChild(label);
+      } catch (e) {
+        console.warn(`Error removing label from DOM in clearAxisLabels: ${e.message}`);
+      }
+    }
+    
+    // Then release to pool
     releaseAxisLabel(label);
   });
   activeAxisLabels.clear();
+  
+  // FIXED: Double-check container for any orphaned labels
+  if (axisLabelContainer.hasChildNodes()) {
+    console.warn('Found orphaned axis labels in container, clearing directly');
+    
+    // Clear container contents entirely as a fail-safe
+    while (axisLabelContainer.firstChild) {
+      axisLabelContainer.removeChild(axisLabelContainer.firstChild);
+    }
+  }
+  
+  console.log('All axis labels cleared successfully');
 }
 
 // Export to window for global access

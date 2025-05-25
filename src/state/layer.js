@@ -250,22 +250,22 @@ export class Layer {
    * @returns {boolean} True if geometry was recreated
    */
   recreateGeometry(force = false) {
-    // Skip if not active and not forced
+    // Skip if not active, but only if not forced
     if (!this.active && !force) {
       return false;
     }
     
-    // IMPROVED: Add rate limiting to prevent excessive recreation
+    // MODIFIED: Reduced rate limiting to prevent blocking necessary updates
     const now = performance.now();
     const timeSinceLastRecreation = now - (this._lastGeometryRecreation || 0);
-    const MIN_RECREATION_INTERVAL = 100; // ms
+    
+    // Set consistent 16ms interval (60fps) for all layers as requested
+    const MIN_RECREATION_INTERVAL = 16;
     
     // Skip if we recently recreated geometry (unless forced)
     if (!force && timeSinceLastRecreation < MIN_RECREATION_INTERVAL) {
-      // Reset parameter changes to prevent buildup
-      if (this.state && typeof this.state.resetParameterChanges === 'function') {
-        this.state.resetParameterChanges();
-      }
+      // Don't reset parameter changes here - they need to persist
+      // until we can actually process them
       return false;
     }
     
@@ -357,6 +357,9 @@ export class Layer {
         // IMPROVED: Set a flag to indicate this is a programmatic update
         // This helps prevent feedback loops in parameter change detection
         this._isUpdatingGroup = true;
+        
+        // Add logging to debug the copies value being sent to updateGroup
+        console.log('Calling updateGroup with:', {copies: this.state.copies, actualState: this.state.copies});
         
         updateGroup({
           group: this.group,
@@ -493,23 +496,28 @@ export class Layer {
     // This prevents excessive checks that can lead to feedback loops
     const now = performance.now();
     const timeSinceLastCheck = now - (this._lastParameterCheck || 0);
-    const CHECK_INTERVAL = this.id === 0 ? 100 : 50; // Special handling for layer 0
+    
+    // Reduced check interval for layer 0 from 100ms to 33ms
+    const CHECK_INTERVAL = this.id === 0 ? 33 : 16; 
     
     // Track last check time
     this._lastParameterCheck = now;
     
+    // ADDED: Log to confirm hasParameterChanged() is working as expected
+    const hasChanges = this.state.hasParameterChanged();
+    if (hasChanges) {
+      console.log(`Layer ${this.id} hasParameterChanged() returned TRUE - parameter changes detected`);
+    }
+    
     // Check if any parameters have changed, but only at a reasonable interval
-    if (timeSinceLastCheck >= CHECK_INTERVAL && this.state.hasParameterChanged()) {
+    if (timeSinceLastCheck >= CHECK_INTERVAL && hasChanges) {
       // Collect changed parameters
       const changedParams = Object.entries(this.state.parameterChanges)
         .filter(([_, val]) => val)
         .map(([key, _]) => key);
       
-      // Extremely low logging probability
-      const LOG_PROB = 0.01; // 1% chance to log
-      if (Math.random() < LOG_PROB) {
-        console.log(`Layer ${this.id} parameters changed: ${changedParams.join(", ")}`);
-      }
+      // Log all parameter changes to help with debugging
+      console.log(`Layer ${this.id} parameters changed: ${changedParams.join(", ")}`);
       
       // IMPROVED: More selective handling of parameter changes
       
@@ -549,42 +557,23 @@ export class Layer {
         changedParams.includes(param)
       );
       
-      // Special handling for layer 0 to avoid excessive updates
+      // MODIFIED: Reduced throttling for layer 0
       if (this.id === 0) {
-        // Use a higher threshold to trigger recreation for layer 0
-        const MIN_RECREATION_INTERVAL = 250; // ms
+        // Use a less aggressive threshold for layer 0
+        const MIN_RECREATION_INTERVAL = 60; // ms - reduced from 250ms
         const timeSinceLastRecreation = now - (this._lastGeometryRecreation || 0);
         
-        // Skip recreation if we recently did one
+        // Skip recreation if we recently did one, but use a much shorter time window
         if (timeSinceLastRecreation < MIN_RECREATION_INTERVAL) {
           // Still reset parameter changes
           this.state.resetParameterChanges();
           return;
         }
-        
-        // Rate limit updates by only allowing through very significant changes
-        if (!this._significantChangeCount) {
-          this._significantChangeCount = 0;
-        }
-        
-        // Track significant changes
-        if (hasCriticalChanges) {
-          this._significantChangeCount++;
-        }
-        
-        // Only recreate every few significant changes for layer 0
-        if (this._significantChangeCount < 3) {
-          // Reset parameter changes without recreating
-          this.state.resetParameterChanges();
-          return;
-        }
-        
-        // Reset counter
-        this._significantChangeCount = 0;
       }
       
       if (hasCriticalChanges) {
         // Recreate geometry for critical changes
+        console.log(`Layer ${this.id} - Recreating geometry due to critical param changes: ${changedParams.filter(p => criticalParams.includes(p)).join(", ")}`);
         this.recreateGeometry();
       } else if (hasLerpingChanges) {
         // Just update the group for lerping changes without full recreation

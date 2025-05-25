@@ -409,7 +409,7 @@ function updateGlobalUI(globalState) {
  */
 function handleGeometryUpdates(state, activeLayer) {
   // Debug flag to track geometry update causes
-  const DEBUG_GEOMETRY_UPDATES = false;
+  const DEBUG_GEOMETRY_UPDATES = true;
   
   try {
     // Check if the layer was just activated/switched - if so, skip immediate updates
@@ -457,10 +457,37 @@ function handleGeometryUpdates(state, activeLayer) {
           console.log(`[GEOMETRY] Forcing geometry update for: ${forceParams.join(', ')}`);
         }
         
-        updateLayerGeometry(activeLayer, state);
+        // FIXED: Call recreateGeometry directly on the layer rather than manually creating new geometry
+        if (activeLayer && typeof activeLayer.recreateGeometry === 'function') {
+          console.log(`[GEOMETRY] Calling recreateGeometry(true) on layer ${activeLayer.id}`);
+          activeLayer.recreateGeometry(true);
+        } else {
+          // Fallback to the old method if recreateGeometry is not available
+          updateLayerGeometry(activeLayer, state);
+        }
       }
-    } else if (DEBUG_GEOMETRY_UPDATES) {
-      console.log(`[GEOMETRY] No critical parameter changes, skipping geometry update`);
+    } else {
+      // Check for non-critical but still important geometry changes
+      const geometryParams = ['copies', 'segments', 'radius', 'stepScale'];
+      const hasGeometryChanges = geometryParams.some(param => state.parameterChanges[param]);
+      
+      if (hasGeometryChanges) {
+        if (DEBUG_GEOMETRY_UPDATES) {
+          const changedGeomParams = geometryParams.filter(param => state.parameterChanges[param]);
+          console.log(`[GEOMETRY] Standard geometry parameters changed: ${changedGeomParams.join(', ')}`);
+        }
+        
+        // FIXED: Call recreateGeometry directly on the layer for regular parameter changes too
+        if (activeLayer && typeof activeLayer.recreateGeometry === 'function') {
+          console.log(`[GEOMETRY] Calling recreateGeometry(true) on layer ${activeLayer.id} for standard params`);
+          activeLayer.recreateGeometry(true);
+        } else {
+          // Fallback to the old method if recreateGeometry is not available
+          updateLayerGeometry(activeLayer, state);
+        }
+      } else if (DEBUG_GEOMETRY_UPDATES) {
+        console.log(`[GEOMETRY] No critical parameter changes, skipping geometry update`);
+      }
     }
   } catch (error) {
     console.error('[STATE SYNC] Error handling geometry updates:', error);
@@ -898,6 +925,9 @@ function initializeApplication() {
     layer0.state.parameterChanges.radius = true;
     layer0.state.parameterChanges.stepScale = true;
     
+    // Force geometry recreation with the correct state values
+    layer0.recreateGeometry(true);
+    
     // Create the second layer (square)
     const layer1 = layerManager.createLayer({
       visible: true,
@@ -916,6 +946,9 @@ function initializeApplication() {
     layer1.state.parameterChanges.radius = true;
     layer1.state.parameterChanges.stepScale = true;
     
+    // Force geometry recreation with the correct state values
+    layer1.recreateGeometry(true);
+    
     // Create the third layer (pentagon)
     const layer2 = layerManager.createLayer({
       visible: true,
@@ -933,6 +966,9 @@ function initializeApplication() {
     layer2.state.parameterChanges.segments = true;
     layer2.state.parameterChanges.radius = true;
     layer2.state.parameterChanges.stepScale = true;
+    
+    // Force geometry recreation with the correct state values
+    layer2.recreateGeometry(true);
     
     // Set the first layer as active
     layerManager.setActiveLayer(0);
@@ -954,6 +990,9 @@ function initializeApplication() {
     // Get the active layer's state
     const activeLayer = layerManager.getActiveLayer();
     const state = activeLayer ? activeLayer.state : appState;
+    
+    // Add debug logging to check layer visibility
+    console.log('Layers visible check:', layerManager.layers.map(l => ({id: l.id, visible: l.visible, copies: l.state.copies})));
     
     // Update appState reference to point to the active layer's state
     window._appState = state;

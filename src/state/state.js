@@ -188,13 +188,8 @@ export function createAppState() {
      * @returns {boolean} True if any parameters changed
      */
     hasParameterChanged() {
-      // IMPROVED: Bypass parameter change checks during layer switching
-      if (typeof window !== 'undefined' && window._layerSwitchInProgress) {
-        // Return false to suppress unnecessary updates during layer switching
-        return false;
-      }
-      
-      // IMPROVED: Block parameter change detection during active transitions
+      // NOTE: We're allowing updates during layer switching now to fix geometry update issues
+      // Only block updates when explicitly in transition mode
       if (this._activating || this._layerSwitchingFrom) {
         return false;
       }
@@ -202,33 +197,19 @@ export function createAppState() {
       // Get layerId to handle special cases
       const layerId = this.layerId !== undefined ? this.layerId : null;
       
-      // IMPROVED: Special handling for layer 0 to reduce excessive updates
+      // MODIFIED: Reduced special handling for layer 0 - was too aggressive
       if (layerId === 0) {
-        // Use more aggressive debouncing for layer 0
-        // Only check every few frames for parameter changes
-        if (!this._layer0FrameCounter) {
-          this._layer0FrameCounter = 0;
-        }
-        
-        // Increment frame counter
-        this._layer0FrameCounter++;
-        
-        // Only check every 3 frames for layer 0
-        if (this._layer0FrameCounter < 3) {
-          return false;
-        }
-        
-        // Reset counter
-        this._layer0FrameCounter = 0;
-        
-        // Throttle change detection by time as well
+        // Throttle layer 0 updates but with minimal debouncing
+        // This prevents flickering while still allowing necessary updates
         const now = performance.now();
         if (!this._layer0LastCheck) {
           this._layer0LastCheck = now;
         }
         
-        // Check at most every 100ms for layer 0
-        if (now - this._layer0LastCheck < 100) {
+        // Reduced throttling from 100ms to 16ms (~ 1 frame at 60fps)
+        // This allows updates to flow through much more frequently
+        const minUpdateInterval = 16;
+        if (now - this._layer0LastCheck < minUpdateInterval) {
           return false;
         }
         
@@ -274,8 +255,6 @@ export function createAppState() {
      * Reset all parameter change flags
      */
     resetParameterChanges() {
-      // IMPROVED: More selective parameter reset to prevent circular updates
-      
       // Track if we're actively making changes to the parameter flags
       this._resettingParameters = true;
       
@@ -291,13 +270,13 @@ export function createAppState() {
         // Get layerId to handle special cases
         const layerId = this.layerId !== undefined ? this.layerId : null;
         
-        // IMPROVED: For layer 0, do additional cleanup to prevent cascading updates
+        // IMPROVED: For layer 0, reset throttling timers to ensure updates can happen
         if (layerId === 0) {
+          // Reset time-based throttling to allow the next check to proceed
+          this._layer0LastCheck = 0;
+          
           // Store current timestamp to track when we last reset parameters
           this._lastParameterReset = performance.now();
-          
-          // Reset any counter used for throttling updates
-          this._layer0FrameCounter = 0;
         }
       } finally {
         // Always clear the flag
@@ -388,6 +367,21 @@ export function createAppState() {
         
         // FIXED: Reset trigger state when radius changes to prevent false triggers
         this.resetTriggerState();
+        
+        // ADDED: Force immediate geometry update when radius changes
+        if (this.layerId !== undefined && window._layers) {
+          const layer = window._layers.getLayerById(this.layerId);
+          if (layer) {
+            console.log(`Directly calling recreateGeometry for layer ${this.layerId} after radius change`);
+            setTimeout(() => layer.recreateGeometry(true), 0);
+          }
+        } else {
+          // Fallback to general state sync with immediate flag
+          if (window.syncStateAcrossSystems) {
+            console.log('Calling syncStateAcrossSystems after radius change');
+            window.syncStateAcrossSystems(false);
+          }
+        }
       }
       
       return this;
@@ -415,6 +409,21 @@ export function createAppState() {
         
         // FIXED: Reset trigger state when copies change to prevent false triggers
         this.resetTriggerState();
+        
+        // ADDED: Force immediate geometry update when copies change
+        if (this.layerId !== undefined && window._layers) {
+          const layer = window._layers.getLayerById(this.layerId);
+          if (layer) {
+            console.log(`Directly calling recreateGeometry for layer ${this.layerId} after copies change`);
+            setTimeout(() => layer.recreateGeometry(true), 0);
+          }
+        } else {
+          // Fallback to general state sync with immediate flag
+          if (window.syncStateAcrossSystems) {
+            console.log('Calling syncStateAcrossSystems after copies change');
+            window.syncStateAcrossSystems(false);
+          }
+        }
       }
     },
     
@@ -441,6 +450,21 @@ export function createAppState() {
         
         // FIXED: Reset trigger state when segments change to prevent false triggers
         this.resetTriggerState();
+        
+        // ADDED: Force immediate geometry update when segments change
+        if (this.layerId !== undefined && window._layers) {
+          const layer = window._layers.getLayerById(this.layerId);
+          if (layer) {
+            console.log(`Directly calling recreateGeometry for layer ${this.layerId} after segments change`);
+            setTimeout(() => layer.recreateGeometry(true), 0);
+          }
+        } else {
+          // Fallback to general state sync with immediate flag
+          if (window.syncStateAcrossSystems) {
+            console.log('Calling syncStateAcrossSystems after segments change');
+            window.syncStateAcrossSystems(false);
+          }
+        }
       }
     },
     
@@ -474,6 +498,21 @@ export function createAppState() {
         
         // FIXED: Reset trigger state when step scale changes to prevent false triggers
         this.resetTriggerState();
+        
+        // ADDED: Force immediate geometry update when step scale changes
+        if (this.layerId !== undefined && window._layers) {
+          const layer = window._layers.getLayerById(this.layerId);
+          if (layer) {
+            console.log(`Directly calling recreateGeometry for layer ${this.layerId} after step scale change`);
+            setTimeout(() => layer.recreateGeometry(true), 0);
+          }
+        } else {
+          // Fallback to general state sync with immediate flag
+          if (window.syncStateAcrossSystems) {
+            console.log('Calling syncStateAcrossSystems after step scale change');
+            window.syncStateAcrossSystems(false);
+          }
+        }
       }
       
       return this;
