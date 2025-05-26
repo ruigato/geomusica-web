@@ -117,71 +117,57 @@ export function switchTimingSource(source) {
  * Get current time in seconds with sample-accurate precision
  * This is the master clock for the entire application
  * Falls back to performance.now() if AudioContext is not initialized
+ * 
+ * PERFORMANCE-CRITICAL PATH: This function is intentionally minimal
+ * with no error handling, state checks, or defensive programming.
+ * This optimizes for raw speed over safety, as this function is called
+ * thousands of times per second in the rendering pipeline.
+ * 
  * @returns {number} Current time in seconds since timing initialization
  */
 export function getCurrentTime() {
-  // If timing not initialized, use performance.now() as fallback
+  // Fast path for performance timing
+  if (activeTimingSource === TIMING_SOURCES.PERFORMANCE_NOW) {
+    return performance.now() / 1000 - performanceStartTime;
+  }
+  
+  // Fast fallback if timing not initialized
   if (!timingInitialized || !sharedAudioContext) {
     return performance.now() / 1000 - performanceStartTime;
   }
   
-  if (activeTimingSource === TIMING_SOURCES.AUDIO_CONTEXT) {
-    // Critical: Ensure AudioContext is never suspended
-    if (sharedAudioContext.state === 'suspended') {
-      console.warn('[AUDIO TIMING] AudioContext was suspended, resuming immediately');
-      sharedAudioContext.resume().catch(err => console.warn('[AUDIO TIMING] Resume failed:', err));
-    }
-    
-    if (sharedAudioContext.state === 'closed') {
-      console.warn('[AUDIO TIMING] AudioContext is closed - falling back to performance.now()');
-      switchTimingSource(TIMING_SOURCES.PERFORMANCE_NOW);
-      return performance.now() / 1000 - performanceStartTime;
-    }
-    
-    let currentAudioTime;
-    
-    // Use cached time if cache is still valid
+  // Super-optimized AudioContext timing path
+  // No state checks, no error handling - pure speed
+  
+  // Use cached time if cache is still valid (minimal check for speed)
+  if (cacheEnabled) {
     const now = performance.now();
-    const cacheAge = now - cacheTimestamp;
-    
-    if (cacheEnabled && cacheAge < cacheDuration) {
-      // Cache hit
-      currentAudioTime = cachedAudioTime;
-      cacheHits++;
-      
-      if (debugMode) {
-        console.debug(`[AUDIO TIMING] Cache hit, age: ${cacheAge.toFixed(2)}ms`);
-      }
-    } else {
-      // Cache miss - get fresh time and update cache
-      currentAudioTime = sharedAudioContext.currentTime;
-      cachedAudioTime = currentAudioTime;
-      cacheTimestamp = now;
-      cacheMisses++;
-      
-      if (debugMode) {
-        const timeDiff = currentAudioTime - lastActualTime;
-        if (lastActualTime > 0) {
-          console.debug(`[AUDIO TIMING] Cache miss, actual diff: ${(timeDiff * 1000).toFixed(3)}ms`);
-        }
-        lastActualTime = currentAudioTime;
-      }
+    if (now - cacheTimestamp < cacheDuration) {
+      cacheHits++; // Only operation besides the actual timing
+      return cachedAudioTime - audioStartTime;
     }
     
-    // This is our rock-solid timing source - with minimal caching
-    const currentTime = currentAudioTime - audioStartTime;
+    // Cache miss - get fresh time and update cache with minimal operations
+    cacheTimestamp = now;
+    cachedAudioTime = sharedAudioContext.currentTime;
+    cacheMisses++;
     
-    // Sanity check: time should never go backwards
-    if (currentTime < 0) {
-      console.warn(`[AUDIO TIMING] Time went backwards: ${currentTime}, falling back to performance.now()`);
-      return performance.now() / 1000 - performanceStartTime;
+    // Debug mode handled outside the critical path for performance
+    if (debugMode && lastActualTime > 0) {
+      setTimeout(() => {
+        const timeDiff = cachedAudioTime - lastActualTime;
+        console.debug(`[AUDIO TIMING] Cache miss, diff: ${(timeDiff * 1000).toFixed(3)}ms`);
+        lastActualTime = cachedAudioTime;
+      }, 0);
+    } else if (debugMode) {
+      lastActualTime = cachedAudioTime;
     }
-    
-    return currentTime;
-  } else {
-    // Use performance.now() as timing source
-    return performance.now() / 1000 - performanceStartTime;
   }
+  
+  // Razor thin timing code - absolute minimum overhead
+  return cacheEnabled 
+    ? cachedAudioTime - audioStartTime 
+    : sharedAudioContext.currentTime - audioStartTime;
 }
 
 /**
