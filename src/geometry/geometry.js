@@ -382,22 +382,19 @@ export function createTextLabel(text, position, parent, isAxisLabel = true, came
   // For DOM-based labels, we don't actually create a Three.js object
   // Instead, we return an info object that can be used to update the DOM label
   
-  // If the parent has a userData.state with equal temperament settings,
-  // format the text accordingly
+  // Check global state for equal temperament formatting
   let displayText = text;
-  if (parent && parent.userData && parent.userData.state) {
-    const state = parent.userData.state;
-    if (state.useEqualTemperament && typeof text === 'number') {
-      // Text is a frequency value
-      const freq = text;
-      const refFreq = state.referenceFrequency || 440;
-      const quantizedFreq = quantizeToEqualTemperament(freq, refFreq);
-      const noteName = getNoteName(quantizedFreq, refFreq);
-      displayText = `${freq.toFixed(1)}Hz (${noteName})`;
-    } else if (typeof text === 'number') {
-      // Text is a frequency value but equal temperament is disabled
-      displayText = `${text.toFixed(2)}Hz`;
-    }
+  const globalState = window._globalState;
+  if (globalState && globalState.useEqualTemperament && typeof text === 'number') {
+    // Text is a frequency value
+    const freq = text;
+    const refFreq = globalState.referenceFrequency || 440;
+    const quantizedFreq = quantizeToEqualTemperament(freq, refFreq);
+    const noteName = getNoteName(quantizedFreq, refFreq);
+    displayText = `${freq.toFixed(1)}Hz (${noteName})`;
+  } else if (typeof text === 'number') {
+    // Text is a frequency value but equal temperament is disabled
+    displayText = `${text.toFixed(2)}Hz`;
   }
   
   return {
@@ -642,7 +639,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         finalScale = stepScaleFactor * state.altScale;
       }
       
-      console.log('[GEOMETRY DEBUG] Copy', i, 'finalScale:', finalScale, 'stepScale:', stepScale);
+
       
       // Each copy gets a cumulative angle (i * angle) in degrees
       const cumulativeAngleDegrees = i * angle;
@@ -678,7 +675,6 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         // Create line segments for star patterns
         const lines = new THREE.LineSegments(baseGeo, lineMaterial);
         lines.scale.set(finalScale, finalScale, 1);
-        console.log('[GEOMETRY DEBUG] Applying scale to lines:', finalScale, finalScale, 1);
         
         // Set renderOrder to ensure it renders on top of other objects
         lines.renderOrder = 10; // Higher render order
@@ -689,7 +685,6 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         // For regular polygons, use the standard LINE_LOOP
         const lines = new THREE.LineLoop(baseGeo, lineMaterial);
         lines.scale.set(finalScale, finalScale, 1);
-        console.log('[GEOMETRY DEBUG] Applying scale to lines:', finalScale, finalScale, 1);
         
         // Set renderOrder to ensure it renders on top of other objects
         lines.renderOrder = 10; // Higher render order
@@ -1192,9 +1187,7 @@ function createRegularPolygonPoints(radius, numSegments, state = null) {
     const angle = i * angleStep;
     const x = Math.cos(angle) * radius;
     const y = Math.sin(angle) * radius;
-    if (window.DEBUG_MATRIX) {
-      console.log('[GEOMETRY DEBUG] Created point:', x, y, 'for radius:', radius);
-    }
+
     points.push(new THREE.Vector2(x, y));
   }
   

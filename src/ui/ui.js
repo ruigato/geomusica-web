@@ -614,13 +614,14 @@ export function setupUI(state) {
   
   // Setup equal temperament checkbox with null check
   if (useEqualTemperamentCheckbox) {
-    useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
+    // Get initial value from global state
+    const globalState = window._globalState;
+    useEqualTemperamentCheckbox.checked = globalState ? globalState.useEqualTemperament : state.useEqualTemperament;
     useEqualTemperamentCheckbox.addEventListener('change', e => {
-      // Get the current active layer state
-      const activeState = typeof window.getActiveState === 'function' ? 
-        window.getActiveState() : state;
-        
-      activeState.setUseEqualTemperament(e.target.checked);
+      // Update global state instead of layer state
+      if (globalState) {
+        globalState.setUseEqualTemperament(e.target.checked);
+      }
     });
   }
   
@@ -1000,12 +1001,19 @@ export function setupUI(state) {
 
   // Link Equal Temperament reference frequency controls
   if (referenceFreqRange && referenceFreqNumber && referenceFreqValue) {
+    // Set initial value from global state
+    const globalState = window._globalState;
+    const initialValue = globalState ? globalState.referenceFrequency : state.referenceFrequency;
+    referenceFreqRange.value = initialValue;
+    referenceFreqNumber.value = initialValue;
+    referenceFreqValue.textContent = initialValue;
+    
     syncPair(referenceFreqRange, referenceFreqNumber, referenceFreqValue,
       function setReferenceFrequency(value) {
-        // Use getActiveState dynamically at call time, not during setup
-        const targetState = typeof window.getActiveState === 'function' ? 
-          window.getActiveState() : state;
-        targetState.setReferenceFrequency(Number(value));
+        // Update global state instead of layer state
+        if (globalState) {
+          globalState.setReferenceFrequency(Number(value));
+        }
       },
       UI_RANGES.REFERENCE_FREQ[0], UI_RANGES.REFERENCE_FREQ[1],
       Number);

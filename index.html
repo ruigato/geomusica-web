@@ -154,8 +154,26 @@
       </div>
       
       <div class="tab-content hidden" id="globals-tab">
-        <!-- Globals tab content will be added later -->
-        <p class="placeholder-text">Global settings will appear here</p>
+        <!-- Global settings that affect all layers -->
+        <section>
+          <h2 class="section-title">EQUAL TEMPERAMENT</h2>
+          <div class="section-content">
+            <div class="control">
+              <label for="useEqualTemperamentCheckbox">Equal Temperament:</label>
+              <input type="checkbox" id="useEqualTemperamentCheckbox">
+              <span class="help-text">When enabled, frequencies are quantized to the nearest equal temperament note</span>
+            </div>
+            <div class="control">
+              <label for="referenceFreqRange">Reference Freq (Hz):</label>
+              <div class="slider-container">
+                <input type="range" id="referenceFreqRange" min="415" max="466" step="1" value="440">
+                <span id="referenceFreqValue" class="slider-value">440</span>
+                <input type="number" id="referenceFreqNumber" min="415" max="466" step="1" value="440">
+              </div>
+              <span class="help-text">Reference frequency for equal temperament (standard A4 = 440Hz)</span>
+            </div>
+          </div>
+        </section>
       </div>
       
       <div class="tab-content" id="time-tab">
@@ -553,20 +571,6 @@
             <span id="volumeValue" class="slider-value">0.8</span>
             <input type="number" id="volumeNumber" min="0.0" max="1.0" step="0.01" value="0.8">
           </div>
-        </div>
-        <div class="control">
-          <label for="useEqualTemperamentCheckbox">Equal Temperament:</label>
-          <input type="checkbox" id="useEqualTemperamentCheckbox">
-          <span class="help-text">When enabled, frequencies are quantized to the nearest equal temperament note</span>
-        </div>
-        <div class="control">
-          <label for="referenceFreqRange">Reference Freq (Hz):</label>
-          <div class="slider-container">
-            <input type="range" id="referenceFreqRange" min="415" max="466" step="1" value="440">
-            <span id="referenceFreqValue" class="slider-value">440</span>
-            <input type="number" id="referenceFreqNumber" min="415" max="466" step="1" value="440">
-          </div>
-          <span class="help-text">Reference frequency for equal temperament (standard A4 = 440Hz)</span>
         </div>
       </div>
     </section>

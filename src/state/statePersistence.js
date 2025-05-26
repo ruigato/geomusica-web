@@ -317,9 +317,7 @@ export function applyPropertiesToState(targetState, sourceState) {
     { name: 'brightness', setter: 'setBrightness' },
     { name: 'volume', setter: 'setVolume' },
     
-    // Equal temperament parameters
-    { name: 'useEqualTemperament', setter: 'setUseEqualTemperament' },
-    { name: 'referenceFrequency', setter: 'setReferenceFrequency' },
+
     
     // Display parameters
     { name: 'showAxisFreqLabels', setter: 'setShowAxisFreqLabels' },
@@ -796,14 +794,16 @@ export function updateUIFromState(state, uiElements) {
       if (uiElements.volumeValue) uiElements.volumeValue.textContent = state.volume.toFixed(2);
     }
 
-    if (uiElements.useEqualTemperamentCheckbox && state.useEqualTemperament !== undefined) {
-      uiElements.useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
+    // Equal temperament is now handled by global state, not layer state
+    const globalState = window._globalState;
+    if (uiElements.useEqualTemperamentCheckbox && globalState) {
+      uiElements.useEqualTemperamentCheckbox.checked = globalState.useEqualTemperament;
     }    
     
-    if (uiElements.referenceFreqRange && state.referenceFrequency !== undefined) {
-      uiElements.referenceFreqRange.value = state.referenceFrequency;
-      if (uiElements.referenceFreqNumber) uiElements.referenceFreqNumber.value = state.referenceFrequency;
-      if (uiElements.referenceFreqValue) uiElements.referenceFreqValue.textContent = state.referenceFrequency;
+    if (uiElements.referenceFreqRange && globalState) {
+      uiElements.referenceFreqRange.value = globalState.referenceFrequency;
+      if (uiElements.referenceFreqNumber) uiElements.referenceFreqNumber.value = globalState.referenceFrequency;
+      if (uiElements.referenceFreqValue) uiElements.referenceFreqValue.textContent = globalState.referenceFrequency;
     }
     
     // Update Note Parameters controls

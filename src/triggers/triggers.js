@@ -195,12 +195,13 @@ function calculateFrequency(x, y, state) {
   // Limit to reasonable audio range (80-1000 Hz)
   frequency = Math.max(80, Math.min(1000, frequency));
   
-  // Process through equal temperament if enabled
+  // Process through equal temperament if enabled (check global state)
   let noteName = null;
-  if (state && state.useEqualTemperament) {
+  const globalState = window._globalState;
+  if (globalState && globalState.useEqualTemperament) {
     // Get reference frequency with safe default
-    const refFreq = (state.referenceFrequency && !isNaN(state.referenceFrequency)) 
-      ? state.referenceFrequency 
+    const refFreq = (globalState.referenceFrequency && !isNaN(globalState.referenceFrequency)) 
+      ? globalState.referenceFrequency 
       : 440;
     
     try {
@@ -552,8 +553,9 @@ export function createMarker(angle, worldX, worldY, scene, note, camera = null, 
       // Format frequency with appropriate display
       let displayText;
       
-      // If equal temperament is enabled, show both the original frequency and the note name
-      if (layer.state.useEqualTemperament && note.noteName) {
+      // Check global state for equal temperament display
+      const globalState = window._globalState;
+      if (globalState && globalState.useEqualTemperament && note.noteName) {
         // Add a "Q" prefix for quantized triggers for visual feedback
         const qPrefix = isQuantized ? "Q " : "";
         displayText = `${qPrefix}${frequency.toFixed(1)}Hz (${note.noteName}) ${duration.toFixed(2)}s`;
@@ -1259,13 +1261,8 @@ function recordLayerVertexPositions(layer, audioTime) {
     // Apply inverse rotation at world level
     tempWorldMatrix.premultiply(inverseRotationMatrix);
     
-    // Get the scale from the mesh's matrix for debugging
+    // Get the scale from the mesh's matrix
     const finalScale = scale.x;
-    if (window.DEBUG_MATRIX) {
-      console.log('[MATRIX DEBUG] finalScale:', finalScale);
-      console.log('[MATRIX DEBUG] position:', position.x, position.y, position.z);
-      console.log('[MATRIX DEBUG] scale:', scale.x, scale.y, scale.z);
-    }
     
     // Temp vector for calculations
     const worldPos = new THREE.Vector3();
@@ -1277,9 +1274,6 @@ function recordLayerVertexPositions(layer, audioTime) {
       try {
         // Get current vertex position
         worldPos.fromBufferAttribute(positions, vi);
-        if (window.DEBUG_MATRIX) {
-          console.log('[MATRIX DEBUG] Original vertex:', worldPos.x, worldPos.y, worldPos.z);
-        }
         
         // Skip invalid vertices
         if (isNaN(worldPos.x) || isNaN(worldPos.y) || isNaN(worldPos.z)) {
@@ -1288,15 +1282,9 @@ function recordLayerVertexPositions(layer, audioTime) {
         
         // Apply world matrix transformation (includes position, scale, but no rotation)
         worldPos.applyMatrix4(tempWorldMatrix);
-        if (window.DEBUG_MATRIX) {
-          console.log('[MATRIX DEBUG] After world matrix:', worldPos.x, worldPos.y, worldPos.z);
-        }
         
         // Apply final rotation for trigger detection
         const rotatedPos = worldPos.clone().applyMatrix4(rotationMatrix);
-        if (window.DEBUG_MATRIX) {
-          console.log('[MATRIX DEBUG] After rotation:', rotatedPos.x, rotatedPos.y, rotatedPos.z);
-        }
         
         // Record position in subframe engine with audio timing
         subframeEngine.recordVertexPosition(

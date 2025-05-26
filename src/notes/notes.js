@@ -39,14 +39,12 @@ export function createNote(triggerData, state) {
   let frequency = Math.hypot(x, y);
   let noteName = null;
   
-  // Check if state is valid
-  if (state) {
-    // Apply equal temperament if enabled
-    if (state.useEqualTemperament) {
-      const refFreq = state.referenceFrequency || 440;
-      frequency = quantizeToEqualTemperament(frequency, refFreq);
-      noteName = getNoteName(frequency, refFreq);
-    }
+  // Check if global state has equal temperament enabled
+  const globalState = window._globalState;
+  if (globalState && globalState.useEqualTemperament) {
+    const refFreq = globalState.referenceFrequency || 440;
+    frequency = quantizeToEqualTemperament(frequency, refFreq);
+    noteName = getNoteName(frequency, refFreq);
   }
   
   // Determine point index for parameter calculations
