@@ -41,6 +41,7 @@ export function createNote(triggerData, state) {
   
   // Check if global state has equal temperament enabled
   const globalState = window._globalState;
+  
   if (globalState && globalState.useEqualTemperament) {
     const refFreq = globalState.referenceFrequency || 440;
     frequency = quantizeToEqualTemperament(frequency, refFreq);

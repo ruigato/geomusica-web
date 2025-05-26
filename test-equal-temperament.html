@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Equal Temperament Test</title>
+</head>
+<body>
+    <h1>Equal Temperament Test</h1>
+    <p>Open the browser console and check if the equal temperament toggle works:</p>
+    <ol>
+        <li>Go to the GLOBALS tab</li>
+        <li>Toggle the Equal Temperament checkbox</li>
+        <li>Check if axis frequency labels change format when you trigger notes</li>
+        <li>Look for console messages about equal temperament changes</li>
+    </ol>
+    
+    <script>
+        console.log('Test: Check if window._globalState exists and has useEqualTemperament property');
+        
+        // Wait for the app to load
+        setTimeout(() => {
+            if (window._globalState) {
+                console.log('✓ Global state found');
+                console.log('Current equal temperament setting:', window._globalState.useEqualTemperament);
+                console.log('Current reference frequency:', window._globalState.referenceFrequency);
+                
+                // Test toggling
+                console.log('Testing toggle...');
+                const originalValue = window._globalState.useEqualTemperament;
+                window._globalState.setUseEqualTemperament(!originalValue);
+                console.log('After toggle:', window._globalState.useEqualTemperament);
+                
+                // Toggle back
+                window._globalState.setUseEqualTemperament(originalValue);
+                console.log('Restored to:', window._globalState.useEqualTemperament);
+            } else {
+                console.log('✗ Global state not found');
+            }
+        }, 3000);
+    </script>
+</body>
+</html> 

@@ -1564,18 +1564,15 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
           let note;
           
           try {
-            // For regular vertices, use the position from crossingResult
-            note = {
-              frequency: Math.hypot(crossingResult.position.x, crossingResult.position.y),
+            // Use createNote function to ensure equal temperament is applied
+            note = createNote({
               x: crossingResult.position.x,
               y: crossingResult.position.y,
-              layerId,
               copyIndex: ci,
-              // Add essential note properties
-              duration: state.maxDuration || 0.5,
-              velocity: state.maxVelocity || 0.8,
-              pan: Math.sin(angle)
-            };
+              vertexIndex: vi,
+              isIntersection: false,
+              angle: angle
+            }, state);
             
             // Add subframe-specific properties
             note.time = crossingResult.exactTime;
@@ -1584,22 +1581,22 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
             note.position = crossingResult.position;
             note.layerId = layerId; // FIXED: Always include layerId in the note
           } catch (e) {
-            // Fallback if createNote fails
-            const frequency = Math.hypot(nonRotatedX, nonRotatedY) * 2;
-            note = {
-              frequency: frequency,
-              noteName: state.useEqualTemperament ? getNoteName(frequency, state.referenceFrequency || 440) : null,
-              duration: state.maxDuration || 0.5,
-              velocity: state.maxVelocity || 0.8,
-              pan: Math.sin(angle),
-              x: crossingResult.position.x,
-              y: crossingResult.position.y,
-              z: crossingResult.position.z,
-              time: crossingResult.exactTime,
-              isSubframe: true,
-              vertexId: vertexId,
-              layerId: layerId
-            };
+            // Fallback if createNote fails - use createNote with safe defaults
+            console.warn('[TRIGGERS] createNote failed, using fallback:', e);
+            note = createNote({
+              x: crossingResult.position.x || 0,
+              y: crossingResult.position.y || 0,
+              copyIndex: ci,
+              vertexIndex: vi,
+              isIntersection: false,
+              angle: angle
+            }, state || {});
+            
+            // Add subframe-specific properties
+            note.time = crossingResult.exactTime;
+            note.isSubframe = true;
+            note.vertexId = vertexId;
+            note.layerId = layerId;
           }
           
           // Check for overlap with previously triggered points
@@ -1782,26 +1779,22 @@ function detectIntersectionSubframeTriggers(
             }
           });
           
-          // Create note based on existing system
-          let note = {
-            frequency: Math.hypot(crossingResult.position.x, crossingResult.position.y),
+          // Create note using createNote function to ensure equal temperament is applied
+          let note = createNote({
             x: crossingResult.position.x,
             y: crossingResult.position.y,
-            isIntersection: true,
-            layerId,
             copyIndex: ci,
+            isIntersection: true,
             intersectionIndex: i,
-            // Add essential note properties
-            duration: state.maxDuration || 0.5,
-            velocity: state.maxVelocity || 0.8,
-            pan: Math.sin(angle)
-          };
+            angle: angle
+          }, state);
           
           // Add subframe-specific properties
           note.time = crossingResult.exactTime;
           note.isSubframe = true;
           note.crossingFactor = crossingResult.crossingFactor;
           note.position = crossingResult.position;
+          note.layerId = layerId;
           
           // Handle quantization if enabled
           if (state.useQuantization) {

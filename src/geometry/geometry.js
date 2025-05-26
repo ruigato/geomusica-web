@@ -794,7 +794,9 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
             
             // Format display text
             let labelText;
-            if (state.useEqualTemperament && note.noteName) {
+            // Check global state for equal temperament
+            const globalState = window._globalState;
+            if (globalState && globalState.useEqualTemperament && note.noteName) {
               labelText = `${freq.toFixed(1)}Hz (${note.noteName}) ${note.duration.toFixed(2)}s`;
             } else {
               labelText = `${freq.toFixed(2)}Hz ${note.duration.toFixed(2)}s`;
@@ -925,7 +927,9 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
                 
                 // Format display text
                 let labelText;
-                if (state.useEqualTemperament && note.noteName) {
+                // Check global state for equal temperament
+                const globalState = window._globalState;
+                if (globalState && globalState.useEqualTemperament && note.noteName) {
                   labelText = `${freq.toFixed(1)}Hz (${note.noteName}) ${note.duration.toFixed(2)}s`;
                 } else {
                   labelText = `${freq.toFixed(2)}Hz ${note.duration.toFixed(2)}s`;

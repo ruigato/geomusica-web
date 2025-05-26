@@ -1149,6 +1149,144 @@ async function initializeApplication() {
 }
 
 /**
+ * Update existing axis labels with new equal temperament format
+ */
+function updateExistingAxisLabels() {
+  try {
+    // Import frequency utilities
+    import('./audio/frequencyUtils.js').then(freqModule => {
+      const { quantizeToEqualTemperament, getNoteName } = freqModule;
+      
+      // Get all existing axis labels
+      const axisLabels = document.querySelectorAll('.axis-frequency-label');
+      const globalState = window._globalState;
+      
+      if (!globalState) return;
+      
+      axisLabels.forEach(label => {
+        try {
+          // Parse the current label text to extract frequency and duration
+          const text = label.textContent;
+          
+          // Match patterns like "123.45Hz 0.50s" or "Q 123.45Hz (C4) 0.50s"
+          const freqMatch = text.match(/(\d+\.?\d*)Hz/);
+          const durationMatch = text.match(/(\d+\.?\d+)s/);
+          const isQuantized = text.startsWith('Q ');
+          
+          if (freqMatch && durationMatch) {
+            const frequency = parseFloat(freqMatch[1]);
+            const duration = parseFloat(durationMatch[1]);
+            const qPrefix = isQuantized ? "Q " : "";
+            
+            let newText;
+            if (globalState.useEqualTemperament) {
+              // Convert to equal temperament format
+              const refFreq = globalState.referenceFrequency || 440;
+              const quantizedFreq = quantizeToEqualTemperament(frequency, refFreq);
+              const noteName = getNoteName(quantizedFreq, refFreq);
+              newText = `${qPrefix}${frequency.toFixed(1)}Hz (${noteName}) ${duration.toFixed(2)}s`;
+            } else {
+              // Convert to free temperament format
+              newText = `${qPrefix}${frequency.toFixed(2)}Hz ${duration.toFixed(2)}s`;
+            }
+            
+            // Update the label text
+            label.textContent = newText;
+          }
+        } catch (error) {
+          console.error('[LABELS] Error updating individual axis label:', error);
+        }
+      });
+      
+
+    }).catch(error => {
+      console.error('[LABELS] Error importing frequency utilities:', error);
+    });
+  } catch (error) {
+    console.error('[LABELS] Error updating existing axis labels:', error);
+  }
+}
+
+/**
+ * Refresh frequency labels when equal temperament setting changes
+ */
+function refreshFrequencyLabels() {
+  try {
+    // Update existing axis labels immediately
+    updateExistingAxisLabels();
+    
+    // Import the clearLabels function from domLabels
+    import('./ui/domLabels.js').then(module => {
+      // Only clear point frequency labels, not axis labels
+      // Axis labels are temporary and will be recreated with the new format on next trigger
+      
+      // Clear point frequency labels from all layer states
+      if (layerManager && layerManager.layers) {
+        layerManager.layers.forEach(layer => {
+          if (layer.state && layer.state.pointFreqLabels) {
+            // Clear existing point labels
+            layer.state.pointFreqLabels.forEach(labelInfo => {
+              if (labelInfo.label && labelInfo.label.id) {
+                const element = document.getElementById(labelInfo.label.id);
+                if (element) {
+                  element.remove();
+                }
+              }
+            });
+            layer.state.pointFreqLabels = [];
+          }
+        });
+      }
+      
+      // Clear only point frequency labels container, leave axis labels alone
+      const pointLabelsContainer = document.getElementById('point-labels-container');
+      if (pointLabelsContainer) {
+        pointLabelsContainer.innerHTML = '';
+      }
+      
+      // Force all layers to recreate their point frequency labels only
+      if (layerManager && layerManager.layers) {
+        layerManager.layers.forEach(layer => {
+          if (layer.state) {
+            // Only force point frequency labels to update, not geometry
+            layer.state.parameterChanges.showPointsFreqLabels = true;
+            layer.state.needsPointFreqLabelsUpdate = true;
+          }
+        });
+      }
+      
+      // Trigger state synchronization to update point labels
+      if (typeof window.syncStateAcrossSystems === 'function') {
+        window.syncStateAcrossSystems();
+      }
+      
+
+    }).catch(error => {
+      console.error('[LABELS] Error importing domLabels:', error);
+      
+      // Fallback: try to clear point labels manually
+      const pointLabelsContainer = document.getElementById('point-labels-container');
+      if (pointLabelsContainer) {
+        pointLabelsContainer.innerHTML = '';
+      }
+      
+      // Force geometry update
+      if (layerManager) {
+        const activeLayer = layerManager.getActiveLayer();
+        if (activeLayer && activeLayer.state) {
+          activeLayer.state.parameterChanges.showPointsFreqLabels = true;
+          if (typeof window.syncStateAcrossSystems === 'function') {
+            window.syncStateAcrossSystems();
+          }
+        }
+      }
+    });
+  } catch (error) {
+    console.error('[LABELS] Error refreshing frequency labels:', error);
+  }
+}
+
+/**
  * Setup global UI controls
  * @param {GlobalStateManager} globalState The global state manager
  */
@@ -1162,12 +1300,20 @@ function setupGlobalUI(globalState) {
   const audioContextRadio = document.getElementById('timingSource-audioContext');
   const performanceNowRadio = document.getElementById('timingSource-performanceNow');
   
+  // Get equal temperament controls
+  const useEqualTemperamentCheckbox = document.getElementById('useEqualTemperamentCheckbox');
+  const referenceFreqRange = document.getElementById('referenceFreqRange');
+  const referenceFreqNumber = document.getElementById('referenceFreqNumber');
+  const referenceFreqValue = document.getElementById('referenceFreqValue');
+  
   // Initialize UI controls with global state values
   try {
     // Create a references object with global UI elements
     const globalUIReferences = {
       bpmRange, bpmNumber, bpmValue,
-      audioContextRadio, performanceNowRadio
+      audioContextRadio, performanceNowRadio,
+      useEqualTemperamentCheckbox,
+      referenceFreqRange, referenceFreqNumber, referenceFreqValue
     };
     
     // Update UI with global state values
@@ -1232,13 +1378,64 @@ function setupGlobalUI(globalState) {
     });
   }
   
+  // Add event listeners for equal temperament controls
+  if (useEqualTemperamentCheckbox) {
+    // Set initial value from global state
+    useEqualTemperamentCheckbox.checked = globalState.useEqualTemperament;
+    useEqualTemperamentCheckbox.addEventListener('change', e => {
+      globalState.setUseEqualTemperament(e.target.checked);
+      
+      // Refresh existing labels to show the new format
+      refreshFrequencyLabels();
+    });
+  }
+  
+  // Add event listeners for reference frequency controls
+  if (referenceFreqRange) {
+    referenceFreqRange.value = globalState.referenceFrequency;
+    referenceFreqRange.addEventListener('input', e => {
+      const value = Number(e.target.value);
+      globalState.setReferenceFrequency(value);
+      if (referenceFreqNumber) referenceFreqNumber.value = value;
+      if (referenceFreqValue) referenceFreqValue.textContent = value;
+      
+      // Refresh labels if equal temperament is enabled
+      if (globalState.useEqualTemperament) {
+        refreshFrequencyLabels();
+      }
+    });
+  }
+  
+  if (referenceFreqNumber) {
+    referenceFreqNumber.value = globalState.referenceFrequency;
+    referenceFreqNumber.addEventListener('input', e => {
+      const value = Number(e.target.value);
+      globalState.setReferenceFrequency(value);
+      if (referenceFreqRange) referenceFreqRange.value = value;
+      if (referenceFreqValue) referenceFreqValue.textContent = value;
+      
+      // Refresh labels if equal temperament is enabled
+      if (globalState.useEqualTemperament) {
+        refreshFrequencyLabels();
+      }
+    });
+  }
+  
+  if (referenceFreqValue) {
+    referenceFreqValue.textContent = globalState.referenceFrequency;
+  }
+  
   // Store references to global UI controls
   globalUIReferences = {
     bpmRange,
     bpmNumber,
     bpmValue,
     audioContextRadio,
-    performanceNowRadio
+    performanceNowRadio,
+    useEqualTemperamentCheckbox,
+    referenceFreqRange,
+    referenceFreqNumber,
+    referenceFreqValue
   };
 }
 

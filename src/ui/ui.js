@@ -490,7 +490,7 @@ export function setupUI(state) {
   if (showPointsFreqLabelsCheckbox) showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
   if (useAltScaleCheckbox) useAltScaleCheckbox.checked = state.useAltScale;
   // Time subdivision checkbox removed
-  if (useEqualTemperamentCheckbox) useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
+  // Equal temperament checkbox initialization is now handled in setupGlobalUI in main.js
   if (useQuantizationCheckbox) useQuantizationCheckbox.checked = state.useQuantization;
   if (useFractalCheckbox) useFractalCheckbox.checked = state.useFractal;
   if (useStarsCheckbox) useStarsCheckbox.checked = state.useStars;
@@ -510,12 +510,7 @@ export function setupUI(state) {
     altStepNValue.textContent = state.altStepN;
   }
   
-  // Set initial values for equal temperament controls with null checks
-  if (referenceFreqRange && referenceFreqNumber && referenceFreqValue) {
-    referenceFreqRange.value = state.referenceFrequency;
-    referenceFreqNumber.value = state.referenceFrequency;
-    referenceFreqValue.textContent = state.referenceFrequency;
-  }
+  // Reference frequency controls initialization is now handled in setupGlobalUI in main.js
   
   // Set initial values for duration controls with null checks
   if (minDurationRange && minDurationNumber && minDurationValue) {
@@ -612,18 +607,7 @@ export function setupUI(state) {
     });
   }
   
-  // Setup equal temperament checkbox with null check
-  if (useEqualTemperamentCheckbox) {
-    // Get initial value from global state
-    const globalState = window._globalState;
-    useEqualTemperamentCheckbox.checked = globalState ? globalState.useEqualTemperament : state.useEqualTemperament;
-    useEqualTemperamentCheckbox.addEventListener('change', e => {
-      // Update global state instead of layer state
-      if (globalState) {
-        globalState.setUseEqualTemperament(e.target.checked);
-      }
-    });
-  }
+  // Equal temperament checkbox is now handled in setupGlobalUI in main.js
   
   // Setup fractal checkbox with null check
   if (useFractalCheckbox) {
@@ -999,25 +983,7 @@ export function setupUI(state) {
       Number);
   }
 
-  // Link Equal Temperament reference frequency controls
-  if (referenceFreqRange && referenceFreqNumber && referenceFreqValue) {
-    // Set initial value from global state
-    const globalState = window._globalState;
-    const initialValue = globalState ? globalState.referenceFrequency : state.referenceFrequency;
-    referenceFreqRange.value = initialValue;
-    referenceFreqNumber.value = initialValue;
-    referenceFreqValue.textContent = initialValue;
-    
-    syncPair(referenceFreqRange, referenceFreqNumber, referenceFreqValue,
-      function setReferenceFrequency(value) {
-        // Update global state instead of layer state
-        if (globalState) {
-          globalState.setReferenceFrequency(Number(value));
-        }
-      },
-      UI_RANGES.REFERENCE_FREQ[0], UI_RANGES.REFERENCE_FREQ[1],
-      Number);
-  }
+  // Reference frequency controls are now handled in setupGlobalUI in main.js
   
   // Link fractal controls
   if (fractalRange && fractalNumber && fractalValue) {
