@@ -194,12 +194,20 @@ function setupModulusRadioButtons(container, state, type = null) {
     // Add event listener with appropriate state setter
     radioInput.addEventListener('change', () => {
       if (radioInput.checked) {
+        // Get the current active layer state
+        const activeState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+          
         if (type === 'duration') {
-          state.setDurationModulo(i);
+          activeState.setDurationModulo(i);
         } else if (type === 'velocity') {
-          state.setVelocityModulo(i);
+          activeState.setVelocityModulo(i);
         } else {
-          state.setModulusValue(i);
+          activeState.setModulusValue(i);
+          
+          // Auto-enable modulus if value is not 1 (default)
+          const isDefault = i === 1;
+          activeState.setUseModulus(!isDefault);
         }
       }
     });
@@ -385,7 +393,7 @@ export function setupUI(state) {
   const lerpTimeValue = document.getElementById('lerpTimeValue');
   
   // Modulus controls
-  const useModulusCheckbox = document.getElementById('useModulusCheckbox');
+  // Modulus checkbox removed
   const modulusRadioGroup = document.getElementById('modulusRadioGroup');
   
   // Time subdivision controls
@@ -576,17 +584,7 @@ export function setupUI(state) {
     setupModulusRadioButtons(velocityModuloRadioGroup, state, 'velocity');
   }
   
-  // Setup modulus checkbox with null check
-  if (useModulusCheckbox) {
-    useModulusCheckbox.checked = state.useModulus;
-    useModulusCheckbox.addEventListener('change', e => {
-      // Get the current active layer state
-      const activeState = typeof window.getActiveState === 'function' ? 
-        window.getActiveState() : state;
-      
-      activeState.setUseModulus(e.target.checked);
-    });
-  }
+  // Modulus checkbox is removed - now automatically handled by radio button selection
   
   // Time subdivision checkbox is removed - now automatically handled by radio button selection
   
@@ -1235,7 +1233,7 @@ export function setupUI(state) {
       angleRange, angleNumber, angleValue,
       numberRange, numberNumber, numberValue,
       useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
-      useModulusCheckbox, modulusRadioGroup,
+      /* Modulus checkbox removed */ modulusRadioGroup,
       /* Time subdivision checkbox removed */ timeSubdivisionRadioGroup,
       useQuantizationCheckbox, quantizationRadioGroup,
       altScaleRange, altScaleNumber, altScaleValue,
@@ -1272,7 +1270,7 @@ export function setupUI(state) {
       angleRange, angleNumber, angleValue,
       numberRange, numberNumber, numberValue,
       useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
-      useModulusCheckbox, modulusRadioGroup,
+      /* Modulus checkbox removed */ modulusRadioGroup,
       /* Time subdivision checkbox removed */ timeSubdivisionRadioGroup,
       useQuantizationCheckbox, quantizationRadioGroup,
       altScaleRange, altScaleNumber, altScaleValue,
@@ -1305,7 +1303,7 @@ export function setupUI(state) {
     angleRange, angleNumber, angleValue,
     numberRange, numberNumber, numberValue,
     useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
-    useModulusCheckbox, modulusRadioGroup,
+    /* Modulus checkbox removed */ modulusRadioGroup,
     /* Time subdivision checkbox removed */ timeSubdivisionRadioGroup,
     useQuantizationCheckbox, quantizationRadioGroup,
     altScaleRange, altScaleNumber, altScaleValue,

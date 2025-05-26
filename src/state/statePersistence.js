@@ -716,9 +716,7 @@ export function updateUIFromState(state, uiElements) {
       uiElements.useLerpCheckbox.checked = state.useLerp;
     }
     
-    if (uiElements.useModulusCheckbox && state.useModulus !== undefined) {
-      uiElements.useModulusCheckbox.checked = state.useModulus;
-    }
+    // Modulus checkbox removed - now automatically enabled/disabled based on value
     
     // Time subdivision checkbox removed - now automatically enabled/disabled based on value
     
