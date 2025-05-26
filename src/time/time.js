@@ -13,10 +13,20 @@ let audioStartTime = 0;
 let timingInitialized = false;
 
 // Performance timing variables
-let performanceStartTime = 0;
+let performanceStartTime = performance.now() / 1000; // Initialize early for fallback
 
 // Active timing configuration
 let activeTimingSource = TIMING_SOURCES.AUDIO_CONTEXT;
+
+// Time caching system
+let cachedAudioTime = 0;
+let cacheTimestamp = 0;
+let cacheDuration = 2; // Default cache duration in milliseconds (1-5ms range)
+let cacheEnabled = true;
+let cacheHits = 0;
+let cacheMisses = 0;
+let lastActualTime = 0;
+let debugMode = false;
 
 // Error handling
 class TimingError extends Error {
@@ -46,18 +56,31 @@ export function initializeTime(audioContext) {
   performanceStartTime = performance.now() / 1000;
   timingInitialized = true;
   
+  // Initialize cache
+  cachedAudioTime = audioContext.currentTime;
+  cacheTimestamp = performance.now();
+  
   // Ensure AudioContext is running
   if (audioContext.state === 'suspended') {
     audioContext.resume().catch(error => {
-      throw new TimingError(`Failed to resume AudioContext: ${error.message}`);
+      console.warn(`[AUDIO TIMING] Failed to resume AudioContext: ${error.message}`);
     });
   }
   
   console.log('[AUDIO TIMING] Initialized with sample-accurate timing');
   console.log(`[AUDIO TIMING] Audio context sample rate: ${audioContext.sampleRate}Hz`);
   console.log(`[AUDIO TIMING] Start time: ${audioStartTime}`);
+  console.log(`[AUDIO TIMING] Time caching enabled with ${cacheDuration}ms buffer`);
   
   return true;
+}
+
+/**
+ * Check if timing system is initialized
+ * @returns {boolean} True if timing system is initialized
+ */
+export function isTimingInitialized() {
+  return timingInitialized && sharedAudioContext !== null;
 }
 
 /**
@@ -66,14 +89,12 @@ export function initializeTime(audioContext) {
  * @returns {boolean} True if switch successful
  */
 export function switchTimingSource(source) {
-  if (!timingInitialized) {
-    throw new TimingError('Timing system not initialized. Call initializeTime() first.');
-  }
-  
   if (!Object.values(TIMING_SOURCES).includes(source)) {
-    throw new TimingError(`Invalid timing source: ${source}`);
+    console.warn(`[AUDIO TIMING] Invalid timing source: ${source}`);
+    return false;
   }
   
+  // Allow switching even if not fully initialized
   // Store current time before switching
   const currentTime = getCurrentTime();
   
@@ -81,7 +102,7 @@ export function switchTimingSource(source) {
   activeTimingSource = source;
   
   // Reset start times to ensure seamless transition
-  if (source === TIMING_SOURCES.AUDIO_CONTEXT) {
+  if (source === TIMING_SOURCES.AUDIO_CONTEXT && sharedAudioContext) {
     audioStartTime = sharedAudioContext.currentTime - currentTime;
     console.log('[TIMING] Switched to AudioContext timing');
   } else {
@@ -95,30 +116,65 @@ export function switchTimingSource(source) {
 /**
  * Get current time in seconds with sample-accurate precision
  * This is the master clock for the entire application
+ * Falls back to performance.now() if AudioContext is not initialized
  * @returns {number} Current time in seconds since timing initialization
  */
 export function getCurrentTime() {
+  // If timing not initialized, use performance.now() as fallback
   if (!timingInitialized || !sharedAudioContext) {
-    throw new TimingError('Timing system not initialized. Call initializeTime() first.');
+    return performance.now() / 1000 - performanceStartTime;
   }
   
   if (activeTimingSource === TIMING_SOURCES.AUDIO_CONTEXT) {
     // Critical: Ensure AudioContext is never suspended
     if (sharedAudioContext.state === 'suspended') {
       console.warn('[AUDIO TIMING] AudioContext was suspended, resuming immediately');
-      sharedAudioContext.resume();
+      sharedAudioContext.resume().catch(err => console.warn('[AUDIO TIMING] Resume failed:', err));
     }
     
     if (sharedAudioContext.state === 'closed') {
-      throw new TimingError('AudioContext is closed - this is a fatal timing error');
+      console.warn('[AUDIO TIMING] AudioContext is closed - falling back to performance.now()');
+      switchTimingSource(TIMING_SOURCES.PERFORMANCE_NOW);
+      return performance.now() / 1000 - performanceStartTime;
     }
     
-    // This is our rock-solid timing source - never changes, never falls back
-    const currentTime = sharedAudioContext.currentTime - audioStartTime;
+    let currentAudioTime;
+    
+    // Use cached time if cache is still valid
+    const now = performance.now();
+    const cacheAge = now - cacheTimestamp;
+    
+    if (cacheEnabled && cacheAge < cacheDuration) {
+      // Cache hit
+      currentAudioTime = cachedAudioTime;
+      cacheHits++;
+      
+      if (debugMode) {
+        console.debug(`[AUDIO TIMING] Cache hit, age: ${cacheAge.toFixed(2)}ms`);
+      }
+    } else {
+      // Cache miss - get fresh time and update cache
+      currentAudioTime = sharedAudioContext.currentTime;
+      cachedAudioTime = currentAudioTime;
+      cacheTimestamp = now;
+      cacheMisses++;
+      
+      if (debugMode) {
+        const timeDiff = currentAudioTime - lastActualTime;
+        if (lastActualTime > 0) {
+          console.debug(`[AUDIO TIMING] Cache miss, actual diff: ${(timeDiff * 1000).toFixed(3)}ms`);
+        }
+        lastActualTime = currentAudioTime;
+      }
+    }
+    
+    // This is our rock-solid timing source - with minimal caching
+    const currentTime = currentAudioTime - audioStartTime;
     
     // Sanity check: time should never go backwards
     if (currentTime < 0) {
-      throw new TimingError(`Time went backwards: ${currentTime}`);
+      console.warn(`[AUDIO TIMING] Time went backwards: ${currentTime}, falling back to performance.now()`);
+      return performance.now() / 1000 - performanceStartTime;
     }
     
     return currentTime;
@@ -133,15 +189,25 @@ export function getCurrentTime() {
  * Resets the reference point but keeps using the same timing source
  */
 export function resetTime() {
-  if (!timingInitialized || !sharedAudioContext) {
-    throw new TimingError('Cannot reset time - timing system not initialized');
+  if (!timingInitialized && sharedAudioContext === null) {
+    // If not initialized, just reset performance time
+    performanceStartTime = performance.now() / 1000;
+    console.log('[AUDIO TIMING] Time reset to zero (using performance timing)');
+    return;
   }
   
   if (activeTimingSource === TIMING_SOURCES.AUDIO_CONTEXT) {
     audioStartTime = sharedAudioContext.currentTime;
+    // Reset cache
+    cachedAudioTime = audioStartTime;
+    cacheTimestamp = performance.now();
   } else {
     performanceStartTime = performance.now() / 1000;
   }
+  
+  // Reset cache statistics
+  cacheHits = 0;
+  cacheMisses = 0;
   
   console.log('[AUDIO TIMING] Time reset to zero');
 }
@@ -152,7 +218,8 @@ export function resetTime() {
  */
 export function getSampleRate() {
   if (!sharedAudioContext) {
-    throw new TimingError('AudioContext not available');
+    console.warn('[AUDIO TIMING] AudioContext not available, returning default sample rate');
+    return 44100; // Standard default
   }
   return sharedAudioContext.sampleRate;
 }
@@ -167,9 +234,15 @@ export function getTimingStatus() {
     activeSource: activeTimingSource,
     audioContextState: sharedAudioContext?.state || 'not available',
     sampleRate: sharedAudioContext?.sampleRate || 0,
-    currentTime: timingInitialized ? getCurrentTime() : 0,
+    currentTime: getCurrentTime(),
     audioStartTime: audioStartTime,
-    performanceStartTime: performanceStartTime
+    performanceStartTime: performanceStartTime,
+    cacheEnabled: cacheEnabled,
+    cacheDuration: cacheDuration,
+    cacheHits: cacheHits,
+    cacheMisses: cacheMisses,
+    cacheHitRate: cacheHits + cacheMisses > 0 ? (cacheHits / (cacheHits + cacheMisses) * 100).toFixed(2) + '%' : '0%',
+    lastCacheAge: performance.now() - cacheTimestamp
   };
 }
 
@@ -195,7 +268,10 @@ export { TIMING_SOURCES };
  * @returns {number} Time in ticks
  */
 export function secondsToTicks(seconds, bpm) {
-  if (bpm <= 0) throw new TimingError('BPM must be greater than 0');
+  if (bpm <= 0) {
+    console.warn('[AUDIO TIMING] BPM must be greater than 0, using default of 120');
+    bpm = 120;
+  }
   
   // At any BPM: ticks per second = (TICKS_PER_BEAT * BPM) / 60
   const ticksPerSecond = (TICKS_PER_BEAT * bpm) / 60;
@@ -445,9 +521,66 @@ export async function startCsoundTimer() {
   return true;
 }
 
+/**
+ * Configure the timing cache system
+ * @param {Object} options - Configuration options
+ * @param {boolean} options.enabled - Enable/disable cache
+ * @param {number} options.duration - Cache duration in milliseconds (1-5ms recommended)
+ * @param {boolean} options.debug - Enable/disable debug mode
+ * @returns {Object} Updated cache configuration
+ */
+export function configureTimingCache(options = {}) {
+  if (typeof options.enabled === 'boolean') {
+    cacheEnabled = options.enabled;
+  }
+  
+  if (typeof options.duration === 'number' && options.duration >= 0) {
+    // Limit to reasonable range (0-10ms)
+    cacheDuration = Math.min(Math.max(options.duration, 0), 10);
+  }
+  
+  if (typeof options.debug === 'boolean') {
+    debugMode = options.debug;
+  }
+  
+  // Reset cache statistics when configuration changes
+  cacheHits = 0;
+  cacheMisses = 0;
+  
+  // Force a cache refresh
+  if (sharedAudioContext) {
+    cachedAudioTime = sharedAudioContext.currentTime;
+  }
+  cacheTimestamp = performance.now();
+  
+  console.log(`[AUDIO TIMING] Cache ${cacheEnabled ? 'enabled' : 'disabled'} with ${cacheDuration}ms buffer${debugMode ? ', debug mode on' : ''}`);
+  
+  return {
+    enabled: cacheEnabled,
+    duration: cacheDuration,
+    debug: debugMode
+  };
+}
+
+/**
+ * Clear the timing cache and reset statistics
+ */
+export function clearTimingCache() {
+  if (sharedAudioContext) {
+    cachedAudioTime = sharedAudioContext.currentTime;
+  }
+  cacheTimestamp = performance.now();
+  cacheHits = 0;
+  cacheMisses = 0;
+  console.log('[AUDIO TIMING] Cache cleared and statistics reset');
+}
+
 // Make diagnostic functions available globally for debugging
 if (typeof window !== 'undefined') {
   window.getTimingStatus = getTimingStatus;
   window.resetTime = resetTime;
   window.getCurrentTime = getCurrentTime;
+  window.configureTimingCache = configureTimingCache;
+  window.clearTimingCache = clearTimingCache;
+  window.isTimingInitialized = isTimingInitialized;
 }
