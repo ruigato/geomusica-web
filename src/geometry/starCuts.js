@@ -21,20 +21,35 @@ const DEBUG_ENABLED = false;
  * @returns {boolean} - True if the star polygon has self-intersections
  */
 export function hasStarSelfIntersections(n, k) {
-  // Basic validation
-  if (!Number.isInteger(n) || !Number.isInteger(k) || n <= 0 || k <= 0) {
-    console.warn("Invalid parameters for star polygon: n and k must be positive integers");
+  // Input validation
+  if (!Number.isInteger(n) || !Number.isInteger(k) || n < 3 || k < 1) {
+    console.warn("Invalid parameters for star polygon check:", n, k);
     return false;
   }
   
-  // A star polygon {n/k} has self-intersections if n and k are coprime
-  // and 1 < k < n/2
+  // Normalize k to be less than n/2
+  k = k % n;
+  if (k > n/2) k = n - k;
+  if (k === 0) k = n;
   
-  // Calculate GCD
-  const gcd = calculateGCD(n, k);
+  // Find greatest common divisor
+  const gcd = (a, b) => b ? gcd(b, a % b) : a;
+  const d = gcd(n, k);
   
-  // Coprime check (gcd = 1) and k range check
-  return gcd === 1 && k > 1 && k < n/2;
+  // Mathematical criteria for self-intersections:
+  // 1. If n and k are coprime (gcd=1) and k < n/2, the star will have intersections
+  if (d === 1 && k > 1 && k < n/2) {
+    return true;
+  }
+  
+  // 2. If gcd(n,k) > 1, we have multiple disconnected paths
+  // Each path will have intersections if the reduced star has intersections
+  if (d > 1) {
+    // Check if the reduced star (n/d, k/d) has intersections
+    return hasStarSelfIntersections(n/d, k/d);
+  }
+  
+  return false;
 }
 
 /**
@@ -57,47 +72,69 @@ function calculateGCD(a, b) {
 }
 
 /**
- * Calculate intersection between two line segments
- * @param {THREE.Vector2} p1 - First point of first line segment
- * @param {THREE.Vector2} p2 - Second point of first line segment
- * @param {THREE.Vector2} p3 - First point of second line segment
- * @param {THREE.Vector2} p4 - Second point of second line segment
+ * Find intersection point between two line segments or lines
+ * @param {THREE.Vector2} p1 - First endpoint of first line segment
+ * @param {THREE.Vector2} p2 - Second endpoint of first line segment
+ * @param {THREE.Vector2} p3 - First endpoint of second line segment
+ * @param {THREE.Vector2} p4 - Second endpoint of second line segment
+ * @param {boolean} extendLines - If true, treat as infinite lines rather than segments
  * @returns {THREE.Vector2|null} - Intersection point or null if no intersection
  */
-function lineLineIntersection(p1, p2, p3, p4) {
+function lineLineIntersection(p1, p2, p3, p4, extendLines = false) {
+  // Line segment 1 is p1 to p2, line segment 2 is p3 to p4
+  const debugEnabled = true;
+  
   // Extract coordinates
   const x1 = p1.x, y1 = p1.y;
   const x2 = p2.x, y2 = p2.y;
   const x3 = p3.x, y3 = p3.y;
   const x4 = p4.x, y4 = p4.y;
   
-  // Calculate denominator
-  const denominator = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+  if (debugEnabled) {
+    console.log(`[LINE INTERSECTION] Checking segments (${x1.toFixed(2)},${y1.toFixed(2)})-(${x2.toFixed(2)},${y2.toFixed(2)}) and (${x3.toFixed(2)},${y3.toFixed(2)})-(${x4.toFixed(2)},${y4.toFixed(2)})`);
+  }
   
-  // If denominator is close to 0, lines are parallel or collinear
-  if (Math.abs(denominator) < 1e-10) {
-    if (DEBUG_ENABLED) {
-      console.log("Lines are parallel or collinear");
+  // Calculate denominators
+  const denom = ((y4 - y3) * (x2 - x1)) - ((x4 - x3) * (y2 - y1));
+  
+  // If denominator is zero, lines are parallel or collinear
+  if (Math.abs(denom) < 1e-10) {
+    if (debugEnabled) {
+      console.log(`[LINE INTERSECTION] Lines are parallel or collinear (denom = ${denom.toFixed(10)})`);
     }
     return null;
   }
   
-  // Calculate parameters
-  const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denominator;
-  const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denominator;
+  // Calculate intersection parameters
+  const ua = (((x4 - x3) * (y1 - y3)) - ((y4 - y3) * (x1 - x3))) / denom;
+  const ub = (((x2 - x1) * (y1 - y3)) - ((y2 - y1) * (x1 - x3))) / denom;
   
-  // Check if intersection is within both line segments
-  if (ua < 0 || ua > 1 || ub < 0 || ub > 1) {
-    if (DEBUG_ENABLED) {
-      console.log("Intersection outside segment bounds", { ua, ub });
+  if (debugEnabled) {
+    console.log(`[LINE INTERSECTION] Parameters: ua=${ua.toFixed(5)}, ub=${ub.toFixed(5)}`);
+  }
+  
+  // For star cuts, we want to allow intersections outside the segment bounds
+  if (!extendLines) {
+    // Check if intersection is within both line segments
+    // Use a small epsilon for numerical stability
+    const epsilon = 1e-5;
+    if (ua < -epsilon || ua > 1+epsilon || ub < -epsilon || ub > 1+epsilon) {
+      if (debugEnabled) {
+        console.log(`[LINE INTERSECTION] Intersection outside segment bounds: ua=${ua.toFixed(5)}, ub=${ub.toFixed(5)}`);
+      }
+      return null;
     }
-    return null;
   }
   
   // Calculate intersection point
   const x = x1 + ua * (x2 - x1);
   const y = y1 + ua * (y2 - y1);
   
+  if (debugEnabled) {
+    console.log(`[LINE INTERSECTION] Found intersection at (${x.toFixed(4)},${y.toFixed(4)})`);
+  }
+  
+  // Create a new Vector2 for the intersection point
   return new THREE.Vector2(x, y);
 }
 
@@ -225,219 +262,550 @@ export function calculateStarCutsVertices(vertices, starSkip) {
     return intersectionPoints;
   }
   
-  if (DEBUG_ENABLED) {
-    console.log("Calculating star cuts for vertices:", vertices.length, "with skip:", starSkip);
+  // Force debug on for this critical function
+  const debugEnabled = true;
+  
+  if (debugEnabled) {
+    console.log(`[STAR CUTS DEBUG] Calculating star cuts for ${vertices.length} vertices with skip ${starSkip}`);
     vertices.forEach((v, i) => {
-      console.log(`Vertex ${i}: (${v.x.toFixed(4)}, ${v.y.toFixed(4)})`);
+      console.log(`[STAR CUTS DEBUG] Vertex ${i}: (${v.x.toFixed(4)}, ${v.y.toFixed(4)})`);
     });
   }
   
-  // Check all pairs of non-adjacent line segments for intersections
+  // For star polygons, we need a different approach to find intersections
   const vertexCount = vertices.length;
   let intersectionCount = 0;
   
+  // A star polygon {n/k} connects vertices that are k apart in a continuous path
+  // For a pentagon with skip=2, we connect 0->2->4->1->3->0
+  
+  // For stars, we need to check if the lines (not segments) connecting non-consecutive vertices intersect
+  
+  // First create all the possible lines in the star
+  const starLines = [];
   for (let i = 0; i < vertexCount; i++) {
-    for (let j = i + 2; j < vertexCount; j++) {
-      // Skip adjacent segments (including wraparound)
-      if (i === j || 
-          (i + 1) % vertexCount === j || 
-          (j + 1) % vertexCount === i) {
-        continue;
-      }
+    const nextIdx = (i + starSkip) % vertexCount;
+    starLines.push([i, nextIdx]);
+  }
+  
+  if (debugEnabled) {
+    console.log("[STAR CUTS DEBUG] Star lines:", starLines.map(line => `${line[0]}->${line[1]}`).join(', '));
+  }
+  
+  // Now check for intersections between all pairs of non-adjacent lines
+  for (let i = 0; i < starLines.length; i++) {
+    for (let j = i + 1; j < starLines.length; j++) {
+      const line1 = starLines[i];
+      const line2 = starLines[j];
       
-      // Skip segments that would be connected in a star polygon
-      // Specifically for a {n/k} star, vertices that are k steps apart are connected
-      if (starSkip > 1) {
-        const diff1 = (j - i + vertexCount) % vertexCount;
-        const diff2 = (i - j + vertexCount) % vertexCount;
-        if (diff1 === starSkip || diff2 === starSkip ||
-            (i + starSkip) % vertexCount === j || (j + starSkip) % vertexCount === i) {
-          continue;
+      // Skip if the lines share a vertex
+      if (line1[0] === line2[0] || line1[0] === line2[1] || 
+          line1[1] === line2[0] || line1[1] === line2[1]) {
+        if (debugEnabled) {
+          console.log(`[STAR CUTS DEBUG] Skipping lines ${line1[0]}->${line1[1]} and ${line2[0]}->${line2[1]} (shared vertex)`);
         }
-      }
-      
-      // Define the two line segments
-      const segment1Start = vertices[i];
-      const segment1End = vertices[(i + 1) % vertexCount];
-      const segment2Start = vertices[j];
-      const segment2End = vertices[(j + 1) % vertexCount];
-      
-      // Skip degenerate segments
-      if (distanceBetweenPoints(segment1Start, segment1End) < INTERSECTION_MERGE_THRESHOLD ||
-          distanceBetweenPoints(segment2Start, segment2End) < INTERSECTION_MERGE_THRESHOLD) {
         continue;
       }
       
-      if (DEBUG_ENABLED) {
-        console.log(`Checking segments ${i}->${(i+1)%vertexCount} and ${j}->${(j+1)%vertexCount}`);
+      const p1 = vertices[line1[0]];
+      const p2 = vertices[line1[1]];
+      const p3 = vertices[line2[0]];
+      const p4 = vertices[line2[1]];
+      
+      if (debugEnabled) {
+        console.log(`[STAR CUTS DEBUG] Checking lines ${line1[0]}->${line1[1]} and ${line2[0]}->${line2[1]}`);
       }
       
-      // Find intersection
-      const intersection = lineLineIntersection(
-        segment1Start, 
-        segment1End, 
-        segment2Start, 
-        segment2End
-      );
+      // Find intersection between the line segments
+      // Only detect intersections that occur within the actual line segments
+      const intersection = lineLineIntersection(p1, p2, p3, p4, false);
       
       if (intersection) {
-        intersectionCount++;
+        // For star cuts, we need to verify that the intersection falls within the polygon's convex hull
+        // This avoids detecting "phantom" intersections that occur when lines are extended infinitely
         
-        if (DEBUG_ENABLED) {
-          console.log(`Found intersection ${intersectionCount}:`, {
-            point: [intersection.x.toFixed(4), intersection.y.toFixed(4)],
-            segment1: [`(${segment1Start.x.toFixed(2)},${segment1Start.y.toFixed(2)})`, 
-                      `(${segment1End.x.toFixed(2)},${segment1End.y.toFixed(2)})`],
-            segment2: [`(${segment2Start.x.toFixed(2)},${segment2Start.y.toFixed(2)})`, 
-                      `(${segment2End.x.toFixed(2)},${segment2End.y.toFixed(2)})`]
-          });
-        }
+        // Check if this is a real intersection within the bounds of the star
+        const withinBounds = isPointInsidePolygonConvexHull(intersection, vertices, starSkip);
         
-        // Only add if not too close to any existing intersection point
-        if (!isPointTooClose(intersection, intersectionPoints)) {
-          // Only add if not too close to any existing vertex or edge
-          if (!isPointTooCloseToVerticesOrEdges(intersection, vertices)) {
+        if (withinBounds) {
+          intersectionCount++;
+          
+          if (debugEnabled) {
+            console.log(`[STAR CUTS DEBUG] Found valid intersection at (${intersection.x.toFixed(4)}, ${intersection.y.toFixed(4)})`);
+          }
+          
+          // Only add if not too close to any existing intersection point
+          if (!isPointTooClose(intersection, intersectionPoints)) {
+            // For star polygons, we add all valid intersections without additional filtering
             intersectionPoints.push(intersection);
-            if (DEBUG_ENABLED) {
-              console.log(`Added intersection point: (${intersection.x.toFixed(4)}, ${intersection.y.toFixed(4)})`);
+            if (debugEnabled) {
+              console.log(`[STAR CUTS DEBUG] Added intersection point: (${intersection.x.toFixed(4)}, ${intersection.y.toFixed(4)})`);
+            }
+          } else {
+            if (debugEnabled) {
+              console.log(`[STAR CUTS DEBUG] Skipping duplicate intersection: (${intersection.x.toFixed(4)}, ${intersection.y.toFixed(4)})`);
             }
           }
+        } else {
+          if (debugEnabled) {
+            console.log(`[STAR CUTS DEBUG] Intersection at (${intersection.x.toFixed(4)}, ${intersection.y.toFixed(4)}) is outside the polygon's convex hull`);
+          }
+        }
+      } else {
+        if (debugEnabled) {
+          console.log(`[STAR CUTS DEBUG] No intersection between lines ${line1[0]}->${line1[1]} and ${line2[0]}->${line2[1]}`);
         }
       }
     }
   }
   
-  if (DEBUG_ENABLED) {
-    console.log(`Total intersections found: ${intersectionCount}`);
-    console.log(`Valid intersections after filtering: ${intersectionPoints.length}`);
+  if (debugEnabled) {
+    console.log(`[STAR CUTS DEBUG] Total intersections found: ${intersectionCount}`);
+    console.log(`[STAR CUTS DEBUG] Valid intersections after filtering: ${intersectionPoints.length}`);
+    if (intersectionPoints.length > 0) {
+      console.log("[STAR CUTS DEBUG] Final intersection points:");
+      intersectionPoints.forEach((p, i) => {
+        console.log(`[STAR CUTS DEBUG] Point ${i}: (${p.x.toFixed(4)}, ${p.y.toFixed(4)})`);
+      });
+    }
   }
   
   return intersectionPoints;
 }
 
 /**
- * Debug function to visualize and log star cuts calculation
- * @param {Array<THREE.Vector2>} vertices - Array of polygon vertices
- * @param {number} k - Skip value for the star polygon
- * @returns {Object} - Debug information including vertices and intersections
+ * Check if a point is on a line segment
+ * @param {THREE.Vector2} point - Point to check
+ * @param {THREE.Vector2} lineStart - Start of line segment
+ * @param {THREE.Vector2} lineEnd - End of line segment
+ * @returns {boolean} - True if point is on the line segment
  */
-export function debugStarCuts(vertices, k) {
-  console.log(`==== STAR CUTS DEBUG - ${vertices.length} vertices with skip ${k} ====`);
+function isPointOnLineSegment(point, lineStart, lineEnd) {
+  const epsilon = 1e-5; // Small epsilon for floating-point comparison
   
-  // Log all vertices
-  console.log("Input vertices:");
-  vertices.forEach((v, i) => {
-    console.log(`Vertex ${i}: (${v.x.toFixed(4)}, ${v.y.toFixed(4)})`);
-  });
+  // Check if point is between the endpoints
+  const dxL = lineEnd.x - lineStart.x;
+  const dyL = lineEnd.y - lineStart.y;
+  const dxP = point.x - lineStart.x;
+  const dyP = point.y - lineStart.y;
   
-  // Store the old debug flag
-  const oldDebug = DEBUG_ENABLED;
+  // If line is a point, check if the test point is close to that point
+  if (Math.abs(dxL) < epsilon && Math.abs(dyL) < epsilon) {
+    return Math.abs(dxP) < epsilon && Math.abs(dyP) < epsilon;
+  }
   
-  // Force debug on for this calculation
-  window.DEBUG_ENABLED = true;
+  // Calculate the t parameter (0 <= t <= 1 means the point is on the segment)
+  let t;
+  if (Math.abs(dxL) > Math.abs(dyL)) {
+    // Line is more horizontal, use x for t
+    t = dxP / dxL;
+  } else {
+    // Line is more vertical, use y for t
+    t = dyP / dyL;
+  }
   
-  // Calculate intersections
-  const intersections = calculateStarCutsVertices(vertices, k);
+  // Check if t is in range [0,1] with a small epsilon for numerical stability
+  if (t < -epsilon || t > 1 + epsilon) {
+    return false;
+  }
   
-  // Log all intersections
-  console.log("\nCalculated intersections:");
-  intersections.forEach((p, i) => {
-    console.log(`Intersection ${i}: (${p.x.toFixed(4)}, ${p.y.toFixed(4)})`);
-  });
+  // Check if the point is close to the line using the cross product method
+  const crossProduct = Math.abs(dxP * dyL - dyP * dxL);
+  const lineLength = Math.sqrt(dxL * dxL + dyL * dyL);
+  const distance = crossProduct / lineLength;
   
-  // Run validation
-  const validationResult = validateIntersections(intersections, vertices);
-  console.log("\nValidation result:", validationResult);
-  
-  // Restore original debug flag
-  window.DEBUG_ENABLED = oldDebug;
-  
-  console.log("==== END STAR CUTS DEBUG ====");
-  
-  return {
-    vertices,
-    intersections,
-    validation: validationResult
-  };
+  return distance < epsilon;
 }
 
 /**
- * Validate that the calculated intersections are correct
- * @param {Array<THREE.Vector2>} intersectionPoints - Array of intersection points
- * @param {Array<THREE.Vector2>} vertices - Array of polygon vertices
- * @returns {Object} - Validation results with metrics
+ * Debug function to test star cuts logic
+ * @param {Array<Object>} testCases - Array of test cases with n and k values
+ * @returns {void}
  */
-export function validateIntersections(intersectionPoints, vertices) {
-  const results = {
-    totalIntersections: intersectionPoints.length,
-    areValid: true,
-    tooCloseToVertex: 0,
-    tooCloseToEdge: 0,
-    tooCloseToOther: 0,
-    issues: []
-  };
+export function debugStarCuts(testCases) {
+  console.log("STAR CUTS DEBUG TEST:");
   
-  // Check that no intersection is too close to a vertex
-  for (let i = 0; i < intersectionPoints.length; i++) {
-    const intersection = intersectionPoints[i];
+  if (!testCases) {
+    // Use default test cases if none provided
+    testCases = [
+      { n: 5, k: 2 },   // Regular star pentagon - should have intersections
+      { n: 7, k: 3 },   // Star heptagon {7/3} - should have intersections
+      { n: 8, k: 3 },   // Star octagon {8/3} - should have intersections
+      { n: 6, k: 2 },   // Hexagram {6/2} - should have NO intersections (gcd=2)
+      { n: 9, k: 3 }    // Nonagram {9/3} - should have NO intersections (gcd=3)
+    ];
+  }
+  
+  // Run each test case
+  const results = [];
+  for (const test of testCases) {
+    const n = test.n;
+    const k = test.k;
     
-    // Check distance to vertices
-    for (let j = 0; j < vertices.length; j++) {
-      const vertex = vertices[j];
-      const distance = distanceBetweenPoints(intersection, vertex);
-      
-      if (distance < INTERSECTION_MERGE_THRESHOLD) {
-        results.areValid = false;
-        results.tooCloseToVertex++;
-        results.issues.push({
-          type: 'too_close_to_vertex',
-          intersection: i,
-          vertex: j,
-          distance
-        });
-      }
-    }
+    // Calculate GCD
+    const gcd = (a, b) => b ? gcd(b, a % b) : a;
+    const d = gcd(n, k);
     
-    // Check distance to edges
-    for (let j = 0; j < vertices.length; j++) {
-      const v1 = vertices[j];
-      const v2 = vertices[(j + 1) % vertices.length];
-      const distance = distanceToLineSegment(intersection, v1, v2);
-      
-      // Skip if it's actually an intersection on this edge
-      // We expect intersections to be on edges
-      const onEdge = (distance < 1e-10);
-      if (!onEdge && distance < INTERSECTION_MERGE_THRESHOLD) {
-        results.areValid = false;
-        results.tooCloseToEdge++;
-        results.issues.push({
-          type: 'too_close_to_edge',
-          intersection: i,
-          edge: [j, (j + 1) % vertices.length],
-          distance
-        });
-      }
-    }
+    // Check if it has intersections using our function
+    const hasIntersections = hasStarSelfIntersections(n, k);
     
-    // Check distance to other intersections
-    for (let j = i + 1; j < intersectionPoints.length; j++) {
-      const otherIntersection = intersectionPoints[j];
-      const distance = distanceBetweenPoints(intersection, otherIntersection);
-      
-      if (distance < INTERSECTION_MERGE_THRESHOLD) {
-        results.areValid = false;
-        results.tooCloseToOther++;
-        results.issues.push({
-          type: 'too_close_to_other',
-          intersection1: i,
-          intersection2: j,
-          distance
-        });
+    console.log(`Star {${n}/${k}}: GCD=${d}, Has intersections: ${hasIntersections}`);
+    console.log(`- Theory check: n >= 2k: ${n >= 2*k}, GCD=1: ${d === 1}`);
+    console.log(`- ${hasIntersections ? "WILL" : "WON'T"} have intersections`);
+    
+    // Run the complete test for this star polygon
+    const testResult = testStarPolygon(n, k);
+    results.push(testResult);
+  }
+  
+  // Summary of all test results
+  console.log("STAR CUTS TESTS SUMMARY:");
+  results.forEach(result => {
+    console.log(`Star {${result.n}/${result.k}}: Expected ${result.shouldHaveIntersections ? "WITH" : "WITHOUT"} intersections, Found ${result.intersections.length} intersections`);
+  });
+  
+  return results;
+}
+
+/**
+ * Export validation function that can be called directly
+ * @param {Array<THREE.Vector2>} points - Array of intersection points
+ * @param {Array<THREE.Vector2>} vertices - Array of polygon vertices
+ * @returns {boolean} - True if intersections are valid, false otherwise
+ */
+export function validateIntersections(points, vertices) {
+  console.log("Validating intersections:");
+  console.log(`- ${points.length} intersection points found`);
+  console.log(`- ${vertices.length} original vertices`);
+  
+  // Check for points too close to vertices
+  let tooCloseToVertex = false;
+  for (const point of points) {
+    for (const vertex of vertices) {
+      const dist = distanceBetweenPoints(point, vertex);
+      if (dist < INTERSECTION_MERGE_THRESHOLD) {
+        console.log(`Warning: Intersection at (${point.x.toFixed(2)}, ${point.y.toFixed(2)}) ` +
+                  `is too close to vertex at (${vertex.x.toFixed(2)}, ${vertex.y.toFixed(2)})`);
+        tooCloseToVertex = true;
       }
     }
   }
   
-  return results;
+  if (!tooCloseToVertex) {
+    console.log("✓ All intersections are sufficiently far from vertices");
+  }
+  
+  // Check if all intersections are unique
+  let duplicates = false;
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      const dist = distanceBetweenPoints(points[i], points[j]);
+      if (dist < INTERSECTION_MERGE_THRESHOLD) {
+        console.log(`Warning: Duplicate intersections at (${points[i].x.toFixed(2)}, ${points[i].y.toFixed(2)}) ` +
+                  `and (${points[j].x.toFixed(2)}, ${points[j].y.toFixed(2)})`);
+        duplicates = true;
+      }
+    }
+  }
+  
+  if (!duplicates) {
+    console.log("✓ All intersections are unique");
+  }
+  
+  return !tooCloseToVertex && !duplicates;
+}
+
+/**
+ * Create a function to generate star polygon points
+ * This is for testing purposes and debugging star cuts
+ * @param {number} radius - Radius of the star polygon
+ * @param {number} n - Number of points
+ * @param {number} k - Skip value
+ * @returns {Array<THREE.Vector2>} - Array of star polygon vertices
+ */
+export function createStarPolygonPoints(radius, n, k) {
+  const points = [];
+  const angleStep = (2 * Math.PI) / n;
+  
+  // Create vertices at regular intervals around a circle
+  for (let i = 0; i < n; i++) {
+    const angle = i * angleStep;
+    const x = radius * Math.cos(angle);
+    const y = radius * Math.sin(angle);
+    points.push(new THREE.Vector2(x, y));
+  }
+  
+  // If we wanted to create a path that follows the star pattern,
+  // we would connect points in this order:
+  // e.g., for n=5, k=2: [0, 2, 4, 1, 3, 0]
+  // But we're just returning the vertices here, the connection
+  // logic is handled in calculateStarCutsVertices
+  
+  return points;
+}
+
+/**
+ * Create a regular star polygon {n/k} with vertices in proper star order
+ * @param {number} radius - Radius of the star polygon
+ * @param {number} n - Number of vertices
+ * @param {number} k - Skip value between connected vertices
+ * @returns {Array<THREE.Vector2>} - Vertices in star polygon order
+ */
+export function createRegularStarPolygonPoints(radius, n, k) {
+  // For a proper star polygon, we just need to create the points 
+  // arranged in a circle - we won't change their order.
+  // The actual star pattern is created by how we connect them,
+  // which is handled in the rendering code.
+  
+  // Fix for double radius issue - use half the radius to match regular polygon size
+  const adjustedRadius = radius / 2;
+  
+  const points = [];
+  const angleStep = (2 * Math.PI) / n;
+  
+  // Create vertices at regular intervals around a circle
+  for (let i = 0; i < n; i++) {
+    const angle = i * angleStep;
+    const x = adjustedRadius * Math.cos(angle);
+    const y = adjustedRadius * Math.sin(angle);
+    points.push(new THREE.Vector2(x, y));
+  }
+  
+  if (DEBUG_ENABLED) {
+    console.log(`Created regular star polygon with ${n} vertices and skip ${k}`);
+  }
+  
+  return points;
+}
+
+/**
+ * Debug and test a specific star polygon
+ * @param {number} n - Number of points (vertices)
+ * @param {number} k - Skip value
+ * @returns {Object} - Debug information about the star polygon
+ */
+export function testStarPolygon(n, k) {
+  console.log(`[STAR TEST] Testing star polygon {${n}/${k}}`);
+  
+  // Create star polygon points
+  const radius = 100;
+  const vertices = createStarPolygonPoints(radius, n, k);
+  
+  // Print the vertices
+  console.log(`[STAR TEST] Generated ${vertices.length} vertices:`);
+  vertices.forEach((v, i) => {
+    console.log(`[STAR TEST] Vertex ${i}: (${v.x.toFixed(4)}, ${v.y.toFixed(4)})`);
+  });
+  
+  // Calculate intersections
+  const intersections = calculateStarCutsVertices(vertices, k);
+  
+  // Print results
+  console.log(`[STAR TEST] Found ${intersections.length} intersections:`);
+  intersections.forEach((p, i) => {
+    console.log(`[STAR TEST] Intersection ${i}: (${p.x.toFixed(4)}, ${p.y.toFixed(4)})`);
+  });
+  
+  // Theoretical check
+  const shouldHaveIntersections = hasStarSelfIntersections(n, k);
+  console.log(`[STAR TEST] Theoretical check: Star {${n}/${k}} ${shouldHaveIntersections ? 'SHOULD' : 'should NOT'} have intersections`);
+  
+  return {
+    n,
+    k,
+    vertices,
+    intersections,
+    shouldHaveIntersections,
+    actualIntersections: intersections.length > 0
+  };
+}
+
+/**
+ * Check if a point is inside the convex hull of a polygon
+ * @param {THREE.Vector2} point - Point to check
+ * @param {Array<THREE.Vector2>} vertices - Polygon vertices
+ * @param {number} skip - Skip value for star polygons
+ * @returns {boolean} - True if point is inside the convex hull
+ */
+function isPointInsidePolygonConvexHull(point, vertices, skip = 1) {
+  // If we have fewer than 3 vertices, we can't form a polygon
+  if (vertices.length < 3) {
+    return false;
+  }
+  
+  // For star polygons with a skip > 1 that should have intersections,
+  // we need to be more permissive because their intersections often
+  // occur outside the convex hull of the original vertices
+  if (skip > 1) {
+    const n = vertices.length;
+    const hasIntersections = hasStarSelfIntersections(n, skip);
+    
+    if (hasIntersections) {
+      // Create an expanded convex hull that's scaled from the centroid
+      // to better capture the potential intersection points
+      const centroid = calculateCentroid(vertices);
+      const expandedVertices = vertices.map(v => {
+        // Scale the vertex outward from the centroid by a factor of 5
+        // This creates a much larger area to check for intersections
+        const dx = v.x - centroid.x;
+        const dy = v.y - centroid.y;
+        return new THREE.Vector2(
+          centroid.x + dx * 5,
+          centroid.y + dy * 5
+        );
+      });
+      
+      // Compute the convex hull of the expanded vertices
+      const expandedHull = computeConvexHull(expandedVertices);
+      
+      // Check if the point is inside this expanded hull
+      const isInside = isPointInPolygon(point, expandedHull);
+      
+      if (DEBUG_ENABLED) {
+        console.log(`Using expanded hull for star {${n}/${skip}}, point (${point.x.toFixed(4)}, ${point.y.toFixed(4)}) is ${isInside ? 'INSIDE' : 'OUTSIDE'}`);
+      }
+      
+      return isInside;
+    }
+  }
+  
+  // First, calculate the convex hull of the polygon vertices
+  const convexHull = computeConvexHull(vertices);
+  
+  // If the convex hull has fewer than 3 points, it's not a proper polygon
+  if (convexHull.length < 3) {
+    return false;
+  }
+  
+  // Now check if the point is inside this convex hull
+  return isPointInPolygon(point, convexHull);
+}
+
+/**
+ * Compute the convex hull of a set of points using the Graham scan algorithm
+ * @param {Array<THREE.Vector2>} points - Array of points
+ * @returns {Array<THREE.Vector2>} - Convex hull points in counterclockwise order
+ */
+function computeConvexHull(points) {
+  // Clone the points to avoid modifying the original array
+  const pts = [...points];
+  
+  // If we have fewer than 3 points, return the points as is
+  if (pts.length < 3) {
+    return pts;
+  }
+  
+  // Find the lowest point (and leftmost if tied)
+  let lowestIdx = 0;
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i].y < pts[lowestIdx].y || 
+        (pts[i].y === pts[lowestIdx].y && pts[i].x < pts[lowestIdx].x)) {
+      lowestIdx = i;
+    }
+  }
+  
+  // Swap the lowest point to the first position
+  [pts[0], pts[lowestIdx]] = [pts[lowestIdx], pts[0]];
+  
+  // Sort the remaining points by polar angle with respect to the lowest point
+  const p0 = pts[0];
+  pts.sort((a, b) => {
+    // Skip the first point (our reference point)
+    if (a === p0) return -1;
+    if (b === p0) return 1;
+    
+    // Calculate the orientation
+    const orient = orientation(p0, a, b);
+    if (orient === 0) {
+      // If collinear, take the closer one first
+      return distanceBetweenPoints(p0, a) - distanceBetweenPoints(p0, b);
+    }
+    
+    // Counter-clockwise is positive, clockwise is negative
+    return -orient; // Negated because we want counterclockwise order
+  });
+  
+  // Build the convex hull
+  const hull = [pts[0], pts[1]];
+  
+  for (let i = 2; i < pts.length; i++) {
+    let top = hull.length - 1;
+    
+    // Pop points from the hull while they make a non-left turn
+    while (hull.length > 1 && orientation(hull[top - 1], hull[top], pts[i]) <= 0) {
+      hull.pop();
+      top--;
+    }
+    
+    hull.push(pts[i]);
+  }
+  
+  return hull;
+}
+
+/**
+ * Determine the orientation of three points
+ * @param {THREE.Vector2} p - First point
+ * @param {THREE.Vector2} q - Second point
+ * @param {THREE.Vector2} r - Third point
+ * @returns {number} - 0 if collinear, positive if counterclockwise, negative if clockwise
+ */
+function orientation(p, q, r) {
+  const val = (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y);
+  
+  if (Math.abs(val) < 1e-10) return 0; // Collinear
+  return val;
+}
+
+/**
+ * Check if a point is inside a polygon using the ray casting algorithm
+ * @param {THREE.Vector2} point - Point to check
+ * @param {Array<THREE.Vector2>} polygon - Polygon vertices
+ * @returns {boolean} - True if the point is inside the polygon
+ */
+function isPointInPolygon(point, polygon) {
+  // Ray casting algorithm - count the number of times a ray from the point crosses the polygon edges
+  let inside = false;
+  const x = point.x;
+  const y = point.y;
+  
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x;
+    const yi = polygon[i].y;
+    const xj = polygon[j].x;
+    const yj = polygon[j].y;
+    
+    // Check if the point is exactly on an edge
+    const onSegment = isPointOnLineSegment(point, polygon[i], polygon[j]);
+    if (onSegment) return true;
+    
+    // Check if the ray crosses this edge
+    const intersect = ((yi > y) !== (yj > y)) && 
+                      (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    
+    if (intersect) inside = !inside;
+  }
+  
+  return inside;
+}
+
+/**
+ * Calculate the centroid (average position) of a set of points
+ * @param {Array<THREE.Vector2>} points - Array of points
+ * @returns {THREE.Vector2} - Centroid point
+ */
+function calculateCentroid(points) {
+  let sumX = 0, sumY = 0;
+  
+  for (const point of points) {
+    sumX += point.x;
+    sumY += point.y;
+  }
+  
+  return new THREE.Vector2(
+    sumX / points.length,
+    sumY / points.length
+  );
 }
 
 // Unit test cases (in comments)
@@ -480,4 +848,4 @@ const vertices = [
 ];
 const intersections = calculateStarCutsVertices(vertices, 1);
 // Expected: 0 intersection points
-*/ 
+*/

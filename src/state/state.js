@@ -55,7 +55,8 @@ export function createAppState() {
       useStars: false,
       useCuts: false,
       euclidValue: false,
-      useEuclid: false
+      useEuclid: false,
+      forceRegularStarPolygon: false
     },
     
     // Performance and frame tracking
@@ -182,6 +183,9 @@ export function createAppState() {
     // STARS parameters
     starSkip: 1, // Default skip value
     useStars: false, // Default to off
+    
+    // New flag for regular star polygon
+    forceRegularStarPolygon: false,
     
     /**
      * Check if any parameters have changed
@@ -1065,9 +1069,18 @@ export function createAppState() {
             
           }
           this.needsIntersectionUpdate = true;
+          
+          // Add forceRegularStarPolygon flag to ensure proper star geometry
+          this.forceRegularStarPolygon = true;
+          this.parameterChanges.forceRegularStarPolygon = true;
+          
+          // Force geometry recreation when changing star skip value
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+          
+          // Force recreation of the layer's geometry
+          this.forceGeometryRecreation();
         }
-        
-        
       }
     },
     
@@ -1084,9 +1097,18 @@ export function createAppState() {
         // Update shapeType to 'star' when enabling stars
         if (newValue) {
           this.shapeType = 'star';
+          
+          // Add forceRegularStarPolygon flag to ensure proper star geometry
+          if (this.starSkip > 1) {
+            this.forceRegularStarPolygon = true;
+            this.parameterChanges.forceRegularStarPolygon = true;
+          }
         } else if (this.shapeType === 'star') {
           // Revert to regular polygon when disabling stars
           this.shapeType = 'regular';
+          // Turn off forceRegularStarPolygon when disabling stars
+          this.forceRegularStarPolygon = false;
+          this.parameterChanges.forceRegularStarPolygon = true;
         }
         
         // Force intersection update when toggling stars with cuts enabled
@@ -1101,7 +1123,8 @@ export function createAppState() {
         this.segmentsChanged = true;
         this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
         
-        
+        // Force recreation of the layer's geometry if this state belongs to a layer
+        this.forceGeometryRecreation();
       }
     },
     
@@ -1122,12 +1145,32 @@ export function createAppState() {
           }
           this.needsIntersectionUpdate = true;
           
+          // Add forceRegularStarPolygon flag to ensure proper star geometry
+          this.forceRegularStarPolygon = true;
+          this.parameterChanges.forceRegularStarPolygon = true;
+          
           // Force geometry recreation when toggling cuts with stars enabled
           this.segmentsChanged = true;
           this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+          
+          // Force recreation of the layer's geometry if this state belongs to a layer
+          this.forceGeometryRecreation();
         }
-        
-        
+      }
+    },
+    
+    /**
+     * Force recreation of the layer's geometry if this state belongs to a layer
+     * This ensures changes take effect immediately without waiting for the next frame
+     */
+    forceGeometryRecreation() {
+      // If this state belongs to a layer, force recreation of the layer's geometry
+      if (this.layerId !== undefined && window._layers) {
+        const layer = window._layers.layers[this.layerId];
+        if (layer && typeof layer.recreateGeometry === 'function') {
+          // Force geometry recreation
+          layer.recreateGeometry();
+        }
       }
     },
     

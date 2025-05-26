@@ -930,6 +930,10 @@ function detectIntersectionTriggers(
             intersectionIndex: i,
             copyIndex: copyIndex,
             frequency: frequency,
+            // Add essential note properties
+            duration: state.maxDuration || 0.5,
+            velocity: state.maxVelocity || 0.8,
+            pan: Math.sin(angle)
           }, state);
           
           // Update time information
@@ -1206,13 +1210,10 @@ function recordLayerVertexPositions(layer, timestamp) {
     }
     
     // Find the LineLoop (main geometry)
-    const mesh = copyGroup.children.find(child => child.type === 'LineLoop');
-    if (!mesh) {
-      continue;
-    }
-    
-    // Validate geometry and attributes
-    if (!mesh.geometry || !mesh.geometry.getAttribute('position')) {
+    const mesh = copyGroup.children.find(child => 
+      child.type === 'LineLoop' || child.type === 'LineSegments'
+    );
+    if (!mesh || !mesh.geometry || !mesh.geometry.getAttribute('position')) {
       continue;
     }
     
@@ -1360,6 +1361,24 @@ function recordIntersectionPoints(copyGroup, layer, ci, angle, timestamp, invers
 }
 
 /**
+ * Create a note from a vertex trigger
+ * @param {Object} params Vertex trigger parameters
+ * @returns {Object} Note object
+ */
+function noteFromVertexTrigger(params) {
+  const { x, y, copyIndex, vertexIndex, angle, state, layerId } = params;
+  
+  return createNote({
+    x: x,
+    y: y,
+    copyIndex: copyIndex,
+    vertexIndex: vertexIndex,
+    isIntersection: false,
+    layerId: layerId
+  }, state);
+}
+
+/**
  * Detect triggers using subframe precision
  * @param {Object} layer Layer to detect triggers for
  * @param {number} timestamp Current time in seconds
@@ -1441,7 +1460,10 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
     }
     
     // Find the LineLoop (main geometry) to determine actual vertex count
-    const mesh = copyGroup.children.find(child => child.type === 'LineLoop');
+    // For star polygons, we use LineSegments instead of LineLoop
+    const mesh = copyGroup.children.find(child => 
+      child.type === 'LineLoop' || child.type === 'LineSegments'
+    );
     if (!mesh || !mesh.geometry || !mesh.geometry.getAttribute('position')) {
       continue;
     }
@@ -1481,11 +1503,26 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
             continue;
           }
           
-          const basePositions = layer.baseGeo.getAttribute('position').array;
+          // Special handling for star polygons with indices
+          let baseVertexIndex = vi;
           
-          // FIXED: For fractal shapes, we need to handle indices that are outside the base geometry
-          // Use modulo to wrap around to the original vertices for frequency calculation
-          const baseVertexIndex = state.useFractal ? (vi % state.segments) : vi;
+          // If this is a star polygon with indexed geometry, we need to map to the correct vertex
+          if (copyGroup.userData?.isStarPolygon && copyGroup.userData?.starSkip > 1) {
+            // For star polygons, use the userData to find the correct base vertex
+            // If this vertex is a star intersection point, we need special handling
+            if (vi >= state.segments) {
+              // This is an intersection point, mark it in the note
+              crossingResult.isIntersectionPoint = true;
+            } else {
+              // This is a base vertex, use its original index
+              baseVertexIndex = vi;
+            }
+          } else {
+            // For regular and fractal shapes, use modulo to get the base vertex index
+            baseVertexIndex = state.useFractal ? (vi % state.segments) : vi;
+          }
+          
+          const basePositions = layer.baseGeo.getAttribute('position').array;
           
           // Check base geometry bounds
           if (baseVertexIndex * 3 + 1 >= basePositions.length) {
@@ -1505,19 +1542,47 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
             }
           });
           
+          // Calculate x, y for note, factoring in the scale
+          const scale = Math.pow(state.stepScale, ci);
+          
           // Create note based on existing system
           let note;
           
-          // Try to use createNote from original system if available
           try {
-            note = createNote({
-              x: nonRotatedX,
-              y: nonRotatedY,
-              copyIndex: ci,
-              vertexIndex: vi,
-              isIntersection: false,
-              layerId: layerId // FIXED: Explicitly use layerId
-            }, state);
+            // Check if this is a special intersection point from a star polygon
+            if (crossingResult.isIntersectionPoint) {
+              // For intersection points, use the actual position values
+              note = {
+                frequency: Math.hypot(crossingResult.position.x, crossingResult.position.y),
+                x: crossingResult.position.x,
+                y: crossingResult.position.y,
+                isIntersection: true,
+                layerId,
+                copyIndex: ci,
+                intersectionIndex: i,
+                // Flag this as a star intersection for audio treatment
+                isStarIntersection: true,
+                // Add essential note properties
+                duration: state.maxDuration || 0.5,
+                velocity: state.maxVelocity || 0.8,
+                pan: Math.sin(angle)
+              };
+            } else {
+              // For regular intersection points, use the position from crossingResult
+              note = {
+                frequency: Math.hypot(crossingResult.position.x, crossingResult.position.y),
+                x: crossingResult.position.x,
+                y: crossingResult.position.y,
+                isIntersection: true,
+                layerId,
+                copyIndex: ci,
+                intersectionIndex: i,
+                // Add essential note properties
+                duration: state.maxDuration || 0.5,
+                velocity: state.maxVelocity || 0.8,
+                pan: Math.sin(angle)
+              };
+            }
             
             // Add subframe-specific properties
             note.time = crossingResult.exactTime;
@@ -1734,45 +1799,96 @@ function detectIntersectionSubframeTriggers(
             }
           });
           
-          // Create note based on intersection properties
-          const note = createNote({
-            x: crossingResult.position.x,
-            y: crossingResult.position.y,
-            isIntersection: true,
-            isStarCut: isStarCuts,
-            intersectionIndex: i,
-            copyIndex: ci,
-            frequency: Math.hypot(crossingResult.position.x, crossingResult.position.y) * 2,
-          }, state);
+          // Calculate x, y for note, factoring in the scale
+          const scale = Math.pow(state.stepScale, ci);
           
-          // Add subframe-specific properties
-          note.time = crossingResult.exactTime;
-          note.isSubframe = true;
-          note.crossingFactor = crossingResult.crossingFactor;
-          note.position = crossingResult.position;
+          // Create note based on existing system
+          let note;
           
-          // Handle quantization if enabled
-          if (state.useQuantization) {
-            // Create trigger info
-            const triggerInfo = {
-              note: {...note},
-              worldRot: angle,
-              camera,
-              renderer,
-              isQuantized: true,
-              layer
-            };
+          try {
+            // Check if this is a special intersection point from a star polygon
+            if (crossingResult.isIntersectionPoint) {
+              // For intersection points, use the actual position values
+              note = {
+                frequency: Math.hypot(crossingResult.position.x, crossingResult.position.y),
+                x: crossingResult.position.x,
+                y: crossingResult.position.y,
+                isIntersection: true,
+                layerId,
+                copyIndex: ci,
+                intersectionIndex: i,
+                // Flag this as a star intersection for audio treatment
+                isStarIntersection: true,
+                // Add essential note properties
+                duration: state.maxDuration || 0.5,
+                velocity: state.maxVelocity || 0.8,
+                pan: Math.sin(angle)
+              };
+            } else {
+              // For regular intersection points, use the position from crossingResult
+              note = {
+                frequency: Math.hypot(crossingResult.position.x, crossingResult.position.y),
+                x: crossingResult.position.x,
+                y: crossingResult.position.y,
+                isIntersection: true,
+                layerId,
+                copyIndex: ci,
+                intersectionIndex: i,
+                // Add essential note properties
+                duration: state.maxDuration || 0.5,
+                velocity: state.maxVelocity || 0.8,
+                pan: Math.sin(angle)
+              };
+            }
             
-            // Handle quantization
-            const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(timestamp, state, triggerInfo);
+            // Add subframe-specific properties
+            note.time = crossingResult.exactTime;
+            note.isSubframe = true;
+            note.crossingFactor = crossingResult.crossingFactor;
+            note.position = crossingResult.position;
             
-            if (shouldTrigger) {
-              // Trigger with precise time
-              const noteCopy = {...note};
-              noteCopy.time = triggerTime;
+            // Handle quantization if enabled
+            if (state.useQuantization) {
+              // Create trigger info
+              const triggerInfo = {
+                note: {...note},
+                worldRot: angle,
+                camera,
+                renderer,
+                isQuantized: true,
+                layer
+              };
               
-              // Trigger audio
-              audioCallback(noteCopy);
+              // Handle quantization
+              const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(timestamp, state, triggerInfo);
+              
+              if (shouldTrigger) {
+                // Trigger with precise time
+                const noteCopy = {...note};
+                noteCopy.time = triggerTime;
+                
+                // Trigger audio
+                audioCallback(noteCopy);
+                
+                // Create visual marker
+                createMarker(
+                  angle, 
+                  crossingResult.position.x, 
+                  crossingResult.position.y, 
+                  scene, 
+                  noteCopy, 
+                  camera, 
+                  renderer, 
+                  isQuantized, 
+                  layer
+                );
+                
+                // Set as triggered
+                anyTriggers = true;
+              }
+            } else {
+              // Regular non-quantized trigger
+              audioCallback(note);
               
               // Create visual marker
               createMarker(
@@ -1780,35 +1896,33 @@ function detectIntersectionSubframeTriggers(
                 crossingResult.position.x, 
                 crossingResult.position.y, 
                 scene, 
-                noteCopy, 
+                note, 
                 camera, 
                 renderer, 
-                isQuantized, 
+                false, // not quantized
                 layer
               );
               
               // Set as triggered
               anyTriggers = true;
             }
-          } else {
-            // Regular non-quantized trigger
-            audioCallback(note);
-            
-            // Create visual marker
-            createMarker(
-              angle, 
-              crossingResult.position.x, 
-              crossingResult.position.y, 
-              scene, 
-              note, 
-              camera, 
-              renderer, 
-              false, // not quantized
-              layer
-            );
-            
-            // Set as triggered
-            anyTriggers = true;
+          } catch (e) {
+            // Fallback if createNote fails
+            const frequency = Math.hypot(crossingResult.position.x, crossingResult.position.y) * 2;
+            note = {
+              frequency: frequency,
+              noteName: state.useEqualTemperament ? getNoteName(frequency, state.referenceFrequency || 440) : null,
+              duration: state.maxDuration || 0.5,
+              velocity: state.maxVelocity || 0.8,
+              pan: Math.sin(angle),
+              x: crossingResult.position.x,
+              y: crossingResult.position.y,
+              z: crossingResult.position.z,
+              time: crossingResult.exactTime,
+              isSubframe: true,
+              vertexId: vertexId,
+              layerId: layerId // FIXED: Include layerId in fallback note
+            };
           }
           
           // Add to triggered set

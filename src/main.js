@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import Stats from 'stats.js';
 
 // Debug flag to control the visibility of debug buttons
-const DEBUG_BUTTONS = false;
+const DEBUG_BUTTONS = true; // Temporarily set to true for testing
 const DEBUG_LOGGING = false;
 
 // Expose debug flag globally
@@ -1033,185 +1033,72 @@ function initializeApplication() {
    * Add debug buttons to the UI
    */
   function addDebugButtons() {
-    // Add a debug button to force geometry recreation
-    const debugButton = document.createElement('button');
-    debugButton.textContent = 'Recreate Geometry';
-    debugButton.style.position = 'absolute';
-    debugButton.style.bottom = '50px';
-    debugButton.style.right = '10px';
-    debugButton.style.zIndex = '1000';
-    debugButton.style.padding = '10px';
-    debugButton.style.backgroundColor = '#f00';
-    debugButton.style.color = '#fff';
-    debugButton.style.border = 'none';
-    debugButton.style.borderRadius = '5px';
-    debugButton.style.cursor = 'pointer';
-    debugButton.style.display = DEBUG_BUTTONS ? 'block' : 'none';
+    if (!DEBUG_BUTTONS) return;
     
-    debugButton.addEventListener('click', () => {
-      const activeLayer = layerManager.getActiveLayer();
-      if (activeLayer) {
-        // Get the current layer state before recreation
-        const layerId = activeLayer.id;
+    // Create debug container if it doesn't exist
+    let debugContainer = document.getElementById('debugContainer');
+    if (!debugContainer) {
+      debugContainer = document.createElement('div');
+      debugContainer.id = 'debugContainer';
+      debugContainer.style.position = 'fixed';
+      debugContainer.style.bottom = '10px';
+      debugContainer.style.right = '10px';
+      debugContainer.style.display = 'flex';
+      debugContainer.style.flexDirection = 'column';
+      debugContainer.style.gap = '5px';
+      debugContainer.style.zIndex = '1000';
+      debugContainer.style.backgroundColor = 'rgba(0,0,0,0.7)'; // Add background
+      debugContainer.style.padding = '10px'; // Add padding
+      debugContainer.style.borderRadius = '5px'; // Rounded corners
+      document.body.appendChild(debugContainer);
+      
+      // Add a debug header so it's clear this is the debug panel
+      const debugHeader = document.createElement('div');
+      debugHeader.textContent = 'DEBUG TOOLS';
+      debugHeader.style.color = '#fff';
+      debugHeader.style.fontWeight = 'bold';
+      debugHeader.style.marginBottom = '10px';
+      debugHeader.style.textAlign = 'center';
+      debugContainer.appendChild(debugHeader);
+    }
+    
+    // Add export button
+    const exportButton = document.createElement('button');
+    exportButton.textContent = 'Export State';
+    exportButton.onclick = () => exportStateToFile();
+    debugContainer.appendChild(exportButton);
+    
+    // Add import button
+    const importButton = document.createElement('button');
+    importButton.textContent = 'Import State';
+    importButton.onclick = () => document.getElementById('stateImport').click();
+    debugContainer.appendChild(importButton);
+    
+    // Add reset button
+    const resetButton = document.createElement('button');
+    resetButton.textContent = 'Reset State';
+    resetButton.onclick = () => {
+      if (confirm('Really reset all state to defaults?')) {
+        // Hard reset - recreate the state entirely
+        const newState = createAppState();
         
-        
-        // Force recreation
-        activeLayer.recreateGeometry();
-        
-        // Log after recreation
-        
-        
-        
+        // Apply the new state to the active layer
+        if (layerManager && layerManager.getActiveLayer()) {
+          layerManager.getActiveLayer().state = newState;
+          // Force UI update
+          updateUIFromState(newState);
+          
+          // Force all geometry to be recreated
+          if (layerManager.getActiveLayer().updateGeometry) {
+            layerManager.getActiveLayer().updateGeometry(true);
+          }
+        }
       }
-    });
+    };
+    debugContainer.appendChild(resetButton);
     
-    // Add a second debug button to compare layers
-    const compareLayersButton = document.createElement('button');
-    compareLayersButton.textContent = 'Compare Layers';
-    compareLayersButton.style.position = 'absolute';
-    compareLayersButton.style.bottom = '90px';
-    compareLayersButton.style.right = '10px';
-    compareLayersButton.style.zIndex = '1000';
-    compareLayersButton.style.padding = '10px';
-    compareLayersButton.style.backgroundColor = '#00f';
-    compareLayersButton.style.color = '#fff';
-    compareLayersButton.style.border = 'none';
-    compareLayersButton.style.borderRadius = '5px';
-    compareLayersButton.style.cursor = 'pointer';
-    compareLayersButton.style.display = DEBUG_BUTTONS ? 'block' : 'none';
-    
-    compareLayersButton.addEventListener('click', () => {
-      if (layerManager && layerManager.layers.length > 0) {
-        
-        
-        // Log state of all layers
-        layerManager.layers.forEach(layer => {
-          
-        });
-      }
-    });
-    
-    // Add a third debug button to recreate ALL layers' geometries
-    const recreateAllButton = document.createElement('button');
-    recreateAllButton.textContent = 'Recreate ALL Geometries';
-    recreateAllButton.style.position = 'absolute';
-    recreateAllButton.style.bottom = '130px';
-    recreateAllButton.style.right = '10px';
-    recreateAllButton.style.zIndex = '1000';
-    recreateAllButton.style.padding = '10px';
-    recreateAllButton.style.backgroundColor = '#f0f';
-    recreateAllButton.style.color = '#fff';
-    recreateAllButton.style.border = 'none';
-    recreateAllButton.style.borderRadius = '5px';
-    recreateAllButton.style.cursor = 'pointer';
-    recreateAllButton.style.display = DEBUG_BUTTONS ? 'block' : 'none';
-    
-    recreateAllButton.addEventListener('click', () => {
-      if (layerManager && layerManager.layers.length > 0) {
-        
-        
-        // Force recreation of all layers' geometries
-        layerManager.layers.forEach(layer => {
-          // Log before state
-          
-          
-          // Force parameter changes to trigger geometry update
-          layer.state.parameterChanges.radius = true;
-          layer.state.parameterChanges.segments = true;
-          layer.state.parameterChanges.copies = true;
-          
-          // Recreate geometry
-          layer.recreateGeometry();
-          
-          // Log after recreation
-          
-        });
-        
-        
-      }
-    });
-    
-    // Add a fourth debug button to fix layer colors
-    const fixLayerColorsButton = document.createElement('button');
-    fixLayerColorsButton.textContent = 'Fix Layer Colors';
-    fixLayerColorsButton.style.position = 'absolute';
-    fixLayerColorsButton.style.bottom = '170px';
-    fixLayerColorsButton.style.right = '10px';
-    fixLayerColorsButton.style.zIndex = '1000';
-    fixLayerColorsButton.style.padding = '10px';
-    fixLayerColorsButton.style.backgroundColor = '#0ff'; // Cyan
-    fixLayerColorsButton.style.color = '#000'; // Black text for better contrast
-    fixLayerColorsButton.style.border = 'none';
-    fixLayerColorsButton.style.borderRadius = '5px';
-    fixLayerColorsButton.style.cursor = 'pointer';
-    fixLayerColorsButton.style.display = DEBUG_BUTTONS ? 'block' : 'none';
-    
-    fixLayerColorsButton.addEventListener('click', () => {
-      if (layerManager && typeof layerManager.forceSyncLayerColors === 'function') {
-        
-        layerManager.forceSyncLayerColors();
-        
-        // Also force geometry recreation to ensure the colors are applied
-        layerManager.layers.forEach(layer => {
-          // Force parameter changes to trigger geometry update
-          layer.state.parameterChanges.radius = true;
-          
-          // Recreate geometry
-          layer.recreateGeometry();
-        });
-        
-        
-      } else {
-        console.error(`[DEBUG] Cannot fix layer colors: layerManager.forceSyncLayerColors is not a function`);
-      }
-    });
-    
-    // Add a debug button to check scene state
-    const debugSceneButton = document.createElement('button');
-    debugSceneButton.textContent = 'Debug Scene';
-    debugSceneButton.style.position = 'absolute';
-    debugSceneButton.style.bottom = '210px';
-    debugSceneButton.style.right = '10px';
-    debugSceneButton.style.zIndex = '1000';
-    debugSceneButton.style.padding = '10px';
-    debugSceneButton.style.backgroundColor = '#f00';
-    debugSceneButton.style.color = '#fff';
-    debugSceneButton.style.border = 'none';
-    debugSceneButton.style.borderRadius = '5px';
-    debugSceneButton.style.cursor = 'pointer';
-    debugSceneButton.style.display = DEBUG_BUTTONS ? 'block' : 'none';
-    
-    debugSceneButton.addEventListener('click', () => {
-      
-      if (!scene) {
-        console.error('No scene available!');
-        return;
-      }
-      
-      
-      
-      
-      if (scene._layerManager) {
-        
-        
-        
-        scene._layerManager.layers.forEach(layer => {
-          
-        });
-      }
-      
-      
-      
-      
-      
-    });
-    
-    // Add all buttons to the document
-    document.body.appendChild(debugButton);
-    document.body.appendChild(compareLayersButton);
-    document.body.appendChild(recreateAllButton);
-    document.body.appendChild(fixLayerColorsButton);
-    document.body.appendChild(debugSceneButton);
+    // Add CSynth test button
+    // ... rest of the function
   }
 }
 
@@ -1340,4 +1227,106 @@ window.updateUIForActiveLayer = function(layerId) {
   
   // Update UI with the active layer state
   return window.updateUIFromState(layerState);
+};
+
+// Add a function to create the Star Cuts test button after everything is loaded
+window.onload = function() {
+  // Wait a bit for everything to initialize
+  setTimeout(() => {
+    console.log('Creating Star Cuts test button in the top right');
+    const starCutsTestButton = document.createElement('button');
+    starCutsTestButton.textContent = 'TEST STAR CUTS';
+    starCutsTestButton.style.position = 'fixed';
+    starCutsTestButton.style.top = '70px';
+    starCutsTestButton.style.right = '10px';
+    starCutsTestButton.style.zIndex = '10000';
+    starCutsTestButton.style.padding = '15px 20px';
+    starCutsTestButton.style.backgroundColor = '#ff5500';
+    starCutsTestButton.style.color = 'white';
+    starCutsTestButton.style.fontWeight = 'bold';
+    starCutsTestButton.style.fontSize = '16px';
+    starCutsTestButton.style.border = 'none';
+    starCutsTestButton.style.borderRadius = '4px';
+    starCutsTestButton.style.cursor = 'pointer';
+    starCutsTestButton.style.boxShadow = '0 4px 10px rgba(0,0,0,0.5)';
+    // Add a subtle animation to make it more noticeable
+    starCutsTestButton.style.transition = 'transform 0.2s, box-shadow 0.2s';
+    starCutsTestButton.onmouseover = () => {
+      starCutsTestButton.style.transform = 'scale(1.05)';
+      starCutsTestButton.style.boxShadow = '0 6px 15px rgba(0,0,0,0.6)';
+    };
+    starCutsTestButton.onmouseout = () => {
+      starCutsTestButton.style.transform = 'scale(1)';
+      starCutsTestButton.style.boxShadow = '0 4px 10px rgba(0,0,0,0.5)';
+    };
+    
+    starCutsTestButton.onclick = function() {
+      console.log('Star Cuts Test Button clicked');
+      
+      // Import the star cuts testing function
+      import('./geometry/starCuts.js').then(({ testStarPolygon, debugStarCuts, createStarPolygonPoints }) => {
+        // Run the full test suite
+        console.log('Running star cuts tests...');
+        const results = debugStarCuts();
+        
+        // Set up the actual star pentagon in the active layer
+        if (window._layers && typeof window._layers.getActiveLayer === 'function') {
+          const activeLayer = window._layers.getActiveLayer();
+          if (activeLayer) {
+            console.log('Setting up star pentagon (5 vertices, skip 2) with cuts');
+            
+            // IMPORTANT: Create a proper regular star pentagon rather than
+            // letting the system create one that doesn't have intersections
+            const radius = activeLayer.state.radius || 200; // Use existing radius or default to 200
+            const segments = 5;
+            const skip = 2;
+            
+            // Configure the layer as a star pentagon
+            activeLayer.state.segments = segments;
+            // Don't override radius if already set
+            if (!activeLayer.state.radius) {
+              activeLayer.state.radius = radius;
+            }
+            activeLayer.state.useStars = true;
+            activeLayer.state.starSkip = skip;
+            activeLayer.state.useCuts = true;
+            activeLayer.state.forceRegularStarPolygon = true; // Add this flag to force a regular star polygon
+            
+            // Force parameter changes to trigger geometry update
+            activeLayer.state.parameterChanges = activeLayer.state.parameterChanges || {};
+            activeLayer.state.parameterChanges.segments = true;
+            activeLayer.state.parameterChanges.radius = true;
+            activeLayer.state.parameterChanges.useStars = true;
+            activeLayer.state.parameterChanges.starSkip = true;
+            activeLayer.state.parameterChanges.useCuts = true;
+            activeLayer.state.parameterChanges.forceRegularStarPolygon = true;
+            
+            // Force the layer to update with the proper geometry
+            if (typeof activeLayer.updateGeometry === 'function') {
+              console.log('Forcing geometry update with regular star pentagon');
+              activeLayer.updateGeometry(true);
+              
+              // After updating, validate that we have a proper star pentagon
+              console.log('Star pentagon created! Check the console for intersection details.');
+              
+              // Find the successful test case for star pentagon and log its details
+              const pentagonTest = results.find(r => r.n === 5 && r.k === 2);
+              if (pentagonTest) {
+                console.log(`Test showed star pentagon should have ${pentagonTest.intersections.length} intersections`);
+              }
+            }
+          } else {
+            alert('No active layer found!');
+          }
+        } else {
+          alert('Layer manager not initialized yet!');
+        }
+      }).catch(err => {
+        console.error('Error loading star cuts module:', err);
+        alert('Error running star cuts tests! See console for details.');
+      });
+    };
+    
+    document.body.appendChild(starCutsTestButton);
+  }, 2000); // Wait 2 seconds for everything to load
 };
