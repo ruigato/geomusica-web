@@ -72,109 +72,73 @@ export function createPolygonGeometry(radius, segments, state = null) {
   radius = radius || 300;
   segments = segments || 2;
   
-  console.log('[GEOMETRY DEBUG] Input radius:', radius);
-  
-  // Add this for debugging to track when we're creating new geometry
-  const layerId = state && state.layerId !== undefined ? state.layerId : 'unknown';
-  
   // Get the specific shape type from state if available
   const shapeType = state?.shapeType || 'regular';
   
+  // Step 1: Determine base polygon type and create initial points
   let points = [];
-  
-  // Handle different shape types
   switch (shapeType) {
     case 'star':
-      // Use the appropriate function to create star points
-      if (state?.useStars && state?.forceRegularStarPolygon && state?.starSkip > 1) {
-        points = createRegularStarPolygonPoints(radius, segments, state?.starSkip || 1);
-      } else {
-        points = createStarPolygonPointsLocal(radius, segments, state?.starSkip || 1, state);
-      }
-      
-      // Apply fractal subdivision if enabled
-      if (state?.useFractal && state?.fractalValue > 1) {
-        points = applyFractalSubdivision(points, state.fractalValue);
-      }
-      
-      // Add star cuts intersections if enabled
-      if (state?.useStars && state?.useCuts && state?.starSkip > 1) {
-        // Get the intersections from the star cuts module
-        const originalVertexCount = points.length;
-        const intersectionPoints = calculateStarCutsVertices(points, state.starSkip);
-        
-        // Add intersection points to the original points array
-        if (intersectionPoints.length > 0) {
-          points = [...points, ...intersectionPoints];
-        }
-      }
+      points = createStarPolygonPointsLocal(radius, segments, state?.starSkip || 1, state);
       break;
-      
+    case 'euclidean':
+      points = createEuclideanPoints(radius, segments, state?.euclidValue || 3, state);
+      break;
     case 'fractal':
-      // Create a fractal-like shape
       points = createFractalPolygonPoints(radius, segments, state?.fractalValue || 1, state);
       break;
-      
-    case 'euclidean':
-      // Create a polygon with Euclidean rhythm
-      // First create the euclidean points
-      points = createEuclideanPoints(radius, segments, state?.euclidValue || 3, state);
-      
-      // Then apply fractal subdivision if enabled
-      if (state?.useFractal && state?.fractalValue > 1) {
-        points = applyFractalSubdivision(points, state.fractalValue);
-      }
-      break;
-      
     case 'regular':
     default:
-      // When useStars is true but shapeType is not 'star', override to create a star
+      // Handle star polygon creation even in regular mode if useStars is enabled
       if (state?.useStars && state?.starSkip > 1) {
-        // Use the createRegularStarPolygonPoints function to generate the star vertices
-        // This gives us the vertices in the correct order around the circle
-        if (state?.useStars && state?.forceRegularStarPolygon && state?.starSkip > 1) {
-          points = createRegularStarPolygonPoints(radius, segments, state.starSkip);
-        } else {
-          // Fall back to local implementation if not forcing regular star polygon
-          points = createStarPolygonPointsLocal(radius, segments, state.starSkip, state);
-        }
-        
-        // Apply fractal subdivision if enabled
-        if (state?.useFractal && state?.fractalValue > 1) {
-          points = applyFractalSubdivision(points, state.fractalValue);
-        }
-        
-        // Add star cuts intersections if enabled - these will be additional vertices
-        if (state?.useCuts) {
-          // Get the intersections from the star cuts module
-          const originalVertexCount = points.length;
-          const intersectionPoints = calculateStarCutsVertices(points, state.starSkip);
-          
-          // Add intersection points to the original points array
-          // These will be additional vertices in the geometry
-          if (intersectionPoints.length > 0) {
-            points = [...points, ...intersectionPoints];
-          }
-        }
+        points = createStarPolygonPointsLocal(radius, segments, state.starSkip, state);
       } else {
-        // Create a regular polygon (with fractal if enabled)
-        // Reset the forceRegularStarPolygon flag to prevent size issues
-        if (state?.forceRegularStarPolygon) {
-          state.forceRegularStarPolygon = false;
-          state.parameterChanges.forceRegularStarPolygon = true;
-        }
-        
-        if (state?.useFractal && state?.fractalValue > 1) {
-          points = createFractalPolygonPoints(radius, segments, state?.fractalValue || 1, state);
-        } else {
-          points = createRegularPolygonPoints(radius, segments, state);
-        }
+        points = createRegularPolygonPoints(radius, segments, state);
       }
       break;
   }
-  
-  // Create geometry from the calculated points
-  return createGeometryFromPoints(points, state);
+
+  // Step 2: Apply fractal subdivision if enabled
+  // Skip if we already created a fractal shape or if fractal is disabled
+  if (state?.useFractal && state?.fractalValue > 1 && shapeType !== 'fractal') {
+    points = applyFractalSubdivision(points, state.fractalValue);
+  }
+
+  // Step 3: Add star cuts if enabled
+  // Only add cuts for star polygons when explicitly enabled
+  if (state?.useStars && state?.useCuts && state?.starSkip > 1) {
+    const originalVertexCount = points.length;
+    const intersectionPoints = calculateStarCutsVertices(points, state.starSkip);
+    
+    if (intersectionPoints.length > 0) {
+      points = [...points, ...intersectionPoints];
+    }
+  }
+
+  // Step 4: Create geometry from final points
+  const geometry = createGeometryFromPoints(points, state);
+
+  // Add metadata to geometry
+  if (geometry.userData === undefined) {
+    geometry.userData = {};
+  }
+
+  // Set layer ID if available
+  if (state?.layerId !== undefined) {
+    geometry.userData.layerId = state.layerId;
+  }
+
+  // Add information about geometry composition
+  geometry.userData.geometryInfo = {
+    type: state?.useStars && state?.starSkip > 1 ? 'star' : shapeType,
+    baseVertexCount: segments,
+    totalVertexCount: points.length,
+    hasIntersections: state?.useStars && state?.useCuts && state?.starSkip > 1,
+    starSkip: state?.starSkip,
+    fractalLevel: state?.useFractal ? state.fractalValue : 1
+  };
+
+  return geometry;
 }
 
 /**
@@ -206,22 +170,21 @@ function createGeometryFromPoints(points, state) {
   if (state?.useStars && state?.starSkip > 1 && points.length >= 3) {
     const vertices = [];
     const indices = [];
-    const baseVertexCount = state.segments;
     
     // First, create position vertices for all points
     for (let i = 0; i < points.length; i++) {
       vertices.push(points[i].x, points[i].y, 0);
     }
     
-    // Add indices to connect the star pattern
-    // We only do this for the original vertices (not intersection points)
-    if (baseVertexCount >= 3) {
-      const skip = state.starSkip;
-      for (let i = 0; i < baseVertexCount; i++) {
-        const startIdx = i;
-        const endIdx = (i + skip) % baseVertexCount;
-        indices.push(startIdx, endIdx);
-      }
+    // For star polygons, connect vertices using the skip pattern
+    const baseVertexCount = state.segments;
+    const skip = state.starSkip;
+    
+    // Create indices to connect vertices in star pattern
+    for (let i = 0; i < baseVertexCount; i++) {
+      const startIdx = i;
+      const endIdx = (i + skip) % baseVertexCount;
+      indices.push(startIdx, endIdx);
     }
     
     // Set the attributes
@@ -229,43 +192,35 @@ function createGeometryFromPoints(points, state) {
     geometry.setIndex(indices);
   } else {
     // Standard non-indexed geometry for regular polygons
-    // Convert points to Float32Array for position attribute
     const positionArray = new Float32Array(points.length * 3);
     
     for (let i = 0; i < points.length; i++) {
       positionArray[i * 3] = points[i].x;
       positionArray[i * 3 + 1] = points[i].y;
-      positionArray[i * 3 + 2] = 0; // Z-coordinate is always 0 in 2D
+      positionArray[i * 3 + 2] = 0;
     }
     
-    // Set the position attribute
     geometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
   }
   
-  // For audio trigger detection - add the vertex count to the geometry userData
+  // Add metadata
   if (geometry.userData === undefined) {
     geometry.userData = {};
   }
   
-  // Set the layer ID in the geometry userData if available in state
-  if (state && state.layerId !== undefined) {
+  if (state?.layerId !== undefined) {
     geometry.userData.layerId = state.layerId;
   }
   
-  // Store number of vertices for use in trigger detection
   geometry.userData.vertexCount = points.length;
   
-  // Add information about the geometry composition for debugging
-  if (state && state.useStars && state.starSkip > 1) {
-    // Determine the number of base vertices and intersection points
+  // Add star polygon specific metadata
+  if (state?.useStars && state?.starSkip > 1) {
     const hasIntersections = hasStarSelfIntersections(state.segments, state.starSkip);
-    const baseVertexCount = state.segments;
-    const intersectionCount = state.useCuts ? (points.length - baseVertexCount) : 0;
-    
     geometry.userData.geometryInfo = {
       type: 'star_with_cuts',
-      baseVertexCount,
-      intersectionCount,
+      baseVertexCount: state.segments,
+      intersectionCount: state.useCuts ? (points.length - state.segments) : 0,
       totalVertexCount: points.length,
       starSkip: state.starSkip,
       hasIntersections,
@@ -1258,93 +1213,22 @@ function createRegularPolygonPoints(radius, numSegments, state = null) {
  * @returns {Array<THREE.Vector2>} Array of points
  */
 function createStarPolygonPointsLocal(radius, numSegments, skip, state = null) {
-  const points = [];
+  // If skip is invalid or 1, create a regular polygon
+  if (!skip || skip <= 1) {
+    return createRegularPolygonPoints(radius, numSegments, state);
+  }
+  
+  // For star polygons, we just need to create the vertices in order around the circle
+  // The actual star pattern is created by the indices in createGeometryFromPoints
   const angleStep = (Math.PI * 2) / numSegments;
+  const points = [];
   
-  // If skip is invalid, fall back to 1 (regular polygon)
-  skip = skip || 1;
-  
-  // Calculate GCD to determine if this is a proper star
-  const gcd = (a, b) => b ? gcd(b, a % b) : a;
-  const gcdValue = gcd(numSegments, skip);
-  
-  // When creating a star with cuts, force intersection update
-  if (state && state.useStars && state.useCuts && skip > 1) {
-    // Force intersection recalculation
-    state.needsIntersectionUpdate = true;
-  }
-  
-  // If forceRegularStarPolygon is true, use the regular star polygon creation function from starCuts.js
-  if (state?.forceRegularStarPolygon && state?.useStars && skip > 1) {
-    return createRegularStarPolygonPoints(radius, numSegments, skip);
-  }
-  
-  // Create a stellated figure when useStars is true and skip > 1
-  const createStellateFigure = state?.useStars && skip > 1;
-  
-  if (createStellateFigure) {
-    // Generate the outer vertices first
-    const outerVertices = [];
-    for (let i = 0; i < numSegments; i++) {
-      const angle = i * angleStep;
-      const x = Math.cos(angle) * radius;
-      const y = Math.sin(angle) * radius;
-      outerVertices.push(new THREE.Vector2(x, y));
-    }
-    
-    // For a proper star (gcd=1), create a single continuous path
-    if (gcdValue === 1) {
-      let vertex = 0;
-      const visited = new Array(numSegments).fill(false);
-      
-      while (!visited[vertex]) {
-        const currentVertex = outerVertices[vertex];
-        points.push(currentVertex);
-        visited[vertex] = true;
-        
-        // Jump by skip amount
-        vertex = (vertex + skip) % numSegments;
-      }
-    } else {
-      // For multiple disconnected paths (gcd > 1), create each segment separately
-      const numPaths = gcdValue;
-      const verticesPerPath = numSegments / numPaths;
-      
-      // Generate each separate path
-      for (let pathStart = 0; pathStart < numPaths; pathStart++) {
-        let vertex = pathStart;
-        
-        for (let i = 0; i < verticesPerPath; i++) {
-          const currentVertex = outerVertices[vertex];
-          points.push(currentVertex);
-          
-          // Jump by skip amount
-          vertex = (vertex + skip) % numSegments;
-        }
-      }
-    }
-    
-    return points;
-  }
-  
-  // For regular polygons (skip=1) or when useStars is false
-  if (skip === 1 || !state?.useStars) {
-    // Create simple regular polygon
-    for (let i = 0; i < numSegments; i++) {
-      const angle = i * angleStep;
-      const x = Math.cos(angle) * radius;
-      const y = Math.sin(angle) * radius;
-      points.push(new THREE.Vector2(x, y));
-    }
-    
-    return points;
-  }
-  
-  // This should never be reached, but just in case, return a regular polygon
+  // Create vertices evenly spaced around the circle
   for (let i = 0; i < numSegments; i++) {
     const angle = i * angleStep;
-    const x = Math.cos(angle) * radius;
-    const y = Math.sin(angle) * radius;
+    // Use half radius to match regular polygon scaling
+    const x = Math.cos(angle) * (radius / 2);
+    const y = Math.sin(angle) * (radius / 2);
     points.push(new THREE.Vector2(x, y));
   }
   
