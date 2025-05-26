@@ -652,16 +652,13 @@ export function setupUI(state) {
     });
   }
   
-  // DEPRECATED: Setup intersections checkbox - functionality removed
+  // Setup plain intersections checkbox
   if (useIntersectionsCheckbox) {
-    useIntersectionsCheckbox.checked = false; // Always false since deprecated
-    useIntersectionsCheckbox.disabled = true; // Disable the control
-    // Remove event listener since functionality is deprecated
-    // useIntersectionsCheckbox.addEventListener('change', e => {
-    //   const activeState = typeof window.getActiveState === 'function' ? 
-    //     window.getActiveState() : state;
-    //   activeState.setUseIntersections(e.target.checked);
-    // });
+    useIntersectionsCheckbox.addEventListener('change', e => {
+      const activeState = typeof window.getActiveState === 'function' ? 
+        window.getActiveState() : state;
+      activeState.setUsePlainIntersections(e.target.checked);
+    });
   }
 
   // Setup duration mode radio buttons with null check

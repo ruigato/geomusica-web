@@ -130,8 +130,7 @@ function extractSerializableState(state) {
     bpm: state.bpm,
     
     // Intersection parameters
-    // DEPRECATED: useIntersections removed
-    // useIntersections: state.useIntersections,
+    usePlainIntersections: state.usePlainIntersections,
     
     // Animation parameters
     useLerp: state.useLerp,
@@ -304,8 +303,7 @@ export function applyPropertiesToState(targetState, sourceState) {
     { name: 'bpm', setter: 'setBpm' },
     
     // Intersection parameters
-    // DEPRECATED: useIntersections removed
-    // { name: 'useIntersections', setter: 'setUseIntersections' },
+    { name: 'usePlainIntersections', setter: 'setUsePlainIntersections' },
     
     // Animation parameters
     { name: 'useLerp', setter: 'setUseLerp' },
@@ -740,10 +738,10 @@ export function updateUIFromState(state, uiElements) {
       uiElements.useFractalCheckbox.checked = state.useFractal;
     }
     
-      // DEPRECATED: useIntersections UI element removed
-  // if (uiElements.useIntersectionsCheckbox && state.useIntersections !== undefined) {
-  //   uiElements.useIntersectionsCheckbox.checked = state.useIntersections;
-  // }
+    // Update plain intersections checkbox
+    if (uiElements.useIntersectionsCheckbox && state.usePlainIntersections !== undefined) {
+      uiElements.useIntersectionsCheckbox.checked = state.usePlainIntersections;
+    }
     
     if (uiElements.showAxisFreqLabelsCheckbox && state.showAxisFreqLabels !== undefined) {
       uiElements.showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels;

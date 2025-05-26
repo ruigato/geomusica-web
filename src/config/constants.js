@@ -76,6 +76,7 @@ export const DEFAULT_VALUES = {
   USE_STARS: false, // Default for star polygon feature
   EUCLID_VALUE: 1, // Default Euclidean rhythm value
   USE_EUCLID: false, // Default for Euclidean rhythm feature
+  USE_PLAIN_INTERSECTIONS: false, // Default for plain intersection feature
   QUANTIZATION_VALUE: "1/4", // Default quantization value
   USE_QUANTIZATION: false, // Default for quantization feature
   DURATION_MODE: "fixed", // Default duration mode
@@ -172,6 +173,9 @@ export const PARAMETER_RANGES = {
   // Star polygon parameters
   STAR_SKIP: { MIN: 1, MAX: 5, STEP: 1 },
   USE_STARS: { MIN: false, MAX: true, STEP: null },
+  
+  // Plain intersection parameters
+  USE_PLAIN_INTERSECTIONS: { MIN: false, MAX: true, STEP: null },
   
   // New quantization parameters
   QUANTIZATION_VALUE: { MIN: 0, MAX: 8, STEP: 1 },

@@ -16,6 +16,8 @@ import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils
 import { createNote } from '../notes/notes.js';
 // Import the star cuts calculation function
 import { calculateStarCutsVertices, hasStarSelfIntersections, createStarPolygonPoints, createRegularStarPolygonPoints } from './starCuts.js';
+// Import the new plain intersection system
+import { processPlainIntersections, calculateCopyIntersections } from './plainIntersection.js';
 
 // Debug flag to control logging
 const DEBUG_LOGGING = false;
@@ -420,7 +422,7 @@ export function cleanupIntersectionMarkers(scene) {
   // Skip if scene doesn't exist
   if (!scene) return;
   
-  // Clean up the marker group in the scene
+  // Clean up the legacy marker group in the scene
   if (scene.userData && scene.userData.intersectionMarkerGroup) {
     const group = scene.userData.intersectionMarkerGroup;
     const parent = group.parent;
@@ -446,7 +448,7 @@ export function cleanupIntersectionMarkers(scene) {
     scene.userData.intersectionMarkerGroup = null;
   }
   
-  // Clean up any marker groups in child objects
+  // Clean up any legacy marker groups in child objects
   if (scene.children) {
     scene.children.forEach(child => {
       if (child.userData && child.userData.intersectionMarkerGroup) {
@@ -465,6 +467,25 @@ export function cleanupIntersectionMarkers(scene) {
         });
         
         child.userData.intersectionMarkerGroup = null;
+      }
+      
+      // Clean up new global intersection marker groups
+      if (child.userData && child.userData.globalIntersectionMarkerGroup) {
+        const globalMarkerGroup = child.userData.globalIntersectionMarkerGroup;
+        child.remove(globalMarkerGroup);
+        
+        globalMarkerGroup.traverse(obj => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach(m => m.dispose());
+            } else {
+              obj.material.dispose();
+            }
+          }
+        });
+        
+        child.userData.globalIntersectionMarkerGroup = null;
       }
     });
   }
@@ -512,6 +533,8 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     return;
   }
 
+  // Plain intersections will be processed AFTER copies are created
+
   // Check if we're using star cuts
   const useStarCuts = state && state.useStars && state.useCuts && state.starSkip > 1;
   
@@ -549,9 +572,20 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         continue;
       }
       
-      // Store intersection marker groups separately
+      // FIXED: Don't preserve intersection marker groups - they need to be recalculated
+      // when geometry parameters change
       if (child.userData && child.userData.isIntersectionGroup) {
-        debugObjects.push(child);
+        // Clean up the old intersection group properly
+        child.traverse(obj => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach(m => m.dispose());
+            } else {
+              obj.material.dispose();
+            }
+          }
+        });
         group.remove(child);
         continue;
       }
@@ -695,7 +729,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         copyGroup.add(lines);
       }
       
-      // Get the positions from the geometry
+      // Get the positions from the base geometry
       const positions = baseGeo.getAttribute('position').array;
       const count = baseGeo.getAttribute('position').count;
       
@@ -703,7 +737,8 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       if (isStarPolygon && baseGeo.index) {
         // Store the original vertex indices to help with trigger detection
         const originalVertexIndices = [];
-        for (let v = 0; v < count; v++) {
+        const originalVertexCount = baseGeo.getAttribute('position').count;
+        for (let v = 0; v < originalVertexCount; v++) {
           // For vertices up to the base vertex count, they're part of the star polygon
           if (v < state?.segments) {
             originalVertexIndices.push(v);
@@ -713,6 +748,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         copyGroup.userData.originalVertexIndices = originalVertexIndices;
         copyGroup.userData.isStarPolygon = true;
         copyGroup.userData.starSkip = state?.starSkip || 1;
+        copyGroup.userData.originalVertexCount = originalVertexCount;
       }
       
       // Add circles at each vertex
@@ -726,7 +762,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
           y: y,
           copyIndex: i,
           vertexIndex: v,
-          isIntersection: false,
+          isIntersection: false, // Will be updated when intersections are added
           globalIndex: globalVertexIndex
         };
         
@@ -853,7 +889,18 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       // DEPRECATED: Intersection markers functionality removed - star cuts are now handled in starCuts.js
     }
     
-    // After all copies are created, restore debug objects
+    // FIXED: Process plain intersections AFTER all copies are created
+    // This adds intersection points as vertices to each copy's geometry
+    if (state && state.usePlainIntersections && state.copies > 1) {
+      processPlainIntersectionsAfterCopies(group, state, baseGeo);
+    }
+    
+    // Clear any old intersection group references from userData
+    if (group.userData && group.userData.globalIntersectionMarkerGroup) {
+      group.userData.globalIntersectionMarkerGroup = null;
+    }
+    
+    // After all copies are created, restore debug objects (but not intersection groups)
     for (const debugObj of debugObjects) {
       group.add(debugObj);
     }
@@ -916,6 +963,100 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         
       }
     }
+  }
+}
+
+/**
+ * Process plain intersections after copies have been created
+ * This adds intersection points as regular vertices to each copy's geometry
+ * @param {THREE.Group} group - The group containing all copy groups
+ * @param {Object} state - Application state
+ * @param {THREE.BufferGeometry} baseGeo - Base geometry
+ */
+function processPlainIntersectionsAfterCopies(group, state, baseGeo) {
+  if (!group || !state || !baseGeo || state.copies <= 1) {
+    return;
+  }
+  
+  const DEBUG_ENABLED = false; // Set to true for debugging
+  
+  if (DEBUG_ENABLED) {
+    console.log(`[PLAIN INTERSECTION] Processing intersections after copies created for ${state.copies} copies`);
+  }
+  
+  // Calculate intersections between copies using the existing logic
+  const intersectionPoints = calculateCopyIntersections(baseGeo, state);
+  
+  if (intersectionPoints.length === 0) {
+    if (DEBUG_ENABLED) {
+      console.log(`[PLAIN INTERSECTION] No intersections found`);
+    }
+    return;
+  }
+  
+  if (DEBUG_ENABLED) {
+    console.log(`[PLAIN INTERSECTION] Found ${intersectionPoints.length} intersection points`);
+  }
+  
+  // Add intersection points as vertex circles to the main group (not to individual copies)
+  // Each intersection point should exist only once in the world
+  for (let i = 0; i < intersectionPoints.length; i++) {
+    const point = intersectionPoints[i];
+    
+    // The intersection points are already in world coordinates
+    const worldX = point.x;
+    const worldY = point.y;
+    
+    // Create trigger data for this intersection point
+    const triggerData = {
+      x: worldX,
+      y: worldY,
+      copyIndex: -1, // Not associated with any specific copy
+      vertexIndex: -1, // Special marker for intersection points
+      isIntersection: true,
+      globalIndex: -1 // Will be set by overlapping cleaner
+    };
+    
+    // Create a note object to get duration and velocity parameters
+    const note = createNote(triggerData, state);
+    
+    // Calculate size factor
+    const baseCircleSize = VERTEX_CIRCLE_SIZE;
+    const durationScaleFactor = 0.5 + note.duration;
+    const cameraDistance = 2000; // Default camera distance
+    const sizeScaleFactor = (cameraDistance / 1000) * baseCircleSize * durationScaleFactor * 10.3 * 0.8; // Smaller for intersections
+    
+    // Create material for intersection point
+    const vertexCircleMaterial = new THREE.MeshBasicMaterial({ 
+      color: INTERSECTION_POINT_COLOR,
+      transparent: true,
+      opacity: note.velocity, 
+      depthTest: false,
+      side: THREE.DoubleSide
+    });
+    
+    // Store trigger data with the material
+    vertexCircleMaterial.userData = {
+      ...triggerData,
+      note: note
+    };
+    
+    // Create vertex circle for intersection point
+    const vertexCircle = new THREE.Mesh(vertexCircleGeometry, vertexCircleMaterial);
+    vertexCircle.scale.set(sizeScaleFactor, sizeScaleFactor, 1);
+    vertexCircle.renderOrder = 1;
+    vertexCircle.position.set(worldX, worldY, 0);
+    
+    // Add to the main group (not to individual copy groups)
+    group.add(vertexCircle);
+    
+    if (DEBUG_ENABLED) {
+      console.log(`[PLAIN INTERSECTION] Added intersection point ${i} at (${worldX.toFixed(2)}, ${worldY.toFixed(2)})`);
+    }
+  }
+  
+  if (DEBUG_ENABLED) {
+    console.log(`[PLAIN INTERSECTION] Added ${intersectionPoints.length} intersection points to main group`);
   }
 }
 

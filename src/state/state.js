@@ -56,7 +56,8 @@ export function createAppState() {
       useCuts: false,
       euclidValue: false,
       useEuclid: false,
-      forceRegularStarPolygon: false
+      forceRegularStarPolygon: false,
+      usePlainIntersections: false
     },
     
     // Performance and frame tracking
@@ -185,6 +186,9 @@ export function createAppState() {
     
     // New flag for regular star polygon
     forceRegularStarPolygon: false,
+    
+    // Plain intersections parameters
+    usePlainIntersections: DEFAULT_VALUES.USE_PLAIN_INTERSECTIONS,
     
     /**
      * Check if any parameters have changed
@@ -1143,6 +1147,28 @@ export function createAppState() {
           // Force recreation of the layer's geometry if this state belongs to a layer
           this.forceGeometryRecreation();
         }
+      }
+    },
+    
+    /**
+     * Toggle plain intersections
+     * @param {boolean} value Enable/disable plain intersections
+     */
+    setUsePlainIntersections(value) {
+      const newValue = Boolean(value);
+      if (this.usePlainIntersections !== newValue) {
+        this.usePlainIntersections = newValue;
+        this.parameterChanges.usePlainIntersections = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo) {
+          // Set flags to signal that geometry needs recreation
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        }
+        
+        // Force recreation of the layer's geometry if this state belongs to a layer
+        this.forceGeometryRecreation();
       }
     },
     

@@ -3,6 +3,7 @@ import { Layer } from './layer.js';
 import * as THREE from 'three';
 import { createPolygonGeometry, calculateBoundingSphere } from '../geometry/geometry.js';
 import { updateGroup } from '../geometry/geometry.js';
+// Plain intersection processing now happens in updateGroup after copies are created
 import { detectLayerTriggers, clearLayerMarkers } from '../triggers/triggers.js';
 import { resetTriggerSystem } from '../triggers/triggers.js';
 
@@ -195,6 +196,9 @@ export class LayerManager {
       state.segments,
       state  // Use this specific layer's state
     );
+    
+    // Note: Plain intersection processing now happens AFTER copies are created in updateGroup
+    // This ensures intersections are calculated between actual transformed copies
     
     if (DEBUG_LOGGING) {
       
@@ -655,6 +659,9 @@ export class LayerManager {
           state.segments,
           state  // Use this specific layer's state
         );
+        
+        // Note: Plain intersection processing now happens AFTER copies are created in updateGroup
+        // This ensures intersections are calculated between actual transformed copies
         
         // Add necessary userData for trigger detection
         layer.baseGeo.userData.layerId = layerId;
