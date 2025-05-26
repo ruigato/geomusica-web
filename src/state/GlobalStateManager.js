@@ -1,6 +1,6 @@
 // src/state/GlobalStateManager.js - Manages global state parameters across all layers
 import { DEFAULT_VALUES } from '../config/constants.js';
-import { getCurrentTime } from '../time/time.js';
+import { getCurrentTime, TIMING_SOURCES, getActiveTimingSource, switchTimingSource } from '../time/time.js';
 
 /**
  * GlobalStateManager class to handle state parameters that should be shared across all layers
@@ -12,6 +12,9 @@ export class GlobalStateManager {
     this.bpm = DEFAULT_VALUES.BPM;
     this.lastTime = 0; // Initialize to 0, will be updated when timing is ready
     this.lastAngle = 0;
+    
+    // Timing source preference
+    this.timingSource = TIMING_SOURCES.AUDIO_CONTEXT; // Default to AudioContext
     
     // FIXED: Centralized layer timing system using AudioContext
     this._layerTimingSystem = {
@@ -53,7 +56,8 @@ export class GlobalStateManager {
       quantization: false,
       useQuantization: false,
       useEqualTemperament: false,
-      referenceFrequency: false
+      referenceFrequency: false,
+      timingSource: false
     };
     
     // Try to initialize timing if possible
@@ -77,6 +81,34 @@ export class GlobalStateManager {
     } catch (e) {
       console.error('[STATE] Failed to initialize timing:', e);
     }
+  }
+  
+  /**
+   * Set the preferred timing source
+   * @param {string} source - The timing source to use (AUDIO_CONTEXT or PERFORMANCE_NOW)
+   */
+  setTimingSource(source) {
+    if (source !== this.timingSource) {
+      this.timingSource = source;
+      
+      try {
+        // Update the actual timing system
+        switchTimingSource(source);
+      } catch (e) {
+        console.error('[STATE] Failed to switch timing source:', e);
+      }
+      
+      // Mark parameter as changed
+      this.parameterChanges.timingSource = true;
+    }
+  }
+  
+  /**
+   * Get the current timing source
+   * @returns {string} The current timing source
+   */
+  getTimingSource() {
+    return getActiveTimingSource();
   }
   
   /**

@@ -1,10 +1,22 @@
 // src/time/time.js - Rock-solid AudioContext-only timing system
 import { TICKS_PER_BEAT, TICKS_PER_MEASURE } from '../config/constants.js';
 
+// Timing system configuration
+const TIMING_SOURCES = {
+  AUDIO_CONTEXT: 'audioContext',
+  PERFORMANCE_NOW: 'performanceNow'
+};
+
 // Single source of truth: AudioContext timing
 let sharedAudioContext = null;
 let audioStartTime = 0;
 let timingInitialized = false;
+
+// Performance timing variables
+let performanceStartTime = 0;
+
+// Active timing configuration
+let activeTimingSource = TIMING_SOURCES.AUDIO_CONTEXT;
 
 // Error handling
 class TimingError extends Error {
@@ -31,6 +43,7 @@ export function initializeTime(audioContext) {
   
   sharedAudioContext = audioContext;
   audioStartTime = audioContext.currentTime;
+  performanceStartTime = performance.now() / 1000;
   timingInitialized = true;
   
   // Ensure AudioContext is running
@@ -48,6 +61,38 @@ export function initializeTime(audioContext) {
 }
 
 /**
+ * Switch between timing sources
+ * @param {string} source - The timing source to use (AUDIO_CONTEXT or PERFORMANCE_NOW)
+ * @returns {boolean} True if switch successful
+ */
+export function switchTimingSource(source) {
+  if (!timingInitialized) {
+    throw new TimingError('Timing system not initialized. Call initializeTime() first.');
+  }
+  
+  if (!Object.values(TIMING_SOURCES).includes(source)) {
+    throw new TimingError(`Invalid timing source: ${source}`);
+  }
+  
+  // Store current time before switching
+  const currentTime = getCurrentTime();
+  
+  // Switch to new source
+  activeTimingSource = source;
+  
+  // Reset start times to ensure seamless transition
+  if (source === TIMING_SOURCES.AUDIO_CONTEXT) {
+    audioStartTime = sharedAudioContext.currentTime - currentTime;
+    console.log('[TIMING] Switched to AudioContext timing');
+  } else {
+    performanceStartTime = performance.now() / 1000 - currentTime;
+    console.log('[TIMING] Switched to performance.now() timing');
+  }
+  
+  return true;
+}
+
+/**
  * Get current time in seconds with sample-accurate precision
  * This is the master clock for the entire application
  * @returns {number} Current time in seconds since timing initialization
@@ -57,37 +102,47 @@ export function getCurrentTime() {
     throw new TimingError('Timing system not initialized. Call initializeTime() first.');
   }
   
-  // Critical: Ensure AudioContext is never suspended
-  if (sharedAudioContext.state === 'suspended') {
-    console.warn('[AUDIO TIMING] AudioContext was suspended, resuming immediately');
-    sharedAudioContext.resume();
+  if (activeTimingSource === TIMING_SOURCES.AUDIO_CONTEXT) {
+    // Critical: Ensure AudioContext is never suspended
+    if (sharedAudioContext.state === 'suspended') {
+      console.warn('[AUDIO TIMING] AudioContext was suspended, resuming immediately');
+      sharedAudioContext.resume();
+    }
+    
+    if (sharedAudioContext.state === 'closed') {
+      throw new TimingError('AudioContext is closed - this is a fatal timing error');
+    }
+    
+    // This is our rock-solid timing source - never changes, never falls back
+    const currentTime = sharedAudioContext.currentTime - audioStartTime;
+    
+    // Sanity check: time should never go backwards
+    if (currentTime < 0) {
+      throw new TimingError(`Time went backwards: ${currentTime}`);
+    }
+    
+    return currentTime;
+  } else {
+    // Use performance.now() as timing source
+    return performance.now() / 1000 - performanceStartTime;
   }
-  
-  if (sharedAudioContext.state === 'closed') {
-    throw new TimingError('AudioContext is closed - this is a fatal timing error');
-  }
-  
-  // This is our rock-solid timing source - never changes, never falls back
-  const currentTime = sharedAudioContext.currentTime - audioStartTime;
-  
-  // Sanity check: time should never go backwards
-  if (currentTime < 0) {
-    throw new TimingError(`Time went backwards: ${currentTime}`);
-  }
-  
-  return currentTime;
 }
 
 /**
  * Reset the timing system to zero
- * Resets the reference point but keeps using the same AudioContext
+ * Resets the reference point but keeps using the same timing source
  */
 export function resetTime() {
   if (!timingInitialized || !sharedAudioContext) {
     throw new TimingError('Cannot reset time - timing system not initialized');
   }
   
-  audioStartTime = sharedAudioContext.currentTime;
+  if (activeTimingSource === TIMING_SOURCES.AUDIO_CONTEXT) {
+    audioStartTime = sharedAudioContext.currentTime;
+  } else {
+    performanceStartTime = performance.now() / 1000;
+  }
+  
   console.log('[AUDIO TIMING] Time reset to zero');
 }
 
@@ -109,12 +164,25 @@ export function getSampleRate() {
 export function getTimingStatus() {
   return {
     initialized: timingInitialized,
+    activeSource: activeTimingSource,
     audioContextState: sharedAudioContext?.state || 'not available',
     sampleRate: sharedAudioContext?.sampleRate || 0,
     currentTime: timingInitialized ? getCurrentTime() : 0,
-    startTime: audioStartTime
+    audioStartTime: audioStartTime,
+    performanceStartTime: performanceStartTime
   };
 }
+
+/**
+ * Get the currently active timing source
+ * @returns {string} The active timing source
+ */
+export function getActiveTimingSource() {
+  return activeTimingSource;
+}
+
+// Export timing sources for external use
+export { TIMING_SOURCES };
 
 // ============================================================================
 // Musical Timing Utilities (all based on AudioContext timing)

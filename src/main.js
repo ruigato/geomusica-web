@@ -1121,11 +1121,16 @@ function setupGlobalUI(globalState) {
   const bpmNumber = document.getElementById('bpmNumber');
   const bpmValue = document.getElementById('bpmValue');
   
+  // Get timing source radio buttons
+  const audioContextRadio = document.getElementById('timingSource-audioContext');
+  const performanceNowRadio = document.getElementById('timingSource-performanceNow');
+  
   // Initialize UI controls with global state values
   try {
     // Create a references object with global UI elements
     const globalUIReferences = {
-      bpmRange, bpmNumber, bpmValue
+      bpmRange, bpmNumber, bpmValue,
+      audioContextRadio, performanceNowRadio
     };
     
     // Update UI with global state values
@@ -1155,11 +1160,48 @@ function setupGlobalUI(globalState) {
     });
   }
   
+  // Add event listeners for timing source radio buttons
+  if (audioContextRadio) {
+    audioContextRadio.addEventListener('change', e => {
+      if (e.target.checked) {
+        try {
+          // Import dynamically to avoid circular dependencies
+          import('./time/time.js').then(module => {
+            // Update the global state
+            globalState.setTimingSource(module.TIMING_SOURCES.AUDIO_CONTEXT);
+            console.log('[TIMING] Switched to AudioContext timing');
+          });
+        } catch (error) {
+          console.error('[TIMING] Error switching timing source:', error);
+        }
+      }
+    });
+  }
+  
+  if (performanceNowRadio) {
+    performanceNowRadio.addEventListener('change', e => {
+      if (e.target.checked) {
+        try {
+          // Import dynamically to avoid circular dependencies
+          import('./time/time.js').then(module => {
+            // Update the global state
+            globalState.setTimingSource(module.TIMING_SOURCES.PERFORMANCE_NOW);
+            console.log('[TIMING] Switched to performance.now() timing');
+          });
+        } catch (error) {
+          console.error('[TIMING] Error switching timing source:', error);
+        }
+      }
+    });
+  }
+  
   // Store references to global UI controls
   globalUIReferences = {
     bpmRange,
     bpmNumber,
-    bpmValue
+    bpmValue,
+    audioContextRadio,
+    performanceNowRadio
   };
 }
 

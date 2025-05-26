@@ -641,6 +641,14 @@ export function updateUIFromState(state, uiElements) {
       if (uiElements.bpmValue) uiElements.bpmValue.textContent = state.bpm;
     }
     
+    // Update timing source radio buttons if they exist
+    if (state.timingSource !== undefined) {
+      if (uiElements.audioContextRadio && uiElements.performanceNowRadio) {
+        uiElements.audioContextRadio.checked = (state.timingSource === 'audioContext');
+        uiElements.performanceNowRadio.checked = (state.timingSource === 'performanceNow');
+      }
+    }
+    
     // Update Radius controls
     if (uiElements.radiusRange && state.radius !== undefined) {
       uiElements.radiusRange.value = state.radius;

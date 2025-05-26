@@ -101,6 +101,39 @@
       display: inline-block;
       min-width: 60px;
     }
+    /* Added styling for the timing source radio buttons */
+    input[name="timingSource"] + label {
+      width: 100px !important;
+      height: 40px !important;
+      font-size: 16px;
+      font-weight: bold;
+      margin: 5px 0;
+    }
+    
+    #timingSourceRadioGroup {
+      justify-content: center;
+      margin: 10px 0;
+    }
+    
+    #timingSourceRadioGroup .radio-item {
+      min-width: 120px;
+    }
+    
+    input[id="timingSource-audioContext"]:checked + label {
+      background: #00aa55 !important;
+    }
+    
+    input[id="timingSource-performanceNow"]:checked + label {
+      background: #aa5500 !important;
+    }
+    
+    /* Make the timing source help text more visible */
+    #timingSourceRadioGroup + .help-text {
+      font-size: 0.9em;
+      color: #cccccc;
+      margin-top: 5px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -134,6 +167,22 @@
             <span id="bpmValue" class="slider-value">120</span>
             <input type="number" id="bpmNumber" min="30" max="240" step="1" value="120">
           </div>
+        </div>
+      
+        <!-- Timing source A/B switch -->
+        <div class="control" style="background: #333333; padding: 10px; border-radius: 5px; margin: 10px 0; border: 1px solid #444444;">
+          <label style="font-weight: bold; font-size: 16px; margin-bottom: 5px; display: block;">Timing Source:</label>
+          <div id="timingSourceRadioGroup" class="radio-group">
+            <div class="radio-item">
+              <input type="radio" id="timingSource-audioContext" name="timingSource" value="audioContext" checked>
+              <label for="timingSource-audioContext">AUDIO</label>
+            </div>
+            <div class="radio-item">
+              <input type="radio" id="timingSource-performanceNow" name="timingSource" value="performanceNow">
+              <label for="timingSource-performanceNow">SYSTEM</label>
+            </div>
+          </div>
+          <div class="help-text">AUDIO: Sample-accurate timing via AudioContext, SYSTEM: Browser's performance.now() clock</div>
         </div>
       
         <div class="control">
