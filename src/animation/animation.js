@@ -8,13 +8,25 @@ import { updateLabelPositions, updateAxisLabels } from '../ui/domLabels.js';
 
 // Frame counter and timing stats
 let frameCount = 0;
-let lastTime = 0;
+let lastAudioTime = 0;
 let fpsStats = { min: Infinity, max: 0, avg: 0, frames: 0, total: 0 };
 
 // Enhanced timing controls for high BPM support
-const TARGET_FPS = 120; // Target 120 FPS for better trigger precision
-const MIN_FRAME_TIME = 1 / TARGET_FPS; // Minimum time between frames
-const MAX_FRAME_TIME = 1 / 30;
+const TARGET_FPS = 120; // Target 120 FPS for better trigger detection
+const MIN_FRAME_TIME = 1 / TARGET_FPS;
+const MAX_FRAME_TIME = MIN_FRAME_TIME * 2;
+
+/**
+ * Get current time safely, falling back to performance timing if audio timing isn't ready
+ * @returns {number} Current time in seconds
+ */
+function getSafeTime() {
+  try {
+    return getCurrentTime();
+  } catch (e) {
+    return performance.now() / 1000;
+  }
+}
 
 /**
  * Main animation function with enhanced subframe timing for high BPM support
@@ -34,6 +46,7 @@ export function animate(props) {
   // Initialize trigger system on first frame
   if (frameCount === 0) {
     resetTriggerSystem();
+    lastAudioTime = getSafeTime(); // Initialize with safe time
   }
   
   // IMPORTANT: Set camera and renderer in scene userData at the very beginning
@@ -57,11 +70,11 @@ export function animate(props) {
   // Use requestAnimationFrame to schedule the next frame
   requestAnimationFrame(() => animate(props));
   
-  // Get current time in seconds using browser performance API
-  const currentTime = getCurrentTime();
+  // Get current time from audio-synchronized timing system
+  const currentAudioTime = getSafeTime();
   
-  // Calculate time delta with enhanced precision control
-  let timeDelta = currentTime - lastTime;
+  // Calculate time delta using audio time
+  let timeDelta = currentAudioTime - lastAudioTime;
   
   // Clamp delta time for stability and precision
   timeDelta = Math.max(0, Math.min(timeDelta, MAX_FRAME_TIME));
@@ -71,10 +84,10 @@ export function animate(props) {
     return;
   }
   
-  // Update lastTime for next frame
-  lastTime = currentTime;
+  // Update lastTime for next frame using audio time
+  lastAudioTime = currentAudioTime;
   
-  // Update FPS stats with enhanced tracking
+  // Update FPS stats with audio-based timing
   frameCount++;
   if (timeDelta > 0) {
     const fps = 1 / timeDelta;
@@ -84,7 +97,7 @@ export function animate(props) {
     fpsStats.min = Math.min(fpsStats.min, fps);
     fpsStats.max = Math.max(fpsStats.max, fps);
     
-    // Track high-speed performance
+    // Track high-speed performance using audio timing
     if (frameCount % 600 === 0) { // Log every 10 seconds at 60fps
       const performanceInfo = {
         currentFPS: fps.toFixed(1),
@@ -92,9 +105,9 @@ export function animate(props) {
         minFPS: fpsStats.min.toFixed(1),
         maxFPS: fpsStats.max.toFixed(1),
         timeDelta: (timeDelta * 1000).toFixed(2) + 'ms',
-        targetFPS: TARGET_FPS
+        targetFPS: TARGET_FPS,
+        audioTime: currentAudioTime.toFixed(3)
       };
-      
       
       // Reset stats periodically to avoid skew
       if (frameCount % 6000 === 0) {
@@ -110,12 +123,12 @@ export function animate(props) {
   
   // Update state.lastTime which is used for angle calculation
   if (state && typeof state.lastTime !== 'undefined') {
-    state.lastTime = currentTime;
+    state.lastTime = currentAudioTime;
   }
   
-  // Process any pending quantized triggers with high precision timing
+  // Process any pending quantized triggers with audio-synchronized timing
   if (triggerAudioCallback) {
-    processPendingTriggers(currentTime, triggerAudioCallback, scene);
+    processPendingTriggers(currentAudioTime, triggerAudioCallback, scene);
   }
   
   // Log timing info with enhanced frequency for debugging high BPM issues
@@ -123,8 +136,6 @@ export function animate(props) {
     const currentFPS = 1 / timeDelta;
     const bpm = globalState?.bpm || 120;
     const rotationHz = bpm / 240; // Rotations per second
-    
-    
   }
   
   // Get the active layer from the scene if available
@@ -136,8 +147,6 @@ export function animate(props) {
     const currentFPS = 1 / timeDelta;
     const rotationSpeed = bpm / 240; // rotations per second
     const degreesPerFrame = (rotationSpeed * 360) / currentFPS;
-    
-    
   }
   
   // Handle active layer if available (prefer it over passed-in group)
@@ -164,7 +173,7 @@ export function animate(props) {
       activeLayer.state.needsIntersectionUpdate = false;
     }
     
-    // Apply velocity updates to markers with enhanced timing
+    // Apply velocity updates to markers with audio-synchronized timing
     applyVelocityToMarkers(activeLayer, timeDelta);
     
     // Ensure camera and renderer are set in the layer's group before updating
@@ -181,15 +190,14 @@ export function animate(props) {
       }
     }
     
-    // Call the update method on the active layer with precise timing
+    // Call the update method on the active layer with audio-synchronized timing
     if (typeof activeLayer.update === 'function') {
-      activeLayer.update(currentTime, timeDelta);
+      activeLayer.update(currentAudioTime, timeDelta);
     }
     
-    // Also update the global angle in GlobalStateManager with enhanced precision
+    // Also update the global angle in GlobalStateManager with audio-synchronized timing
     if (globalState && typeof globalState.updateAngle === 'function') {
-      // Convert to ms for compatibility with the existing updateAngle method
-      globalState.updateAngle(currentTime * 1000);
+      globalState.updateAngle(currentAudioTime * 1000); // Convert to ms for compatibility
     }
     
     // Update DOM label positions if the function is available
@@ -203,55 +211,45 @@ export function animate(props) {
     }
   }
   
-  // FIXED: Detect triggers on ALL visible layers, not just the active one
+  // FIXED: Detect triggers on ALL visible layers with audio-synchronized timing
   if (triggerAudioCallback && scene._layerManager && scene._layerManager.layers) {
-    // Loop through all layers and detect triggers on each visible one
     for (const layer of scene._layerManager.layers) {
-      // FIXED: Only process layers with both visibility AND copies > 0
       if (layer && layer.visible && layer.state && layer.state.copies > 0) {
-        // FIXED: Create a unique context for each layer's trigger detection
-        // This prevents issues where processing one layer affects another
         const layerContext = {
           layerId: layer.id,
-          time: currentTime,
+          time: currentAudioTime,
           callback: (note) => {
-            // Ensure the note has the correct layer ID
             const noteWithLayerId = {...note, layerId: layer.id};
             triggerAudioCallback(noteWithLayerId);
           }
         };
         
-        // Process this layer with its own context
         detectLayerTriggers(layer, layerContext.time, layerContext.callback);
       }
     }
   }
   
-  // Enhanced layer manager update with high precision timing
+  // Enhanced layer manager update with audio-synchronized timing
   if (scene._layerManager && typeof scene._layerManager.updateLayers === 'function') {
-    // Create animation parameters to pass to the layer manager
     const animationParams = {
       scene,
-      tNow: currentTime * 1000, // Convert to ms for backward compatibility
+      tNow: currentAudioTime * 1000, // Convert to ms for backward compatibility
       dt: timeDelta * 1000,     // Convert to ms for backward compatibility
       angle: globalState?.lastAngle || 0,
-      lastAngle: globalState?.previousAngle || 0, // Use the stored previous angle
-      previousAngle: globalState?.previousAngle || 0, // Add the previous angle for subframe precision
+      lastAngle: globalState?.previousAngle || 0,
+      previousAngle: globalState?.previousAngle || 0,
       triggerAudioCallback,
       activeLayerId: scene._layerManager.activeLayerId,
-      camera: cam,              // Pass camera reference
-      renderer: renderer,       // Pass renderer reference
-      // Enhanced timing information
+      camera: cam,
+      renderer: renderer,
       frameTime: timeDelta,
       targetFPS: TARGET_FPS,
-      currentFPS: 1 / timeDelta
+      currentFPS: 1 / timeDelta,
+      audioTime: currentAudioTime
     };
     
-    // Update all layers via the layer manager
     scene._layerManager.updateLayers(animationParams);
     
-    // IMPORTANT: Clean up expired markers for all layers
-    // This was missing and is why markers weren't fading out!
     if (scene._layerManager.layers) {
       for (const layer of scene._layerManager.layers) {
         if (layer && typeof clearLayerMarkers === 'function') {

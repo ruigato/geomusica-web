@@ -36,16 +36,17 @@ const recentTriggers = new Map();
 // Store for pending triggers when using quantization
 let pendingTriggers = [];
 
-// Singleton instance of the subframe trigger engine
+// Singleton instance of the subframe trigger engine with audio timing
 const subframeEngine = new TemporalTriggerEngine({
   resolution: 1000, // 1000Hz = 1ms resolution
-  maxMemory: 100
+  maxMemory: 100,
+  useAudioTiming: true // Enable audio timing for subframe engine
 });
 
 // Initialize the engine
 subframeEngine.initialize();
 
-// Subframe timing variables
+// Subframe timing variables - now based on audio sample rate
 const POSITION_RECORD_INTERVAL = 1 / 120; // Record positions at max 120Hz for efficiency
 const DEFAULT_COOLDOWN_TIME = 0.05; // 50ms default cooldown between triggers
 
@@ -53,7 +54,7 @@ const DEFAULT_COOLDOWN_TIME = 0.05; // 50ms default cooldown between triggers
 // This ensures each layer has its own independent recording schedule
 const lastPositionRecordTimes = new Map();
 
-// Setup periodic cleanup timer
+// Setup periodic cleanup timer using audio time
 let cleanupTimerId = null;
 setupCleanupTimer();
 
@@ -66,6 +67,7 @@ if (typeof window !== 'undefined') {
 
 /**
  * Set up a periodic timer to clean up stale data and prevent memory leaks
+ * Now uses audio time for cleanup scheduling
  */
 function setupCleanupTimer() {
   // Clear any existing timer
@@ -75,20 +77,20 @@ function setupCleanupTimer() {
   
   // Create a new timer that runs periodically
   cleanupTimerId = setInterval(() => {
-    cleanupRecentTriggers();
-    cleanupPendingTriggers();
+    const audioTime = getCurrentTime();
+    cleanupRecentTriggers(audioTime);
+    cleanupPendingTriggers(audioTime);
   }, CLEANUP_INTERVAL);
 }
 
 /**
  * Remove stale entries from recentTriggers map to prevent memory leaks
+ * @param {number} audioTime Current audio time in seconds
  */
-function cleanupRecentTriggers() {
-  const now = getCurrentTime();
-  
+function cleanupRecentTriggers(audioTime) {
   // Remove entries older than RECENT_TRIGGERS_MAX_AGE
   for (const [key, data] of recentTriggers.entries()) {
-    if (now - data.time > RECENT_TRIGGERS_MAX_AGE) {
+    if (audioTime - data.time > RECENT_TRIGGERS_MAX_AGE) {
       recentTriggers.delete(key);
     }
   }
@@ -96,13 +98,12 @@ function cleanupRecentTriggers() {
 
 /**
  * Clean up executed or excess entries from pendingTriggers array
+ * @param {number} audioTime Current audio time in seconds
  */
-function cleanupPendingTriggers() {
-  const now = getCurrentTime();
-  
+function cleanupPendingTriggers(audioTime) {
   // Remove already executed triggers (with some margin)
   pendingTriggers = pendingTriggers.filter(trigger => 
-    trigger.executeTime > now - 1 // Keep triggers from the last second in case of processing delays
+    trigger.executeTime > audioTime - 1 // Keep triggers from the last second in case of processing delays
   );
   
   // If still too large, keep only the most recent triggers
@@ -257,23 +258,23 @@ function storePendingTrigger(triggerInfo, quantizedTime) {
 
 /**
  * Process any pending triggers that should now be executed
- * Enhanced for high BPM precision timing
- * @param {number} currentTime - Current time in seconds
- * @param {Function} audioCallback - Callback to execute triggers
- * @param {Object} scene - Scene for creating visual markers
+ * Enhanced for high BPM precision timing using AudioContext
+ * @param {number} audioTime Current audio time in seconds
+ * @param {Function} audioCallback Callback to execute triggers
+ * @param {Object} scene Scene for creating visual markers
  */
-export function processPendingTriggers(currentTime, audioCallback, scene) {
+export function processPendingTriggers(audioTime, audioCallback, scene) {
   if (pendingTriggers.length === 0) return;
   
   // Find triggers that should be executed with enhanced precision
   const triggersToExecute = [];
-  const tolerance = 0.002; // Reduced to 2ms tolerance for better high BPM precision
+  const tolerance = 0.001; // Reduced to 1ms tolerance for better audio timing precision
   
-  while (pendingTriggers.length > 0 && pendingTriggers[0].executeTime <= currentTime + tolerance) {
+  while (pendingTriggers.length > 0 && pendingTriggers[0].executeTime <= audioTime + tolerance) {
     triggersToExecute.push(pendingTriggers.shift());
   }
   
-  // Execute the triggers with timing compensation
+  // Execute the triggers with audio timing compensation
   for (const trigger of triggersToExecute) {
     const { note, worldRot, executeTime, camera, renderer, isQuantized, layer } = trigger;
     
@@ -283,14 +284,14 @@ export function processPendingTriggers(currentTime, audioCallback, scene) {
       noteCopy.time = executeTime;
       
       // Add timing information for debugging high BPM issues
-      const timingDelta = Math.abs(currentTime - executeTime);
+      const timingDelta = Math.abs(audioTime - executeTime);
       if (timingDelta > 0.001) { // Log if more than 1ms off
         if (DEBUG_LOGGING) {
-          
+          console.log(`[AUDIO TIMING] Trigger timing delta: ${timingDelta * 1000}ms`);
         }
       }
       
-      // IMPORTANT: Send the complete note object copy
+      // IMPORTANT: Send the complete note object copy with precise audio timing
       audioCallback(noteCopy);
       
       // Create a marker with visual feedback
@@ -302,7 +303,7 @@ export function processPendingTriggers(currentTime, audioCallback, scene) {
   
   // After processing, clean up any remaining stale triggers
   if (pendingTriggers.length > 0) {
-    cleanupPendingTriggers();
+    cleanupPendingTriggers(audioTime);
   }
 }
 
@@ -1140,11 +1141,11 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
 }
 
 /**
- * Record vertex positions for a layer into the subframe engine
+ * Record vertex positions for a layer into the subframe engine with audio timing
  * @param {Object} layer Layer to record positions for
- * @param {number} timestamp Current time in seconds
+ * @param {number} audioTime Current audio time in seconds
  */
-function recordLayerVertexPositions(layer, timestamp) {
+function recordLayerVertexPositions(layer, audioTime) {
   if (!layer || !layer.group) return;
   
   const state = layer.state;
@@ -1297,7 +1298,7 @@ function recordLayerVertexPositions(layer, timestamp) {
           console.log('[MATRIX DEBUG] After rotation:', rotatedPos.x, rotatedPos.y, rotatedPos.z);
         }
         
-        // Record position in subframe engine with scaling compensation
+        // Record position in subframe engine with audio timing
         subframeEngine.recordVertexPosition(
           vertexId,
           {
@@ -1305,7 +1306,7 @@ function recordLayerVertexPositions(layer, timestamp) {
             y: rotatedPos.y,
             z: rotatedPos.z
           },
-          timestamp
+          audioTime // Use audio time for precise position recording
         );
       } catch (error) {
         console.error(`Error recording vertex position for layer ${layer.id}, copy ${ci}, vertex ${vi}:`, error);
@@ -1313,7 +1314,7 @@ function recordLayerVertexPositions(layer, timestamp) {
     }
     
     // Also record intersection points
-    recordIntersectionPoints(copyGroup, layer, ci, angle, timestamp, inverseRotationMatrix, rotationMatrix);
+    recordIntersectionPoints(copyGroup, layer, ci, angle, audioTime, inverseRotationMatrix, rotationMatrix);
   }
 }
 
@@ -1323,11 +1324,11 @@ function recordLayerVertexPositions(layer, timestamp) {
  * @param {Object} layer Layer object
  * @param {number} ci Copy index
  * @param {number} angle Current rotation angle
- * @param {number} timestamp Current time
+ * @param {number} audioTime Current audio time in seconds
  * @param {THREE.Matrix4} inverseRotationMatrix Matrix to remove rotation
  * @param {THREE.Matrix4} rotationMatrix Matrix to apply rotation
  */
-function recordIntersectionPoints(copyGroup, layer, ci, angle, timestamp, inverseRotationMatrix, rotationMatrix) {
+function recordIntersectionPoints(copyGroup, layer, ci, angle, audioTime, inverseRotationMatrix, rotationMatrix) {
   // Improved detection of intersection marker group
   let intersectionGroup = null;
   
@@ -1387,7 +1388,7 @@ function recordIntersectionPoints(copyGroup, layer, ci, angle, timestamp, invers
       // Apply rotation for trigger detection
       const rotatedPos = worldPos.clone().applyMatrix4(rotationMatrix);
       
-      // Record position in subframe engine
+      // Record position in subframe engine with audio timing
       subframeEngine.recordVertexPosition(
         vertexId,
         {
@@ -1395,7 +1396,7 @@ function recordIntersectionPoints(copyGroup, layer, ci, angle, timestamp, invers
           y: rotatedPos.y,
           z: rotatedPos.z
         },
-        timestamp
+        audioTime // Use audio time for precise position recording
       );
     } catch (error) {
       console.error(`Error recording intersection position for layer ${layer.id}, copy ${ci}, intersection ${i}:`, error);
@@ -1424,14 +1425,14 @@ function noteFromVertexTrigger(params) {
 /**
  * Detect triggers using subframe precision
  * @param {Object} layer Layer to detect triggers for
- * @param {number} timestamp Current time in seconds
+ * @param {number} audioTime Current audio time in seconds
  * @param {Function} audioCallback Callback for triggered audio
  * @param {THREE.Camera} camera Camera for visual feedback
  * @param {THREE.WebGLRenderer} renderer Renderer for visual feedback
  * @param {THREE.Scene} scene Scene for adding visual markers
  * @returns {boolean} True if any triggers were detected
  */
-function detectSubframeTriggers(layer, timestamp, audioCallback, camera, renderer, scene) {
+function detectSubframeTriggers(layer, audioTime, audioCallback, camera, renderer, scene) {
   if (!layer || !layer.group || !audioCallback) return false;
   
   const state = layer.state;
@@ -1527,7 +1528,7 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
         // Skip if this trigger is in the recent triggers map and still in cooldown
         if (recentTriggers.has(vertexId)) {
           const triggerData = recentTriggers.get(vertexId);
-          const timeSinceLastTrigger = timestamp - triggerData.time;
+          const timeSinceLastTrigger = audioTime - triggerData.time;
           
           // Skip if cooldown hasn't elapsed
           if (timeSinceLastTrigger < cooldownTime) {
@@ -1561,7 +1562,7 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
           
           // Add to recent triggers with current timestamp
           recentTriggers.set(vertexId, {
-            time: timestamp,
+            time: audioTime,
             position: {
               x: nonRotatedX,
               y: nonRotatedY
@@ -1634,7 +1635,7 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
               };
               
               // Handle quantization
-              const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(timestamp, state, triggerInfo);
+              const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(audioTime, state, triggerInfo);
               
               if (shouldTrigger) {
                 // Trigger with precise time
@@ -1711,7 +1712,7 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
     // Process intersection triggers for this copy if we have more than one copy
     if (copies > 1 && state.useIntersections) {
       const isIntersectionTriggered = detectIntersectionSubframeTriggers(
-        layer, ci, angle, timestamp, audioCallback, 
+        layer, ci, angle, audioTime, audioCallback, 
         triggeredNow, triggeredPoints, camera, renderer, scene, cooldownTime
       );
       
@@ -1729,7 +1730,7 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
  * @param {Object} layer Layer object
  * @param {number} ci Copy index
  * @param {number} angle Current rotation angle
- * @param {number} timestamp Current time
+ * @param {number} audioTime Current audio time in seconds
  * @param {Function} audioCallback Audio callback function
  * @param {Set} triggeredNow Set of already triggered points
  * @param {Array} triggeredPoints Array of triggered point positions
@@ -1740,7 +1741,7 @@ function detectSubframeTriggers(layer, timestamp, audioCallback, camera, rendere
  * @returns {boolean} True if any triggers were detected
  */
 function detectIntersectionSubframeTriggers(
-  layer, ci, angle, timestamp, audioCallback, 
+  layer, ci, angle, audioTime, audioCallback, 
   triggeredNow, triggeredPoints, camera, renderer, scene, cooldownTime
 ) {
   // Skip if missing required parameters
@@ -1768,7 +1769,7 @@ function detectIntersectionSubframeTriggers(
         // Skip if this trigger is in the recent triggers map and still in cooldown
         if (recentTriggers.has(vertexId)) {
           const triggerData = recentTriggers.get(vertexId);
-          const timeSinceLastTrigger = timestamp - triggerData.time;
+          const timeSinceLastTrigger = audioTime - triggerData.time;
           
           // Skip if cooldown hasn't elapsed
           if (timeSinceLastTrigger < cooldownTime) {
@@ -1786,7 +1787,7 @@ function detectIntersectionSubframeTriggers(
           
           // Add to recent triggers with current timestamp
           recentTriggers.set(vertexId, {
-            time: timestamp,
+            time: audioTime,
             position: {
               x: crossingResult.position.x,
               y: crossingResult.position.y
@@ -1827,7 +1828,7 @@ function detectIntersectionSubframeTriggers(
             };
             
             // Handle quantization
-            const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(timestamp, state, triggerInfo);
+            const { shouldTrigger, triggerTime, isQuantized } = handleQuantizedTrigger(audioTime, state, triggerInfo);
             
             if (shouldTrigger) {
               // Trigger with precise time

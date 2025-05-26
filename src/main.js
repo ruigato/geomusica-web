@@ -57,16 +57,6 @@ stats.dom.style.left = 'auto';
 stats.dom.style.right = '10px';
 stats.dom.style.top = '10px';
 
-// Create application state
-const appState = createAppState();
-
-// Create global state manager
-const globalState = new GlobalStateManager();
-
-// Make states globally accessible for debugging
-window._appState = appState;
-window._globalState = globalState;
-
 // Store UI references globally
 let uiReferences = null;
 let synthUIReferences = null;
@@ -77,6 +67,8 @@ let globalUIReferences = null;
 let audioInstance = null;
 let sceneInstance = null;
 let layerManager = null;
+let appState = null;
+let globalState = null;
 
 // Store Csound instance globally for consistent access
 let csoundInstance = null;
@@ -503,10 +495,26 @@ function loadFontAndInitApp() {
  */
 function initializeApplication() {
   
+  // Initialize AudioContext first
+  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  console.log('[AUDIO] AudioContext created with sample rate:', audioContext.sampleRate);
   
-  // Initialize time system first - using browser performance timing
-  initializeTime();
+  // Initialize timing system with AudioContext
+  initializeTime(audioContext);
+  console.log('[TIMING] Timing system initialized with AudioContext');
   
+  // Create application state AFTER timing is initialized
+  appState = createAppState();
+  
+  // Create global state manager AFTER timing is initialized
+  globalState = new GlobalStateManager();
+  
+  // Initialize timing in global state
+  globalState.initializeTiming();
+  
+  // Make states globally accessible for debugging
+  window._appState = appState;
+  window._globalState = globalState;
   
   // Setup tab system
   setupHeaderTabs();
@@ -659,7 +667,7 @@ function initializeApplication() {
             }
             
             // Apply color if available
-            if (layer && layerData.color && layer.setColor) {
+            if (layer && layer.color && layer.setColor) {
               const { r, g, b } = layerData.color;
               layer.setColor(new THREE.Color(r, g, b));
             }
@@ -783,7 +791,7 @@ function initializeApplication() {
     addDebugButtons();
     
     // Now initialize audio system after scene is setup
-    setupAudio()
+    setupAudio({ audioContext })
       .then(csound => {
         audioInstance = csound;
         

@@ -7,6 +7,18 @@ import { createPolygonGeometry } from '../geometry/geometry.js';
 const DEBUG_LOGGING = false;
 
 /**
+ * Get current time safely, falling back to performance timing if audio timing isn't ready
+ * @returns {number} Current time in seconds
+ */
+function getSafeTime() {
+  try {
+    return getCurrentTime();
+  } catch (e) {
+    return performance.now() / 1000;
+  }
+}
+
+/**
  * Layer class that encapsulates geometry, state, and rendering for a single layer
  */
 export class Layer {
@@ -328,8 +340,7 @@ export class Layer {
         // Use the global timing system to get initial angle data for this layer
         const angleData = globalState.getLayerAngleData(
           this.id,
-          timeSubdivisionMultiplier,
-          performance.now() / 1000 // Current time in seconds
+          timeSubdivisionMultiplier
         );
         
         // Use the angle data directly
@@ -343,8 +354,7 @@ export class Layer {
       // without changing the angle or timing
       globalState.getLayerAngleData(
         this.id,
-        timeSubdivisionMultiplier,
-        this.lastUpdateTime || (performance.now() / 1000)
+        timeSubdivisionMultiplier
       );
     }
     
@@ -940,8 +950,7 @@ export class Layer {
       // Use the global timing system to get angle data for this layer
       const angleData = globalState.getLayerAngleData(
         this.id,
-        timeSubdivisionMultiplier,
-        currentTime
+        timeSubdivisionMultiplier
       );
       
       // Use the angleRadians directly from the global timing system
@@ -952,8 +961,10 @@ export class Layer {
     } else {
       // Fallback calculation if no global state is available
       if (DEBUG_LOGGING) {
-        
+        console.log('[LAYER] No global state available, using fallback timing');
       }
+      
+      const currentTime = getSafeTime();
       
       // Default to a slow rotation (45 degrees per second)
       const lastUpdateTime = this.lastUpdateTime || (currentTime - 0.016);
@@ -970,7 +981,7 @@ export class Layer {
     }
     
     // Store the time for future delta calculations
-    this.lastUpdateTime = currentTime;
+    this.lastUpdateTime = getSafeTime();
   }
 
   /**

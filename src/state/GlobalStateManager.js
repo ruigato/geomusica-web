@@ -1,5 +1,6 @@
 // src/state/GlobalStateManager.js - Manages global state parameters across all layers
 import { DEFAULT_VALUES } from '../config/constants.js';
+import { getCurrentTime } from '../time/time.js';
 
 /**
  * GlobalStateManager class to handle state parameters that should be shared across all layers
@@ -9,17 +10,17 @@ export class GlobalStateManager {
   constructor() {
     // Global timing parameters
     this.bpm = DEFAULT_VALUES.BPM;
-    this.lastTime = performance.now();
+    this.lastTime = 0; // Initialize to 0, will be updated when timing is ready
     this.lastAngle = 0;
     
-    // FIXED: Centralized layer timing system
+    // FIXED: Centralized layer timing system using AudioContext
     this._layerTimingSystem = {
       // Base angle that all layers should refer to
       baseAngle: 0,
       // Layer-specific angle multipliers (for time subdivision)
       layerMultipliers: new Map(),
-      // Last time the angles were updated
-      lastUpdateTime: performance.now() / 1000,
+      // Last time the angles were updated (using audio time)
+      lastUpdateTime: 0, // Initialize to 0, will be updated when timing is ready
       // Accumulated angles per layer (degrees)
       accumulatedAngles: new Map()
     };
@@ -54,16 +55,48 @@ export class GlobalStateManager {
       useEqualTemperament: false,
       referenceFrequency: false
     };
+    
+    // Try to initialize timing if possible
+    try {
+      this.lastTime = getCurrentTime();
+      this._layerTimingSystem.lastUpdateTime = this.lastTime;
+    } catch (e) {
+      // Timing not ready yet, will be updated later
+      console.log('[STATE] Timing system not ready, will initialize later');
+    }
   }
   
   /**
-   * FIXED: Get layer angle data, creating a consistent timing reference for all layers
+   * Initialize timing after audio system is ready
+   */
+  initializeTiming() {
+    try {
+      this.lastTime = getCurrentTime();
+      this._layerTimingSystem.lastUpdateTime = this.lastTime;
+      console.log('[STATE] Timing system initialized');
+    } catch (e) {
+      console.error('[STATE] Failed to initialize timing:', e);
+    }
+  }
+  
+  /**
+   * FIXED: Get layer angle data using AudioContext timing for precise synchronization
    * @param {string} layerId Layer ID
    * @param {number} timeSubdivisionValue Time subdivision multiplier for this layer
-   * @param {number} currentTime Current time in seconds
+   * @param {number} currentTime Current audio time in seconds
    * @returns {Object} Angle data for the layer
    */
-  getLayerAngleData(layerId, timeSubdivisionValue, currentTime) {
+  getLayerAngleData(layerId, timeSubdivisionValue) {
+    // Get current time from audio system
+    let currentTime;
+    try {
+      currentTime = getCurrentTime();
+    } catch (e) {
+      // Fallback to performance timing if audio timing not ready
+      currentTime = performance.now() / 1000;
+      console.warn('[STATE] Audio timing not ready, using performance timing');
+    }
+    
     if (!this._layerTimingSystem) {
       this._layerTimingSystem = {
         baseAngle: this.lastAngle || 0,
@@ -76,11 +109,11 @@ export class GlobalStateManager {
     // Store the multiplier for this layer
     this._layerTimingSystem.layerMultipliers.set(layerId, timeSubdivisionValue || 1);
     
-    // Calculate how much time has passed since the last update
+    // Calculate elapsed time using audio time
     const elapsedTime = currentTime - this._layerTimingSystem.lastUpdateTime;
     
     // FIXED: Always update angles even if this is the first access for this layer
-    // to maintain continuous rotation
+    // to maintain continuous rotation using audio timing
     if (elapsedTime > 0) {
       // Calculate base rotation (degrees) based on BPM
       // 120 BPM = 0.5 rotations per second = 180 degrees per second
@@ -102,7 +135,7 @@ export class GlobalStateManager {
         this._layerTimingSystem.accumulatedAngles.set(id, newAngle);
       }
       
-      // Update the last update time
+      // Update the last update time using audio time
       this._layerTimingSystem.lastUpdateTime = currentTime;
     }
     
@@ -114,9 +147,6 @@ export class GlobalStateManager {
     if (layerAngle === undefined) {
       layerAngle = this._layerTimingSystem.baseAngle;
       this._layerTimingSystem.accumulatedAngles.set(layerId, layerAngle);
-      
-      // IMPORTANT: Don't update lastUpdateTime here - we want continuous motion
-      // instead of resetting the timer, which would cause a pause
     }
     
     // Convert from degrees to radians for the return value
@@ -291,39 +321,27 @@ export class GlobalStateManager {
   }
   
   /**
-   * Update angle for animation with subframe precision
-   * @param {number} tNow Current time in ms
+   * Update angle for animation with audio timing precision
+   * @param {number} audioTime Current audio time in seconds
    * @returns {Object} Object with angle and lastAngle
    */
-  updateAngle(tNow) {
+  updateAngle(audioTime) {
     // Store the previous angle
     const previousAngle = this.lastAngle;
     
     // If this is the first call, initialize lastTime
     if (!this.lastTime) {
-      this.lastTime = tNow;
-      // Initialize high precision time tracking
-      this.lastPreciseTime = tNow / 1000; // Convert to seconds for precision calculations
+      this.lastTime = audioTime;
       return { angle: this.lastAngle, lastAngle: this.lastAngle };
     }
     
-    // Calculate time delta in milliseconds (for backward compatibility)
-    const dt = Math.min(tNow - this.lastTime, 100); // Cap delta time at 100ms
+    // Calculate time delta in seconds using audio time
+    const dt = Math.min(audioTime - this.lastTime, 0.1); // Cap delta time at 100ms
     
     // Skip tiny time steps (often happen during timing system initialization)
-    if (dt < 1) {
+    if (dt < 0.001) { // 1ms minimum step
       return { angle: this.lastAngle, lastAngle: this.lastAngle };
     }
-    
-    // Get time in seconds
-    const seconds = dt / 1000;
-    
-    // High precision time calculation (in seconds)
-    const currentPreciseTime = tNow / 1000;
-    const preciseDt = currentPreciseTime - (this.lastPreciseTime || currentPreciseTime);
-    
-    // Use precise time delta if available, otherwise fallback to regular calculation
-    const effectiveSeconds = (preciseDt > 0 && preciseDt < 0.1) ? preciseDt : seconds;
     
     // Adjust calculation to make 120 BPM = 0.5 rotation per second (1 rotation per 2 seconds)
     // Formula: rotationsPerSecond = BPM / 240
@@ -334,20 +352,14 @@ export class GlobalStateManager {
     
     // Calculate degrees to rotate this frame
     const degreesPerSecond = rotationsPerSecond * 360;
-    const angleDelta = degreesPerSecond * effectiveSeconds;
+    const angleDelta = degreesPerSecond * dt;
     
     // Get the last angle and calculate the new angle
     const lastAngle = this.lastAngle;
     const angle = (lastAngle + angleDelta) % 360;
     
-    // Debug logging periodically (about once every 5 seconds at 60fps)
-    if (Math.random() < 0.003) { // ~0.3% chance each frame
-      
-    }
-    
-    // Store for next frame
-    this.lastTime = tNow;
-    this.lastPreciseTime = currentPreciseTime;
+    // Store for next frame using audio time
+    this.lastTime = audioTime;
     this.previousAngle = previousAngle;
     this.lastAngle = angle;
     

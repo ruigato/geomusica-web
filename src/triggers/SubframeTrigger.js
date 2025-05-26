@@ -1,4 +1,5 @@
 // src/triggers/SubframeTrigger.js - Frame-rate independent temporal trigger detection engine
+import { getCurrentTime } from '../time/time.js';
 
 /**
  * Represents a high-precision trigger crossing result
@@ -65,6 +66,15 @@ class TemporalVertexState {
   }
 }
 
+// Fallback to performance timing if audio timing isn't ready
+function getTimestamp() {
+  try {
+    return getCurrentTime();
+  } catch (e) {
+    return performance.now() / 1000;
+  }
+}
+
 /**
  * Main temporal trigger engine for frame-rate independent trigger detection
  */
@@ -76,6 +86,7 @@ export class TemporalTriggerEngine {
    * @param {number} options.maxMemory - Maximum memory states to keep (default: 50)
    * @param {number} options.maxVertices - Maximum number of vertices to track (default: 1000)
    * @param {number} options.cleanupInterval - Interval in ms to run automatic cleanup (default: 10000)
+   * @param {boolean} options.useAudioTiming - Whether to use audio timing (default: true)
    */
   constructor(options = {}) {
     // Constants for temporal engine
@@ -89,6 +100,7 @@ export class TemporalTriggerEngine {
     this.maxVertices = options.maxVertices || DEFAULT_MAX_VERTICES;
     this.cleanupInterval = options.cleanupInterval || DEFAULT_CLEANUP_INTERVAL;
     this.timeSlice = 1 / this.resolution;
+    this.useAudioTiming = options.useAudioTiming !== false; // Default to true
     
     // State tracking
     this.vertexStates = new Map(); // Maps vertex IDs to arrays of temporal states
@@ -99,11 +111,13 @@ export class TemporalTriggerEngine {
     
     // Setup automatic cleanup
     this.cleanupTimerId = null;
-    this._setupCleanupTimer();
+    
+    // Defer audio timing setup until explicitly initialized
+    this._audioTimingReady = false;
   }
   
   /**
-   * Set up periodic cleanup timer
+   * Set up periodic cleanup timer using audio time
    * @private
    */
   _setupCleanupTimer() {
@@ -112,26 +126,26 @@ export class TemporalTriggerEngine {
       clearInterval(this.cleanupTimerId);
     }
     
-    // Create a new cleanup timer
+    // Create a new cleanup timer that uses audio time
     this.cleanupTimerId = setInterval(() => {
-      this._performVertexCleanup();
+      const audioTime = this.getCurrentTime();
+      this._performVertexCleanup(audioTime);
     }, this.cleanupInterval);
   }
   
   /**
    * Perform cleanup of vertex states based on LRU strategy
+   * @param {number} audioTime Current audio time in seconds
    * @private
    */
-  _performVertexCleanup() {
+  _performVertexCleanup(audioTime) {
     // Skip if not initialized
     if (!this._initialized) return;
-    
-    const now = this.getCurrentTime();
     
     // First pass: remove old entries from each vertex's history
     for (const [id, states] of this.vertexStates.entries()) {
       // Prune states that are too old (older than 5 seconds)
-      const recentStates = states.filter(state => now - state.timestamp < 5);
+      const recentStates = states.filter(state => audioTime - state.timestamp < 5);
       
       if (recentStates.length === 0) {
         // If no recent states, remove this vertex entirely
@@ -166,43 +180,64 @@ export class TemporalTriggerEngine {
   }
   
   /**
-   * Initialize the engine
+   * Initialize the engine with audio timing
    */
   initialize() {
-    this.lastProcessedTime = this.getCurrentTime();
+    // Start with performance timing
+    this.lastProcessedTime = performance.now() / 1000;
     this._initialized = true;
+    
+    // Setup cleanup with safe timing
     this._setupCleanupTimer();
+    
+    // Try to switch to audio timing
+    try {
+      const audioTime = getCurrentTime();
+      this.lastProcessedTime = audioTime;
+      this._audioTimingReady = true;
+    } catch (e) {
+      console.warn('[TRIGGER] Audio timing not ready, using performance timing temporarily');
+      // Will retry on next getCurrentTime call
+    }
   }
   
   /**
-   * Get current high-precision time in seconds
+   * Get current high-precision time in seconds using AudioContext when available
    * @returns {number} Current time in seconds
    */
   getCurrentTime() {
-    return performance.now() / 1000;
+    if (!this._initialized) {
+      this.initialize();
+    }
+    
+    // Try to use audio timing, fall back to performance timing
+    return getTimestamp();
   }
   
   /**
-   * Record a new vertex position
+   * Record a new vertex position with audio timing
    * @param {string} id - Unique vertex identifier
    * @param {Object} position - Current position {x, y, z}
-   * @param {number} timestamp - Current timestamp (in seconds)
+   * @param {number} timestamp - Current audio time in seconds
    */
   recordVertexPosition(id, position, timestamp) {
     if (!this._initialized) {
       this.initialize();
     }
     
+    // Use provided timestamp or get current audio time
+    const audioTime = timestamp || this.getCurrentTime();
+    
     // Update last accessed time for LRU tracking
-    this.vertexLastAccessed.set(id, timestamp);
+    this.vertexLastAccessed.set(id, audioTime);
     
     // Check if we're at capacity before adding
     if (!this.vertexStates.has(id) && this.vertexStates.size >= this.maxVertices) {
       this._evictLeastRecentlyUsed();
     }
     
-    // Create state object
-    const state = new TemporalVertexState(position, timestamp, id);
+    // Create state object with audio timing
+    const state = new TemporalVertexState(position, audioTime, id);
     
     // Get or create the state array for this vertex
     if (!this.vertexStates.has(id)) {
