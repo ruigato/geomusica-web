@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import Stats from 'stats.js';
 
 // Debug flag to control the visibility of debug buttons
-const DEBUG_BUTTONS = true; // Temporarily set to true for testing
+const DEBUG_BUTTONS = false; // Set to false to hide debug tools
 const DEBUG_LOGGING = false;
 
 // Expose debug flag globally
