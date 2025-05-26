@@ -1187,16 +1187,13 @@ function createRegularPolygonPoints(radius, numSegments, state = null) {
   const points = [];
   const angleStep = (Math.PI * 2) / numSegments;
   
-  // Create a regular polygon at half radius to match the expected scale
-  const adjustedRadius = radius / 2;
-  
-  // Create a regular polygon
+  // Create a regular polygon using full radius
   for (let i = 0; i < numSegments; i++) {
     const angle = i * angleStep;
-    const x = Math.cos(angle) * adjustedRadius;
-    const y = Math.sin(angle) * adjustedRadius;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
     if (window.DEBUG_MATRIX) {
-      console.log('[GEOMETRY DEBUG] Created point:', x, y, 'for radius:', adjustedRadius);
+      console.log('[GEOMETRY DEBUG] Created point:', x, y, 'for radius:', radius);
     }
     points.push(new THREE.Vector2(x, y));
   }
@@ -1226,9 +1223,9 @@ function createStarPolygonPointsLocal(radius, numSegments, skip, state = null) {
   // Create vertices evenly spaced around the circle
   for (let i = 0; i < numSegments; i++) {
     const angle = i * angleStep;
-    // Use half radius to match regular polygon scaling
-    const x = Math.cos(angle) * (radius / 2);
-    const y = Math.sin(angle) * (radius / 2);
+    // Use full radius for star polygons
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
     points.push(new THREE.Vector2(x, y));
   }
   
