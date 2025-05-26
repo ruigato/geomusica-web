@@ -3,7 +3,7 @@
 import { Csound } from '@csound/browser';
 import { quantizeToEqualTemperament, getNoteName } from './frequencyUtils.js';
 import { DEFAULT_VALUES, PARAMETER_RANGES } from '../config/constants.js';
-import { initializeTime } from '../time/time.js';
+// Note: initializeTime is now handled centrally in main.js
 
 // Debug flag to control audio logging
 const DEBUG_AUDIO = false;
@@ -297,17 +297,7 @@ function initAudioContext() {
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
       sampleRate = audioContext.sampleRate;
       
-      // Immediately try to initialize timing system if context is ready
-      if (audioContext.state === 'running') {
-        try {
-          if (typeof initializeTime === 'function') {
-            initializeTime(audioContext);
-            console.log('[AUDIO] Timing system initialized immediately with AudioContext');
-          }
-        } catch (error) {
-          console.warn('[AUDIO] Could not initialize timing immediately:', error);
-        }
-      }
+      // Note: Timing system initialization is now handled centrally in main.js
       
       console.log('[AUDIO] AudioContext created with sample rate:', sampleRate);
     } catch (error) {
@@ -369,16 +359,8 @@ export async function setupAudio({ audioContext: providedAudioContext } = {}) {
           
         csoundInstance = await Csound(csoundOptions);
         
-        // Initialize timing system with our AudioContext - CRITICAL for rock-solid timing
-        try {
-          if (typeof initializeTime === 'function') {
-            initializeTime(audioContext);
-            console.log('[AUDIO] Timing system initialized with shared AudioContext');
-          }
-        } catch (error) {
-          console.error('[AUDIO] FATAL: Failed to initialize timing system:', error);
-          throw error; // This is critical - don't continue without proper timing
-        }
+        // Note: Timing system initialization is now handled centrally in main.js
+        // The AudioContext should already be properly initialized by this point
         
         // Initialize Csound immediately without waiting for user click
         try {
@@ -389,15 +371,7 @@ export async function setupAudio({ audioContext: providedAudioContext } = {}) {
           await csoundInstance.start();
           csoundStarted = true;
           
-          // Initialize timing system with AudioContext on user interaction
-          try {
-            if (typeof initializeTime === 'function') {
-              initializeTime(audioContext);
-              console.log('[AUDIO] Timing system initialized with shared AudioContext (user interaction)');
-            }
-          } catch (error) {
-            console.error('[AUDIO] FATAL: Failed to initialize timing system on user interaction:', error);
-          }
+          // Note: Timing system already initialized centrally in main.js
           
           // Set default parameters
           await csoundInstance.setControlChannel("attack", DEFAULT_VALUES.ATTACK);
@@ -441,15 +415,7 @@ export async function setupAudio({ audioContext: providedAudioContext } = {}) {
             await csoundInstance.start();
             csoundStarted = true;
             
-            // Initialize timing system with AudioContext on user interaction
-            try {
-              if (typeof initializeTime === 'function') {
-                initializeTime(audioContext);
-                console.log('[AUDIO] Timing system initialized with shared AudioContext (user interaction)');
-              }
-            } catch (error) {
-              console.error('[AUDIO] FATAL: Failed to initialize timing system on user interaction:', error);
-            }
+            // Note: Timing system already initialized centrally in main.js
             
             // Set default parameters
             await csoundInstance.setControlChannel("attack", DEFAULT_VALUES.ATTACK);

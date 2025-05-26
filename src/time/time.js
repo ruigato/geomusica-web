@@ -36,13 +36,66 @@ class TimingError extends Error {
   }
 }
 
+// User interaction handler for AudioContext resume
+let userInteractionHandlerSetup = false;
+
+/**
+ * Set up user interaction handler to resume AudioContext
+ * @param {AudioContext} audioContext - The AudioContext to resume
+ */
+function setupUserInteractionHandler(audioContext) {
+  if (userInteractionHandlerSetup) return;
+  
+  const handleUserInteraction = async () => {
+    try {
+      if (audioContext.state === 'suspended') {
+        console.log('[AUDIO TIMING] User interaction detected, attempting to resume AudioContext...');
+        await audioContext.resume();
+        
+                 if (audioContext.state === 'running') {
+           console.log('[AUDIO TIMING] AudioContext resumed successfully after user interaction');
+           
+           // CRITICAL: Switch to AudioContext timing seamlessly
+           const currentPerformanceTime = performance.now() / 1000 - performanceStartTime;
+           audioStartTime = audioContext.currentTime - currentPerformanceTime;
+           activeTimingSource = TIMING_SOURCES.AUDIO_CONTEXT;
+           
+           // Update cache
+           cachedAudioTime = audioContext.currentTime;
+           cacheTimestamp = performance.now();
+           
+           console.log('[AUDIO TIMING] Switched to AudioContext timing seamlessly');
+           console.log(`[AUDIO TIMING] Current time continuity: ${currentPerformanceTime.toFixed(3)}s`);
+           
+           // Remove event listeners since we're now running
+           document.removeEventListener('click', handleUserInteraction);
+           document.removeEventListener('keydown', handleUserInteraction);
+           document.removeEventListener('touchstart', handleUserInteraction);
+           
+           console.log('[AUDIO TIMING] User interaction handlers removed, timing system fully active');
+         }
+      }
+    } catch (error) {
+      console.warn('[AUDIO TIMING] Failed to resume AudioContext on user interaction:', error);
+    }
+  };
+  
+  // Add event listeners for various user interactions
+  document.addEventListener('click', handleUserInteraction, { once: false });
+  document.addEventListener('keydown', handleUserInteraction, { once: false });
+  document.addEventListener('touchstart', handleUserInteraction, { once: false });
+  
+  userInteractionHandlerSetup = true;
+  console.log('[AUDIO TIMING] User interaction handlers set up for AudioContext resume');
+}
+
 /**
  * Initialize the timing system with AudioContext
  * This MUST be called with a valid AudioContext before any other timing functions
  * @param {AudioContext} audioContext - The shared AudioContext instance
- * @returns {boolean} True if initialization successful
+ * @returns {Promise<boolean>} Promise that resolves to true if initialization successful
  */
-export function initializeTime(audioContext) {
+export async function initializeTime(audioContext) {
   if (!audioContext) {
     throw new TimingError('AudioContext is required for timing initialization');
   }
@@ -51,26 +104,83 @@ export function initializeTime(audioContext) {
     throw new TimingError('Invalid AudioContext provided');
   }
   
+  // Wait for AudioContext to be running before proceeding with retry mechanism
+  let retryCount = 0;
+  const maxRetries = 3;
+  
+  while (audioContext.state === 'suspended' && retryCount < maxRetries) {
+    try {
+      console.log(`[AUDIO TIMING] AudioContext is suspended, attempting to resume (attempt ${retryCount + 1}/${maxRetries})...`);
+      await audioContext.resume();
+      
+      // Wait a short moment for the state change to take effect
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      if (audioContext.state === 'running') {
+        console.log('[AUDIO TIMING] AudioContext resumed successfully');
+        break;
+      } else {
+        console.warn(`[AUDIO TIMING] AudioContext state after resume attempt: ${audioContext.state}`);
+      }
+    } catch (error) {
+      console.warn(`[AUDIO TIMING] Failed to resume AudioContext (attempt ${retryCount + 1}): ${error.message}`);
+    }
+    
+    retryCount++;
+    
+    // Wait before retrying
+    if (retryCount < maxRetries) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+  
+  // Final verification of AudioContext state
+  if (audioContext.state === 'suspended') {
+    console.warn('[AUDIO TIMING] AudioContext is still suspended after all resume attempts');
+    console.warn('[AUDIO TIMING] Animation may not start immediately until user interaction');
+    console.warn('[AUDIO TIMING] This is normal on some browsers that require user gesture for audio');
+  } else {
+    console.log(`[AUDIO TIMING] AudioContext state: ${audioContext.state}`);
+  }
+  
+  // Only proceed with timing initialization after AudioContext state is handled
   sharedAudioContext = audioContext;
-  audioStartTime = audioContext.currentTime;
-  performanceStartTime = performance.now() / 1000;
+  
+  // CRITICAL FIX: Handle timing initialization based on AudioContext state
+  if (audioContext.state === 'running') {
+    // AudioContext is running - use audio time
+    audioStartTime = audioContext.currentTime;
+    performanceStartTime = performance.now() / 1000;
+    activeTimingSource = TIMING_SOURCES.AUDIO_CONTEXT;
+    console.log('[AUDIO TIMING] Using AudioContext timing (running state)');
+  } else {
+    // AudioContext is suspended - use performance timing until it resumes
+    audioStartTime = 0; // Will be set when AudioContext resumes
+    performanceStartTime = performance.now() / 1000;
+    activeTimingSource = TIMING_SOURCES.PERFORMANCE_NOW;
+    console.log('[AUDIO TIMING] Using performance.now() timing (suspended AudioContext)');
+  }
+  
   timingInitialized = true;
   
-  // Initialize cache
-  cachedAudioTime = audioContext.currentTime;
-  cacheTimestamp = performance.now();
-  
-  // Ensure AudioContext is running
-  if (audioContext.state === 'suspended') {
-    audioContext.resume().catch(error => {
-      console.warn(`[AUDIO TIMING] Failed to resume AudioContext: ${error.message}`);
-    });
+  // Initialize cache based on current timing source
+  if (activeTimingSource === TIMING_SOURCES.AUDIO_CONTEXT) {
+    cachedAudioTime = audioContext.currentTime;
+  } else {
+    cachedAudioTime = 0; // Will be set when AudioContext becomes available
   }
+  cacheTimestamp = performance.now();
   
   console.log('[AUDIO TIMING] Initialized with sample-accurate timing');
   console.log(`[AUDIO TIMING] Audio context sample rate: ${audioContext.sampleRate}Hz`);
+  console.log(`[AUDIO TIMING] Audio context state: ${audioContext.state}`);
   console.log(`[AUDIO TIMING] Start time: ${audioStartTime}`);
   console.log(`[AUDIO TIMING] Time caching enabled with ${cacheDuration}ms buffer`);
+  
+  // Set up user interaction handler for suspended AudioContext
+  if (audioContext.state === 'suspended') {
+    setupUserInteractionHandler(audioContext);
+  }
   
   return true;
 }
@@ -561,6 +671,31 @@ export function clearTimingCache() {
   console.log('[AUDIO TIMING] Cache cleared and statistics reset');
 }
 
+/**
+ * Debug function to log detailed timing information
+ */
+export function debugTiming() {
+  const status = getTimingStatus();
+  console.group('[AUDIO TIMING DEBUG]');
+  console.log('Timing Status:', status);
+  console.log('Current Time:', getCurrentTime());
+  console.log('AudioContext State:', sharedAudioContext?.state || 'not available');
+  console.log('Active Timing Source:', activeTimingSource);
+  console.log('Audio Start Time:', audioStartTime);
+  console.log('Performance Start Time:', performanceStartTime);
+  console.log('Cache Enabled:', cacheEnabled);
+  console.log('Cache Hit Rate:', status.cacheHitRate);
+  
+  // Test timing continuity
+  const time1 = getCurrentTime();
+  setTimeout(() => {
+    const time2 = getCurrentTime();
+    const diff = time2 - time1;
+    console.log(`Timing continuity test: ${diff.toFixed(3)}s (should be ~0.010s)`);
+    console.groupEnd();
+  }, 10);
+}
+
 // Make diagnostic functions available globally for debugging
 if (typeof window !== 'undefined') {
   window.getTimingStatus = getTimingStatus;
@@ -569,4 +704,5 @@ if (typeof window !== 'undefined') {
   window.configureTimingCache = configureTimingCache;
   window.clearTimingCache = clearTimingCache;
   window.isTimingInitialized = isTimingInitialized;
+  window.debugTiming = debugTiming;
 }

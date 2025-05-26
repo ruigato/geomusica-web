@@ -486,22 +486,35 @@ function loadFontAndInitApp() {
     text: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,/()[]{}|<>?;:\'"\\~`!@#$%^&*-+=',
     fontSize: 16,
     fontWeight: 'normal',
-    onFontLoaded: initializeApplication
+    onFontLoaded: async () => {
+      try {
+        await initializeApplication();
+      } catch (error) {
+        console.error('[INIT] Failed to initialize application:', error);
+      }
+    }
   });
 }
 
 /**
  * Initialize the main application
  */
-function initializeApplication() {
+async function initializeApplication() {
   
   // Initialize AudioContext first
   const audioContext = new (window.AudioContext || window.webkitAudioContext)();
   console.log('[AUDIO] AudioContext created with sample rate:', audioContext.sampleRate);
+  console.log('[AUDIO] AudioContext initial state:', audioContext.state);
   
-  // Initialize timing system with AudioContext
-  initializeTime(audioContext);
-  console.log('[TIMING] Timing system initialized with AudioContext');
+  // Wait for timing system to be fully initialized
+  try {
+    await initializeTime(audioContext);
+    console.log('[TIMING] Timing system initialized with AudioContext');
+  } catch (error) {
+    console.error('[TIMING] Failed to initialize timing system:', error);
+    // Continue with fallback timing
+    console.warn('[TIMING] Continuing with performance.now() fallback timing');
+  }
   
   // Create application state AFTER timing is initialized
   appState = createAppState();
@@ -792,11 +805,23 @@ function initializeApplication() {
     
     // Now initialize audio system after scene is setup
     setupAudio({ audioContext })
-      .then(csound => {
+      .then(async (csound) => {
         audioInstance = csound;
         
         // Store Csound instance globally
         csoundInstance = csound;
+        
+        // Ensure timing is properly initialized before starting animation
+        try {
+          const { isTimingInitialized } = await import('./time/time.js');
+          
+          if (!isTimingInitialized()) {
+            console.warn('[TIMING] Timing system not initialized, re-initializing...');
+            await initializeTime(audioContext);
+          }
+        } catch (error) {
+          console.error('[TIMING] Failed to verify timing initialization:', error);
+        }
         
         // Make sure all layers have the globalState attached
         if (layerManager && layerManager.layers) {
@@ -828,7 +853,7 @@ function initializeApplication() {
           triggerAudio(note, csound);
         };
         
-        // Start animation with global state for timing
+        // Start animation after timing verification is complete
         animate({
           scene,
           group: activeLayer.group,
@@ -973,8 +998,20 @@ function initializeApplication() {
         // Add to window for debugging
         window._layers = layerManager;
       })
-      .catch(error => {
+      .catch(async (error) => {
         console.error("Failed to setup audio system:", error);
+        
+        // Even if audio fails, ensure timing is properly initialized
+        try {
+          const { isTimingInitialized } = await import('./time/time.js');
+          
+          if (!isTimingInitialized()) {
+            console.warn('[TIMING] Timing system not initialized (audio failed), re-initializing...');
+            await initializeTime(audioContext);
+          }
+        } catch (timingError) {
+          console.error('[TIMING] Failed to verify timing initialization (audio failed):', timingError);
+        }
         
         // If audio fails, still initialize the UI and animation
         const activeLayer = layerManager.getActiveLayer();

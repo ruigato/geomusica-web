@@ -70,6 +70,9 @@ export function animate(props) {
   // Use requestAnimationFrame to schedule the next frame
   requestAnimationFrame(() => animate(props));
   
+  // CRITICAL FIX: Increment frameCount BEFORE any early returns
+  frameCount++;
+  
   // Get current time from audio-synchronized timing system
   const currentAudioTime = getSafeTime();
   
@@ -80,15 +83,13 @@ export function animate(props) {
   timeDelta = Math.max(0, Math.min(timeDelta, MAX_FRAME_TIME));
   
   // Skip frame if delta is too small (prevents unnecessary processing)
-  if (timeDelta < MIN_FRAME_TIME * 0.5) {
+  // But allow first few frames to pass through to get animation started
+  if (timeDelta < MIN_FRAME_TIME * 0.5 && frameCount > 5) {
     return;
   }
   
   // Update lastTime for next frame using audio time
   lastAudioTime = currentAudioTime;
-  
-  // Update FPS stats with audio-based timing
-  frameCount++;
   if (timeDelta > 0) {
     const fps = 1 / timeDelta;
     fpsStats.frames++;
