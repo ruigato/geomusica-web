@@ -245,6 +245,11 @@ function setupTimeSubdivisionRadioButtons(container, state) {
         
         // Set time subdivision value on the active layer
         activeState.setTimeSubdivisionValue(parseFloat(value));
+        
+        // Auto-enable time subdivision if value is not 1 (default)
+        const isDefault = Math.abs(parseFloat(value) - 1.0) < 0.001;
+        activeState.setUseTimeSubdivision(!isDefault);
+        
         if (DEBUG_LOGGING) {
           
         }
@@ -384,7 +389,7 @@ export function setupUI(state) {
   const modulusRadioGroup = document.getElementById('modulusRadioGroup');
   
   // Time subdivision controls
-  const useTimeSubdivisionCheckbox = document.getElementById('useTimeSubdivisionCheckbox');
+  // Time subdivision checkbox removed
   const timeSubdivisionRadioGroup = document.getElementById('timeSubdivisionRadioGroup');
   
   // Time quantization controls
@@ -476,7 +481,7 @@ export function setupUI(state) {
   }
   if (showPointsFreqLabelsCheckbox) showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
   if (useAltScaleCheckbox) useAltScaleCheckbox.checked = state.useAltScale;
-  if (useTimeSubdivisionCheckbox) useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
+  // Time subdivision checkbox removed
   if (useEqualTemperamentCheckbox) useEqualTemperamentCheckbox.checked = state.useEqualTemperament;
   if (useQuantizationCheckbox) useQuantizationCheckbox.checked = state.useQuantization;
   if (useFractalCheckbox) useFractalCheckbox.checked = state.useFractal;
@@ -583,17 +588,7 @@ export function setupUI(state) {
     });
   }
   
-  // Setup time subdivision checkbox with null check
-  if (useTimeSubdivisionCheckbox) {
-    useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
-    useTimeSubdivisionCheckbox.addEventListener('change', e => {
-      // Get the current active layer state
-      const activeState = typeof window.getActiveState === 'function' ? 
-        window.getActiveState() : state;
-        
-      activeState.setUseTimeSubdivision(e.target.checked);
-    });
-  }
+  // Time subdivision checkbox is removed - now automatically handled by radio button selection
   
   // Setup quantization checkbox with null check
   if (useQuantizationCheckbox) {
@@ -1241,7 +1236,7 @@ export function setupUI(state) {
       numberRange, numberNumber, numberValue,
       useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
       useModulusCheckbox, modulusRadioGroup,
-      useTimeSubdivisionCheckbox, timeSubdivisionRadioGroup,
+      /* Time subdivision checkbox removed */ timeSubdivisionRadioGroup,
       useQuantizationCheckbox, quantizationRadioGroup,
       altScaleRange, altScaleNumber, altScaleValue,
       altStepNRange, altStepNNumber, altStepNValue,
@@ -1278,7 +1273,7 @@ export function setupUI(state) {
       numberRange, numberNumber, numberValue,
       useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
       useModulusCheckbox, modulusRadioGroup,
-      useTimeSubdivisionCheckbox, timeSubdivisionRadioGroup,
+      /* Time subdivision checkbox removed */ timeSubdivisionRadioGroup,
       useQuantizationCheckbox, quantizationRadioGroup,
       altScaleRange, altScaleNumber, altScaleValue,
       altStepNRange, altStepNNumber, altStepNValue,
@@ -1311,7 +1306,7 @@ export function setupUI(state) {
     numberRange, numberNumber, numberValue,
     useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
     useModulusCheckbox, modulusRadioGroup,
-    useTimeSubdivisionCheckbox, timeSubdivisionRadioGroup,
+    /* Time subdivision checkbox removed */ timeSubdivisionRadioGroup,
     useQuantizationCheckbox, quantizationRadioGroup,
     altScaleRange, altScaleNumber, altScaleValue,
     altStepNRange, altStepNNumber, altStepNValue,

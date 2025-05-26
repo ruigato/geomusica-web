@@ -720,9 +720,7 @@ export function updateUIFromState(state, uiElements) {
       uiElements.useModulusCheckbox.checked = state.useModulus;
     }
     
-    if (uiElements.useTimeSubdivisionCheckbox && state.useTimeSubdivision !== undefined) {
-      uiElements.useTimeSubdivisionCheckbox.checked = state.useTimeSubdivision;
-    }
+    // Time subdivision checkbox removed - now automatically enabled/disabled based on value
     
     if (uiElements.useQuantizationCheckbox && state.useQuantization !== undefined) {
       uiElements.useQuantizationCheckbox.checked = state.useQuantization;
