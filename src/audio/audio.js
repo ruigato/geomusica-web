@@ -513,8 +513,15 @@ export async function triggerAudio(note) {
     // Use comprehensive validation
     const validatedNote = validateNoteParameters(note);
     
+    // DEPRECATED: Star cuts logic moved to geometry pipeline
     // Check if this is a star cut intersection
     if (note.isStarCut) {
+      console.warn('Star cuts temporarily disabled - being refactored');
+      
+      // Play a regular note instead
+      playNote(validatedNote);
+      
+      /* Disabled star cut specific processing
       // Make star cuts sound different:
       // 1. Increase brightness for more harmonics
       const currentBrightness = await csoundInstance.getControlChannel("brightness");
@@ -537,11 +544,7 @@ export async function triggerAudio(note) {
       setTimeout(async () => {
         await csoundInstance.setControlChannel("brightness", currentBrightness);
       }, validatedNote.duration * 1000);
-      
-      // Special logging for star cuts
-      if (DEBUG_AUDIO) {
-        
-      }
+      */
     } else {
       // Play a regular note
       playNote(validatedNote);

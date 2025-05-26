@@ -707,6 +707,12 @@ function detectIntersectionTriggers(
   triggeredNow, triggeredPoints, inverseRotationMatrix, rotationMatrix, 
   isLerping, LERPING_TRIGGER_COOLDOWN
 ) {
+  // DEPRECATED: Star cuts logic moved to geometry pipeline
+  if (layer?.state?.useStars && layer?.state?.useCuts && layer?.state?.starSkip > 1) {
+    console.warn('Star cuts temporarily disabled - being refactored');
+    return false;
+  }
+
   // Debug when this function is called
   if (DEBUG_STAR_CUTS) {
     
@@ -780,12 +786,9 @@ function detectIntersectionTriggers(
     }
   }
   
-  // Determine if these are star cut intersections
-  const isStarCuts = state.useStars && state.useCuts && state.starSkip > 1;
-  
-  if (isStarCuts && DEBUG_STAR_CUTS) {
-    
-  }
+  // DEPRECATED: Star cuts logic moved to geometry pipeline
+  // Determine if these are star cut intersections - DISABLED
+  const isStarCuts = false; // DISABLED: state.useStars && state.useCuts && state.starSkip > 1;
   
   // Create a map for vertices that have already been checked
   if (!layer.prevIntersectionVertices) {
@@ -1671,12 +1674,21 @@ function detectIntersectionSubframeTriggers(
   layer, ci, angle, timestamp, audioCallback, 
   triggeredNow, triggeredPoints, camera, renderer, scene, cooldownTime
 ) {
-  if (!layer || !layer.group) return false;
+  // Skip if missing required parameters
+  if (!layer || !layer.state || !scene) {
+    return false;
+  }
   
   const state = layer.state;
   
-  // Determine if these are star cut intersections
-  const isStarCuts = state.useStars && state.useCuts && state.starSkip > 1;
+  // DEPRECATED: Star cuts logic moved to geometry pipeline
+  // Check if star cuts are enabled and show warning
+  if (state.useStars && state.useCuts && state.starSkip > 1) {
+    console.warn('Star cuts temporarily disabled - being refactored');
+  }
+  
+  // Determine if these are star cut intersections - DISABLED
+  const isStarCuts = false; // DISABLED: state.useStars && state.useCuts && state.starSkip > 1;
   
   let anyTriggers = false;
   
@@ -1864,4 +1876,86 @@ export function clearLayerMarkers(layer) {
       markers.splice(j, 1);
     }
   }
+}
+
+/**
+ * Detect intersections for the active layer
+ * @param {Object} layer The active layer
+ * @returns {Array} Array of intersections
+ */
+export function detectIntersections(layer) {
+  if (!layer) return [];
+  
+  // Skip if layer state doesn't exist
+  if (!layer.state) return [];
+  
+  // DEPRECATED: Star cuts logic moved to geometry pipeline
+  // Check if star cuts are enabled and show warning
+  if (layer.state.useStars === true && layer.state.useCuts === true && layer.state.starSkip > 1) {
+    console.warn('Star cuts temporarily disabled - being refactored');
+  }
+  
+  // IMPORTANT: Skip intersection detection if explicitly disabled
+  // Check both useIntersections and useStars+useCuts flags
+  const useIntersections = layer.state.useIntersections === true;
+  const useStarCuts = false; // DISABLED: layer.state.useStars === true && layer.state.useCuts === true && layer.state.starSkip > 1;
+  
+  if (!useIntersections && !useStarCuts) {
+    // Return empty array when intersections are disabled
+    return [];
+  }
+  
+  // Only require at least 2 copies for regular intersections
+  // For star cuts, we can have any number of copies (even 0 or 1)
+  if (!useStarCuts && layer.state.copies < 2) {
+    return [];
+  }
+  
+  // Get the current markers array or create a new one
+  if (!layer.markers) {
+    layer.markers = [];
+  }
+  
+  // Process any existing markers first
+  const existingMarkers = layer.markers.filter(m => 
+    m.animState !== ANIMATION_STATES.EXPIRED
+  );
+  
+  // Find intersections between elements in the layer
+  let intersections = [];
+  if (layer.group) {
+    intersections = findAllIntersections(layer.group);
+  }
+  
+  // Create markers for new intersections
+  for (const intersection of intersections) {
+    // Skip if intersection is invalid (null or has NaN coordinates)
+    if (!intersection || isNaN(intersection.x) || isNaN(intersection.y)) {
+      continue;
+    }
+    
+    // Check if this intersection already has a marker
+    const exists = existingMarkers.some(m => 
+      m.position && 
+      intersection && 
+      distanceBetweenPoints(m.position.x, m.position.y, intersection.x, intersection.y) < OVERLAP_THRESHOLD
+    );
+    
+    if (!exists) {
+      // Create a new marker for this intersection
+      const marker = {
+        position: intersection.clone(),
+        velocity: 0,
+        lifetime: MARK_LIFE,
+        animState: ANIMATION_STATES.ACTIVE,
+        justHit: false,
+        isStarCut: false, // DEPRECATED: Always false while star cuts are disabled
+        frequency: calculateFrequency(intersection.x, intersection.y, layer.state),
+        pan: calculatePanForPoint(intersection)
+      };
+      layer.markers.push(marker);
+    }
+  }
+  
+  return intersections;
 }

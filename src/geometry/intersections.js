@@ -10,8 +10,9 @@ import {
   MAX_VELOCITY
 } from '../config/constants.js';
 
+// DEPRECATED: Star cuts logic moved to geometry pipeline
 // Set to true to debug star cuts intersection issues
-const DEBUG_STAR_CUTS = true;
+const DEBUG_STAR_CUTS = false; // Changed to false to disable all debug output
 
 // Reusable Vector3 objects to reduce garbage collection
 const _vec1 = new THREE.Vector3();
@@ -32,19 +33,19 @@ export function findIntersection(p1, p2, p3, p4) {
   const x3 = p3.x, y3 = p3.y;
   const x4 = p4.x, y4 = p4.y;
   
-  // For star cuts debugging
-  if (DEBUG_STAR_CUTS) {
+  // For star cuts debugging - DISABLED
+  /* if (DEBUG_STAR_CUTS) {
     
-  }
+  } */
   
   // Calculate denominator
   const denominator = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
   
   // If denominator is close to 0, lines are parallel or collinear
   if (Math.abs(denominator) < 1e-10) {
-    if (DEBUG_STAR_CUTS) {
+    /* if (DEBUG_STAR_CUTS) {
       
-    }
+    } */
     return null;
   }
   
@@ -54,9 +55,9 @@ export function findIntersection(p1, p2, p3, p4) {
   
   // Check if intersection is within both line segments
   if (ua < 0 || ua > 1 || ub < 0 || ub > 1) {
-    if (DEBUG_STAR_CUTS) {
+    /* if (DEBUG_STAR_CUTS) {
       
-    }
+    } */
     return null;
   }
   
@@ -64,9 +65,9 @@ export function findIntersection(p1, p2, p3, p4) {
   const x = x1 + ua * (x2 - x1);
   const y = y1 + ua * (y2 - y1);
   
-  if (DEBUG_STAR_CUTS) {
+  /* if (DEBUG_STAR_CUTS) {
     
-  }
+  } */
   
   return new THREE.Vector3(x, y, 0);
 }
@@ -285,7 +286,6 @@ function findStarSelfIntersections(vertices, scale = 1.0) {
  */
 export function findAllIntersections(group) {
   const intersectionPoints = [];
-  const debug = DEBUG_STAR_CUTS; // Enable debugging for star cuts
   
   // Get state object from group's userData
   const state = group.userData.state;
@@ -296,12 +296,12 @@ export function findAllIntersections(group) {
     return intersectionPoints;
   }
   
-  // Check if we're using star cuts
-  const useStarCuts = state.useStars && state.useCuts && state.starSkip > 1;
-  
-  if (debug && useStarCuts) {
-    
-    
+  // DEPRECATED: Star cuts logic moved to geometry pipeline
+  // Check if we're using star cuts - DISABLED
+  const useStarCuts = false; // DISABLED: state.useStars && state.useCuts && state.starSkip > 1;
+
+  if (useStarCuts) {
+    console.warn('Star cuts temporarily disabled - being refactored');
   }
   
   // Count real copy count (excluding intersection marker groups)
@@ -315,72 +315,33 @@ export function findAllIntersections(group) {
   
   const copies = actualCopies.length;
   
-  if (debug && useStarCuts) {
-    
-  }
-  
   // Skip if not enough copies for regular intersections and not using star cuts
-  if (copies < 2 && !useStarCuts) {
-    if (debug) {
-      
-    }
+  if (copies < 2) {
     return intersectionPoints;
   }
-  
-  // Generate base polygon vertices based on whether stars are enabled
-  let vertices = [];
-  
-  // IMPORTANT: Calculate star self-intersections FIRST for star cuts
-  if (useStarCuts) {
-    if (debug) {
-      
-    }
+
+  // DEPRECATED: All star cuts logic is moved to geometry pipeline
+  if (false) { // Wrap star cuts specific logic in if(false) block
+    // Generate base polygon vertices based on whether stars are enabled
+    let vertices = [];
     
     // Generate base star polygon vertices
     vertices = generateStarPolygonVertices(state.segments, state.starSkip, state.radius);
     
-    if (debug) {
-      
-    }
-    
     // Find self-intersections in the original star
     const selfIntersections = findStarSelfIntersections(vertices);
-    
-    if (debug) {
-      
-      // Log the coordinates of the self-intersections
-      for (let i = 0; i < selfIntersections.length; i++) {
-        const point = selfIntersections[i];
-        
-      }
-    }
     
     // Add self-intersections to the result
     for (const point of selfIntersections) {
       if (!isPointTooClose(point, intersectionPoints)) {
         // Add with base scale (modulus scaling will be applied later during rendering)
         intersectionPoints.push(point);
-        if (debug) {
-          
-        }
       }
     }
   }
   
-  // For star cuts only or not enough copies for regular intersections
-  if (useStarCuts && (copies < 2 || !state.useIntersections)) {
-    if (debug) {
-      
-    }
-    return intersectionPoints;
-  }
-  
   // If we reach here, we need to process regular intersections between copies too
   // This would be the code to find intersections between different copies
-  
-  if (debug && useStarCuts) {
-    
-  }
   
   return intersectionPoints;
 }
@@ -393,18 +354,12 @@ export function findAllIntersections(group) {
  * @returns {THREE.BufferGeometry} Updated geometry
  */
 export function processIntersections(state, baseGeo, group) {
+  // DEPRECATED: Star cuts logic moved to geometry pipeline
   // We want to calculate star cut intersections regardless of useIntersections flag
-  const useStarCuts = state && state.useStars && state.useCuts && state.starSkip > 1;
+  const useStarCuts = false; // DISABLED: state && state.useStars && state.useCuts && state.starSkip > 1;
   
   if ((!state || (!state.useIntersections && !useStarCuts) || !state.needsIntersectionUpdate || !baseGeo || !group)) {
-    if (DEBUG_STAR_CUTS) {
-      
-    }
     return baseGeo;
-  }
-  
-  if (DEBUG_STAR_CUTS && useStarCuts) {
-    
   }
   
   // Make sure group has access to state through the stateId
@@ -415,10 +370,6 @@ export function processIntersections(state, baseGeo, group) {
   
   // Find intersections - this will now include star cut intersections
   const intersectionPoints = findAllIntersections(group);
-  
-  if (DEBUG_STAR_CUTS && useStarCuts) {
-    
-  }
   
   if (intersectionPoints.length === 0) {
     state.needsIntersectionUpdate = false;
