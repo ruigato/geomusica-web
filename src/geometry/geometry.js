@@ -19,9 +19,6 @@ import { calculateStarCutsVertices, hasStarSelfIntersections, createStarPolygonP
 // Debug flag to control logging
 const DEBUG_LOGGING = false;
 
-// Set to true to enable debugging for the star cuts feature
-const DEBUG_STAR_CUTS = true;
-
 // Reuse geometries for better performance
 const vertexCircleGeometry = new THREE.CircleGeometry(1, 12); // Fewer segments (12) for performance
 
@@ -81,26 +78,13 @@ export function createPolygonGeometry(radius, segments, state = null) {
   // Get the specific shape type from state if available
   const shapeType = state?.shapeType || 'regular';
   
-  // More verbose debugging for star shapes
-  if (DEBUG_STAR_CUTS && state?.useStars) {
-    
-  } else if (DEBUG_LOGGING) {
-    
-  }
-  
   let points = [];
   
   // Handle different shape types
   switch (shapeType) {
     case 'star':
-      // Create a star polygon
-      if (DEBUG_STAR_CUTS) {
-        
-      }
-      
       // Use the appropriate function to create star points
       if (state?.useStars && state?.forceRegularStarPolygon && state?.starSkip > 1) {
-        console.log(`[STAR CUTS] Creating forced regular star polygon with ${segments} vertices and skip ${state?.starSkip}`);
         points = createRegularStarPolygonPoints(radius, segments, state?.starSkip || 1);
       } else {
         points = createStarPolygonPointsLocal(radius, segments, state?.starSkip || 1, state);
@@ -113,64 +97,24 @@ export function createPolygonGeometry(radius, segments, state = null) {
       
       // Add star cuts intersections if enabled
       if (state?.useStars && state?.useCuts && state?.starSkip > 1) {
-        if (DEBUG_STAR_CUTS) {
-          console.log(`[STAR CUTS] Calculating star cuts for ${points.length} vertices with skip ${state.starSkip}`);
-        }
-        
         // Get the intersections from the star cuts module
         const originalVertexCount = points.length;
         const intersectionPoints = calculateStarCutsVertices(points, state.starSkip);
         
-        if (DEBUG_STAR_CUTS) {
-          console.log(`[STAR CUTS] Found ${intersectionPoints.length} valid intersection points`);
-          
-          if (intersectionPoints.length === 0) {
-            // Check why we didn't find intersections
-            const shouldHaveIntersections = hasStarSelfIntersections(state.segments, state.starSkip);
-            console.log(`[STAR CUTS] Theory check: Star {${state.segments}/${state.starSkip}} ${shouldHaveIntersections ? 'SHOULD' : 'should NOT'} have intersections`);
-            
-            // Log vertices for debugging
-            console.log('[STAR CUTS] Vertices:');
-            points.forEach((v, i) => {
-              console.log(`  Vertex ${i}: (${v.x.toFixed(4)}, ${v.y.toFixed(4)})`);
-            });
-          } else {
-            // Log intersection details
-            console.log('[STAR CUTS] Intersection points:');
-            intersectionPoints.forEach((p, i) => {
-              console.log(`  Intersection ${i}: (${p.x.toFixed(4)}, ${p.y.toFixed(4)})`);
-            });
-          }
-        }
-        
         // Add intersection points to the original points array
         if (intersectionPoints.length > 0) {
           points = [...points, ...intersectionPoints];
-          
-          if (DEBUG_STAR_CUTS) {
-            console.log(`[STAR CUTS] Vertex count: ${originalVertexCount} → ${points.length} (added ${intersectionPoints.length} intersections)`);
-          }
         }
-      }
-      
-      if (DEBUG_STAR_CUTS) {
-        
       }
       break;
       
     case 'fractal':
       // Create a fractal-like shape
-      if (DEBUG_LOGGING) {
-        
-      }
       points = createFractalPolygonPoints(radius, segments, state?.fractalValue || 1, state);
       break;
       
     case 'euclidean':
       // Create a polygon with Euclidean rhythm
-      if (DEBUG_LOGGING) {
-        
-      }
       // First create the euclidean points
       points = createEuclideanPoints(radius, segments, state?.euclidValue || 3, state);
       
@@ -184,14 +128,9 @@ export function createPolygonGeometry(radius, segments, state = null) {
     default:
       // When useStars is true but shapeType is not 'star', override to create a star
       if (state?.useStars && state?.starSkip > 1) {
-        if (DEBUG_STAR_CUTS) {
-          
-        }
-        
         // Use the createRegularStarPolygonPoints function to generate the star vertices
         // This gives us the vertices in the correct order around the circle
         if (state?.useStars && state?.forceRegularStarPolygon && state?.starSkip > 1) {
-          console.log(`[STAR CUTS] Creating forced regular star polygon with ${segments} vertices and skip ${state.starSkip}`);
           points = createRegularStarPolygonPoints(radius, segments, state.starSkip);
         } else {
           // Fall back to local implementation if not forcing regular star polygon
@@ -205,44 +144,14 @@ export function createPolygonGeometry(radius, segments, state = null) {
         
         // Add star cuts intersections if enabled - these will be additional vertices
         if (state?.useCuts) {
-          if (DEBUG_STAR_CUTS) {
-            console.log(`[STAR CUTS] Calculating star cuts for ${points.length} vertices with skip ${state.starSkip}`);
-          }
-          
           // Get the intersections from the star cuts module
           const originalVertexCount = points.length;
           const intersectionPoints = calculateStarCutsVertices(points, state.starSkip);
-          
-          if (DEBUG_STAR_CUTS) {
-            console.log(`[STAR CUTS] Found ${intersectionPoints.length} valid intersection points`);
-            
-            if (intersectionPoints.length === 0) {
-              // Check why we didn't find intersections
-              const shouldHaveIntersections = hasStarSelfIntersections(state.segments, state.starSkip);
-              console.log(`[STAR CUTS] Theory check: Star {${state.segments}/${state.starSkip}} ${shouldHaveIntersections ? 'SHOULD' : 'should NOT'} have intersections`);
-              
-              // Log vertices for debugging
-              console.log('[STAR CUTS] Vertices:');
-              points.forEach((v, i) => {
-                console.log(`  Vertex ${i}: (${v.x.toFixed(4)}, ${v.y.toFixed(4)})`);
-              });
-            } else {
-              // Log intersection details
-              console.log('[STAR CUTS] Intersection points:');
-              intersectionPoints.forEach((p, i) => {
-                console.log(`  Intersection ${i}: (${p.x.toFixed(4)}, ${p.y.toFixed(4)})`);
-              });
-            }
-          }
           
           // Add intersection points to the original points array
           // These will be additional vertices in the geometry
           if (intersectionPoints.length > 0) {
             points = [...points, ...intersectionPoints];
-            
-            if (DEBUG_STAR_CUTS) {
-              console.log(`[STAR CUTS] Vertex count: ${originalVertexCount} → ${points.length} (added ${intersectionPoints.length} intersections)`);
-            }
           }
         }
       } else {
@@ -316,11 +225,6 @@ function createGeometryFromPoints(points, state) {
     // Set the attributes
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
     geometry.setIndex(indices);
-    
-    if (DEBUG_STAR_CUTS) {
-      console.log(`[STAR CUTS] Created indexed star geometry with ${points.length} vertices and ${indices.length/2} line segments`);
-      console.log(`[STAR CUTS] Star skip pattern: ${state.starSkip}`);
-    }
   } else {
     // Standard non-indexed geometry for regular polygons
     // Convert points to Float32Array for position attribute
@@ -365,15 +269,6 @@ function createGeometryFromPoints(points, state) {
       hasIntersections,
       isStarPolygon: true
     };
-    
-    if (DEBUG_STAR_CUTS) {
-      console.log(`[STAR CUTS] Geometry created with ${points.length} total vertices:`, {
-        baseVertices: baseVertexCount,
-        intersections: intersectionCount,
-        skip: state.starSkip,
-        hasIntersections
-      });
-    }
   }
   
   return geometry;
@@ -665,17 +560,10 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   // Check if we're using star cuts
   const useStarCuts = state && state.useStars && state.useCuts && state.starSkip > 1;
   
-  if (DEBUG_STAR_CUTS && useStarCuts) {
-    
-  }
-  
   // Force intersection update when star cuts are enabled
   if (useStarCuts && state) {
     state.needsIntersectionUpdate = true;
     // Process the intersections for star cuts
-    if (DEBUG_STAR_CUTS) {
-      
-    }
     processIntersections(state, baseGeo, group);
     justCalculatedIntersections = true;
   }
@@ -685,10 +573,6 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     justCalculatedIntersections = group.userData.justCalculatedIntersections;
     // Reset the flag after reading it
     group.userData.justCalculatedIntersections = false;
-    
-    if (DEBUG_STAR_CUTS && useStarCuts) {
-      
-    }
   }
   
   // FIXED: Track objects for guaranteed cleanup
@@ -841,10 +725,6 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         
         // Add the line geometry to the copy group
         copyGroup.add(lines);
-        
-        if (DEBUG_STAR_CUTS) {
-          console.log(`[STAR CUTS] Drawing star polygon as LINE_SEGMENTS with indexed geometry`);
-        }
       } else {
         // For regular polygons, use the standard LINE_LOOP
         const lines = new THREE.LineLoop(baseGeo, lineMaterial);
@@ -875,10 +755,6 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         copyGroup.userData.originalVertexIndices = originalVertexIndices;
         copyGroup.userData.isStarPolygon = true;
         copyGroup.userData.starSkip = state?.starSkip || 1;
-        
-        if (DEBUG_STAR_CUTS) {
-          console.log(`[STAR CUTS] Stored ${originalVertexIndices.length} original vertex indices for trigger detection`);
-        }
       }
       
       // Add circles at each vertex
@@ -1015,14 +891,8 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       group.add(copyGroup);
       
       // FIXED: After creating a copy, add intersection markers to ALL copies, not just the first one
-      // Remove the i === 0 check to show star cuts on all copies
       if (state && state.intersectionPoints && state.intersectionPoints.length > 0 &&
           (state.useIntersections || useStarCuts) && !isLerping) {
-        
-        if (DEBUG_STAR_CUTS && useStarCuts) {
-          console.log(`[STAR CUTS] Adding ${state.intersectionPoints.length} intersection markers to copy ${i}`);
-        }
-        
         try {
           // Create a group to hold the intersection markers
           const intersectionMarkerGroup = new THREE.Group();
@@ -1139,11 +1009,6 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
           
           // Store reference to the intersection marker group
           copyGroup.userData.intersectionMarkerGroup = intersectionMarkerGroup;
-          
-          if (DEBUG_STAR_CUTS && useStarCuts) {
-            
-            
-          }
         } catch (intersectionError) {
           console.error("Error creating intersection markers:", intersectionError);
           // Continue execution even if intersection markers fail
@@ -1399,20 +1264,12 @@ function createStarPolygonPointsLocal(radius, numSegments, skip, state = null) {
   
   // When creating a star with cuts, force intersection update
   if (state && state.useStars && state.useCuts && skip > 1) {
-    if (DEBUG_STAR_CUTS) {
-      
-    }
     // Force intersection recalculation
     state.needsIntersectionUpdate = true;
   }
   
-  if (DEBUG_STAR_CUTS && state && state.useStars) {
-    
-  }
-  
   // If forceRegularStarPolygon is true, use the regular star polygon creation function from starCuts.js
   if (state?.forceRegularStarPolygon && state?.useStars && skip > 1) {
-    console.log(`[STAR CUTS] Creating forced regular star polygon with ${numSegments} vertices and skip ${skip}`);
     return createRegularStarPolygonPoints(radius, numSegments, skip);
   }
   
@@ -1420,10 +1277,6 @@ function createStarPolygonPointsLocal(radius, numSegments, skip, state = null) {
   const createStellateFigure = state?.useStars && skip > 1;
   
   if (createStellateFigure) {
-    if (DEBUG_STAR_CUTS) {
-      
-    }
-    
     // Generate the outer vertices first
     const outerVertices = [];
     for (let i = 0; i < numSegments; i++) {
@@ -1446,18 +1299,10 @@ function createStarPolygonPointsLocal(radius, numSegments, skip, state = null) {
         // Jump by skip amount
         vertex = (vertex + skip) % numSegments;
       }
-      
-      if (DEBUG_STAR_CUTS) {
-        
-      }
     } else {
       // For multiple disconnected paths (gcd > 1), create each segment separately
       const numPaths = gcdValue;
       const verticesPerPath = numSegments / numPaths;
-      
-      if (DEBUG_STAR_CUTS) {
-        
-      }
       
       // Generate each separate path
       for (let pathStart = 0; pathStart < numPaths; pathStart++) {
@@ -1471,10 +1316,6 @@ function createStarPolygonPointsLocal(radius, numSegments, skip, state = null) {
           vertex = (vertex + skip) % numSegments;
         }
       }
-      
-      if (DEBUG_STAR_CUTS) {
-        
-      }
     }
     
     return points;
@@ -1482,10 +1323,6 @@ function createStarPolygonPointsLocal(radius, numSegments, skip, state = null) {
   
   // For regular polygons (skip=1) or when useStars is false
   if (skip === 1 || !state?.useStars) {
-    if (DEBUG_STAR_CUTS) {
-      
-    }
-    
     // Create simple regular polygon
     for (let i = 0; i < numSegments; i++) {
       const angle = i * angleStep;

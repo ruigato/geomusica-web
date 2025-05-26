@@ -82,7 +82,7 @@ function calculateGCD(a, b) {
  */
 function lineLineIntersection(p1, p2, p3, p4, extendLines = false) {
   // Line segment 1 is p1 to p2, line segment 2 is p3 to p4
-  const debugEnabled = true;
+  const debugEnabled = DEBUG_ENABLED;
   
   // Extract coordinates
   const x1 = p1.x, y1 = p1.y;
@@ -263,7 +263,7 @@ export function calculateStarCutsVertices(vertices, starSkip) {
   }
   
   // Force debug on for this critical function
-  const debugEnabled = true;
+  const debugEnabled = DEBUG_ENABLED;
   
   if (debugEnabled) {
     console.log(`[STAR CUTS DEBUG] Calculating star cuts for ${vertices.length} vertices with skip ${starSkip}`);
@@ -418,104 +418,6 @@ function isPointOnLineSegment(point, lineStart, lineEnd) {
 }
 
 /**
- * Debug function to test star cuts logic
- * @param {Array<Object>} testCases - Array of test cases with n and k values
- * @returns {void}
- */
-export function debugStarCuts(testCases) {
-  console.log("STAR CUTS DEBUG TEST:");
-  
-  if (!testCases) {
-    // Use default test cases if none provided
-    testCases = [
-      { n: 5, k: 2 },   // Regular star pentagon - should have intersections
-      { n: 7, k: 3 },   // Star heptagon {7/3} - should have intersections
-      { n: 8, k: 3 },   // Star octagon {8/3} - should have intersections
-      { n: 6, k: 2 },   // Hexagram {6/2} - should have NO intersections (gcd=2)
-      { n: 9, k: 3 }    // Nonagram {9/3} - should have NO intersections (gcd=3)
-    ];
-  }
-  
-  // Run each test case
-  const results = [];
-  for (const test of testCases) {
-    const n = test.n;
-    const k = test.k;
-    
-    // Calculate GCD
-    const gcd = (a, b) => b ? gcd(b, a % b) : a;
-    const d = gcd(n, k);
-    
-    // Check if it has intersections using our function
-    const hasIntersections = hasStarSelfIntersections(n, k);
-    
-    console.log(`Star {${n}/${k}}: GCD=${d}, Has intersections: ${hasIntersections}`);
-    console.log(`- Theory check: n >= 2k: ${n >= 2*k}, GCD=1: ${d === 1}`);
-    console.log(`- ${hasIntersections ? "WILL" : "WON'T"} have intersections`);
-    
-    // Run the complete test for this star polygon
-    const testResult = testStarPolygon(n, k);
-    results.push(testResult);
-  }
-  
-  // Summary of all test results
-  console.log("STAR CUTS TESTS SUMMARY:");
-  results.forEach(result => {
-    console.log(`Star {${result.n}/${result.k}}: Expected ${result.shouldHaveIntersections ? "WITH" : "WITHOUT"} intersections, Found ${result.intersections.length} intersections`);
-  });
-  
-  return results;
-}
-
-/**
- * Export validation function that can be called directly
- * @param {Array<THREE.Vector2>} points - Array of intersection points
- * @param {Array<THREE.Vector2>} vertices - Array of polygon vertices
- * @returns {boolean} - True if intersections are valid, false otherwise
- */
-export function validateIntersections(points, vertices) {
-  console.log("Validating intersections:");
-  console.log(`- ${points.length} intersection points found`);
-  console.log(`- ${vertices.length} original vertices`);
-  
-  // Check for points too close to vertices
-  let tooCloseToVertex = false;
-  for (const point of points) {
-    for (const vertex of vertices) {
-      const dist = distanceBetweenPoints(point, vertex);
-      if (dist < INTERSECTION_MERGE_THRESHOLD) {
-        console.log(`Warning: Intersection at (${point.x.toFixed(2)}, ${point.y.toFixed(2)}) ` +
-                  `is too close to vertex at (${vertex.x.toFixed(2)}, ${vertex.y.toFixed(2)})`);
-        tooCloseToVertex = true;
-      }
-    }
-  }
-  
-  if (!tooCloseToVertex) {
-    console.log("✓ All intersections are sufficiently far from vertices");
-  }
-  
-  // Check if all intersections are unique
-  let duplicates = false;
-  for (let i = 0; i < points.length; i++) {
-    for (let j = i + 1; j < points.length; j++) {
-      const dist = distanceBetweenPoints(points[i], points[j]);
-      if (dist < INTERSECTION_MERGE_THRESHOLD) {
-        console.log(`Warning: Duplicate intersections at (${points[i].x.toFixed(2)}, ${points[i].y.toFixed(2)}) ` +
-                  `and (${points[j].x.toFixed(2)}, ${points[j].y.toFixed(2)})`);
-        duplicates = true;
-      }
-    }
-  }
-  
-  if (!duplicates) {
-    console.log("✓ All intersections are unique");
-  }
-  
-  return !tooCloseToVertex && !duplicates;
-}
-
-/**
  * Create a function to generate star polygon points
  * This is for testing purposes and debugging star cuts
  * @param {number} radius - Radius of the star polygon
@@ -576,48 +478,6 @@ export function createRegularStarPolygonPoints(radius, n, k) {
   }
   
   return points;
-}
-
-/**
- * Debug and test a specific star polygon
- * @param {number} n - Number of points (vertices)
- * @param {number} k - Skip value
- * @returns {Object} - Debug information about the star polygon
- */
-export function testStarPolygon(n, k) {
-  console.log(`[STAR TEST] Testing star polygon {${n}/${k}}`);
-  
-  // Create star polygon points
-  const radius = 100;
-  const vertices = createStarPolygonPoints(radius, n, k);
-  
-  // Print the vertices
-  console.log(`[STAR TEST] Generated ${vertices.length} vertices:`);
-  vertices.forEach((v, i) => {
-    console.log(`[STAR TEST] Vertex ${i}: (${v.x.toFixed(4)}, ${v.y.toFixed(4)})`);
-  });
-  
-  // Calculate intersections
-  const intersections = calculateStarCutsVertices(vertices, k);
-  
-  // Print results
-  console.log(`[STAR TEST] Found ${intersections.length} intersections:`);
-  intersections.forEach((p, i) => {
-    console.log(`[STAR TEST] Intersection ${i}: (${p.x.toFixed(4)}, ${p.y.toFixed(4)})`);
-  });
-  
-  // Theoretical check
-  const shouldHaveIntersections = hasStarSelfIntersections(n, k);
-  console.log(`[STAR TEST] Theoretical check: Star {${n}/${k}} ${shouldHaveIntersections ? 'SHOULD' : 'should NOT'} have intersections`);
-  
-  return {
-    n,
-    k,
-    vertices,
-    intersections,
-    shouldHaveIntersections,
-    actualIntersections: intersections.length > 0
-  };
 }
 
 /**
@@ -807,45 +667,3 @@ function calculateCentroid(points) {
     sumY / points.length
   );
 }
-
-// Unit test cases (in comments)
-/*
-UNIT TEST 1: Regular pentagon with skip=2 (star pentagon)
-const vertices = [
-  new THREE.Vector2(0, 1),
-  new THREE.Vector2(0.951, 0.309),
-  new THREE.Vector2(0.588, -0.809),
-  new THREE.Vector2(-0.588, -0.809),
-  new THREE.Vector2(-0.951, 0.309)
-];
-const intersections = calculateStarCutsVertices(vertices, 2);
-// Expected: 5 intersection points (one for each inside crossing)
-
-UNIT TEST 2: Regular heptagon (7 sides) with skip=2
-const vertices = [];
-for (let i = 0; i < 7; i++) {
-  const angle = (i / 7) * Math.PI * 2;
-  vertices.push(new THREE.Vector2(Math.cos(angle), Math.sin(angle)));
-}
-const intersections = calculateStarCutsVertices(vertices, 2);
-// Expected: 7 intersection points
-
-UNIT TEST 3: Regular heptagon (7 sides) with skip=3
-const vertices = [];
-for (let i = 0; i < 7; i++) {
-  const angle = (i / 7) * Math.PI * 2;
-  vertices.push(new THREE.Vector2(Math.cos(angle), Math.sin(angle)));
-}
-const intersections = calculateStarCutsVertices(vertices, 3);
-// Expected: 7 intersection points (different positions than test 2)
-
-UNIT TEST 4: Square (should have no intersections)
-const vertices = [
-  new THREE.Vector2(-1, 1),
-  new THREE.Vector2(1, 1),
-  new THREE.Vector2(1, -1),
-  new THREE.Vector2(-1, -1)
-];
-const intersections = calculateStarCutsVertices(vertices, 1);
-// Expected: 0 intersection points
-*/
