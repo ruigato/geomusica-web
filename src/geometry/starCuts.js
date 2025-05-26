@@ -459,17 +459,14 @@ export function createRegularStarPolygonPoints(radius, n, k) {
   // The actual star pattern is created by how we connect them,
   // which is handled in the rendering code.
   
-  // Fix for double radius issue - use half the radius to match regular polygon size
-  const adjustedRadius = radius / 2;
-  
   const points = [];
   const angleStep = (2 * Math.PI) / n;
   
   // Create vertices at regular intervals around a circle
   for (let i = 0; i < n; i++) {
     const angle = i * angleStep;
-    const x = adjustedRadius * Math.cos(angle);
-    const y = adjustedRadius * Math.sin(angle);
+    const x = radius * Math.cos(angle);
+    const y = radius * Math.sin(angle);
     points.push(new THREE.Vector2(x, y));
   }
   

@@ -1223,17 +1223,14 @@ function calculateEuclideanRhythm(n, k) {
  * @returns {Array<THREE.Vector2>} Array of points
  */
 function createRegularPolygonPoints(radius, numSegments, state = null) {
-  // Always use the adjusted radius to match the star polygon size
-  const adjustedRadius = radius / 2;
-  
   const points = [];
   const angleStep = (Math.PI * 2) / numSegments;
   
   // Create a regular polygon
   for (let i = 0; i < numSegments; i++) {
     const angle = i * angleStep;
-    const x = Math.cos(angle) * adjustedRadius;
-    const y = Math.sin(angle) * adjustedRadius;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
     points.push(new THREE.Vector2(x, y));
   }
   
@@ -1249,9 +1246,6 @@ function createRegularPolygonPoints(radius, numSegments, state = null) {
  * @returns {Array<THREE.Vector2>} Array of points
  */
 function createStarPolygonPointsLocal(radius, numSegments, skip, state = null) {
-  // Use adjusted radius to match the other polygon functions
-  const adjustedRadius = radius / 2;
-  
   const points = [];
   const angleStep = (Math.PI * 2) / numSegments;
   
@@ -1281,8 +1275,8 @@ function createStarPolygonPointsLocal(radius, numSegments, skip, state = null) {
     const outerVertices = [];
     for (let i = 0; i < numSegments; i++) {
       const angle = i * angleStep;
-      const x = Math.cos(angle) * adjustedRadius;
-      const y = Math.sin(angle) * adjustedRadius;
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius;
       outerVertices.push(new THREE.Vector2(x, y));
     }
     
@@ -1326,8 +1320,8 @@ function createStarPolygonPointsLocal(radius, numSegments, skip, state = null) {
     // Create simple regular polygon
     for (let i = 0; i < numSegments; i++) {
       const angle = i * angleStep;
-      const x = Math.cos(angle) * adjustedRadius;
-      const y = Math.sin(angle) * adjustedRadius;
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius;
       points.push(new THREE.Vector2(x, y));
     }
     
@@ -1337,8 +1331,8 @@ function createStarPolygonPointsLocal(radius, numSegments, skip, state = null) {
   // This should never be reached, but just in case, return a regular polygon
   for (let i = 0; i < numSegments; i++) {
     const angle = i * angleStep;
-    const x = Math.cos(angle) * adjustedRadius;
-    const y = Math.sin(angle) * adjustedRadius;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
     points.push(new THREE.Vector2(x, y));
   }
   
@@ -1354,9 +1348,6 @@ function createStarPolygonPointsLocal(radius, numSegments, skip, state = null) {
  * @returns {Array<THREE.Vector2>} Array of points
  */
 function createEuclideanPoints(radius, numSegments, pulseCount, state = null) {
-  // Use adjusted radius to match the other polygon functions
-  const adjustedRadius = radius / 2;
-  
   const points = [];
   const angleStep = (Math.PI * 2) / numSegments;
   
@@ -1367,8 +1358,8 @@ function createEuclideanPoints(radius, numSegments, pulseCount, state = null) {
   for (let i = 0; i < numSegments; i++) {
     if (pattern[i]) {
       const angle = i * angleStep;
-      const x = Math.cos(angle) * adjustedRadius;
-      const y = Math.sin(angle) * adjustedRadius;
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius;
       points.push(new THREE.Vector2(x, y));
     }
   }
@@ -1385,11 +1376,8 @@ function createEuclideanPoints(radius, numSegments, pulseCount, state = null) {
  * @returns {Array<THREE.Vector2>} Array of points
  */
 function createFractalPolygonPoints(radius, numSegments, fractalValue, state = null) {
-  // Adjust radius for consistency
-  const adjustedRadius = radius / 2;
-  
-  // Start with a regular polygon using the adjusted radius
-  const basePoints = createRegularPolygonPoints(adjustedRadius * 2, numSegments, state);
+  // Start with a regular polygon
+  const basePoints = createRegularPolygonPoints(radius, numSegments, state);
   
   // Apply fractal subdivision
   return applyFractalSubdivision(basePoints, fractalValue);
