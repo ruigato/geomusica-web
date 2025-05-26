@@ -323,11 +323,15 @@ function setupStarSkipRadioButtons(container, state) {
   // Clear any existing content
   container.innerHTML = '';
   
+  // Get the current active layer state
+  const activeState = typeof window.getActiveState === 'function' ? 
+    window.getActiveState() : state;
+  
   // Get valid skips for the current number of segments
-  const validSkips = state.getValidStarSkips();
+  const validSkips = activeState.getValidStarSkips();
   
   // Get current value from state
-  const currentValue = state.starSkip;
+  const currentValue = activeState.starSkip;
   
   // Create a radio button for each valid skip value
   for (const skipValue of validSkips) {
@@ -346,7 +350,10 @@ function setupStarSkipRadioButtons(container, state) {
     // Add event listener
     radioInput.addEventListener('change', () => {
       if (radioInput.checked) {
-        state.setStarSkip(skipValue);
+        // Get the current active layer state at the time of the event
+        const currentActiveState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        currentActiveState.setStarSkip(skipValue);
       }
     });
     
@@ -1101,21 +1108,25 @@ export function setupUI(state) {
     
     // Function to update valid skips information
     function updateValidSkips() {
-      const n = state.segments;
-      const validSkips = state.getValidStarSkips();
+      // Get the current active layer state
+      const activeState = typeof window.getActiveState === 'function' ? 
+        window.getActiveState() : state;
+      
+      const n = activeState.segments;
+      const validSkips = activeState.getValidStarSkips();
       validSkipsInfo.textContent = `Valid skips for ${getPolygonName(n)} (n=${n}): ${validSkips.join(', ')}`;
       
       // Update the star skip radio buttons 
       if (starSkipRadioGroup) {
-        setupStarSkipRadioButtons(starSkipRadioGroup, state);
+        setupStarSkipRadioButtons(starSkipRadioGroup, activeState);
       }
       
       // Ensure the current skip value is valid
       if (validSkips.length > 0) {
         // Set skip to first valid skip if current value is not valid
-        if (!validSkips.includes(state.starSkip)) {
+        if (!validSkips.includes(activeState.starSkip)) {
           
-          state.setStarSkip(validSkips[0]);
+          activeState.setStarSkip(validSkips[0]);
         } else {
           
         }
