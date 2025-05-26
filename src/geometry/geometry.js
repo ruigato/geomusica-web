@@ -72,6 +72,8 @@ export function createPolygonGeometry(radius, segments, state = null) {
   radius = radius || 300;
   segments = segments || 2;
   
+  console.log('[GEOMETRY DEBUG] Input radius:', radius);
+  
   // Add this for debugging to track when we're creating new geometry
   const layerId = state && state.layerId !== undefined ? state.layerId : 'unknown';
   
@@ -685,6 +687,8 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         finalScale = stepScaleFactor * state.altScale;
       }
       
+      console.log('[GEOMETRY DEBUG] Copy', i, 'finalScale:', finalScale, 'stepScale:', stepScale);
+      
       // Each copy gets a cumulative angle (i * angle) in degrees
       const cumulativeAngleDegrees = i * angle;
       
@@ -719,6 +723,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         // Create line segments for star patterns
         const lines = new THREE.LineSegments(baseGeo, lineMaterial);
         lines.scale.set(finalScale, finalScale, 1);
+        console.log('[GEOMETRY DEBUG] Applying scale to lines:', finalScale, finalScale, 1);
         
         // Set renderOrder to ensure it renders on top of other objects
         lines.renderOrder = 10; // Higher render order
@@ -729,6 +734,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         // For regular polygons, use the standard LINE_LOOP
         const lines = new THREE.LineLoop(baseGeo, lineMaterial);
         lines.scale.set(finalScale, finalScale, 1);
+        console.log('[GEOMETRY DEBUG] Applying scale to lines:', finalScale, finalScale, 1);
         
         // Set renderOrder to ensure it renders on top of other objects
         lines.renderOrder = 10; // Higher render order
@@ -1226,11 +1232,17 @@ function createRegularPolygonPoints(radius, numSegments, state = null) {
   const points = [];
   const angleStep = (Math.PI * 2) / numSegments;
   
+  // Create a regular polygon at half radius to match the expected scale
+  const adjustedRadius = radius / 2;
+  
   // Create a regular polygon
   for (let i = 0; i < numSegments; i++) {
     const angle = i * angleStep;
-    const x = Math.cos(angle) * radius;
-    const y = Math.sin(angle) * radius;
+    const x = Math.cos(angle) * adjustedRadius;
+    const y = Math.sin(angle) * adjustedRadius;
+    if (window.DEBUG_MATRIX) {
+      console.log('[GEOMETRY DEBUG] Created point:', x, y, 'for radius:', adjustedRadius);
+    }
     points.push(new THREE.Vector2(x, y));
   }
   

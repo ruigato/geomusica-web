@@ -544,9 +544,10 @@ function initializeApplication() {
   scene.background = new THREE.Color(0x111111); // Dark gray background
   sceneInstance = scene;
   
-  // Create camera with wider field of view and better positioning
+  // Create camera
   const camera = new THREE.PerspectiveCamera(60, containerWidth / containerHeight, 0.1, 50000);
-  camera.position.z = 300; // Even closer camera position for better visibility
+  camera.position.z = 2000;
+  console.log('[CAMERA DEBUG] Camera position:', camera.position.z);
   
   // Store camera and renderer references in scene userData for layer manager to access
   scene.userData.camera = camera;

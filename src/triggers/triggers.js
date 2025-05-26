@@ -22,6 +22,12 @@ const DEBUG_LOGGING = false;
 // Debug flag for star cuts (intersection points)
 const DEBUG_STAR_CUTS = false;
 
+// Debug flag for matrix transformations
+const DEBUG_MATRIX = false;
+
+// Make matrix debug configurable at runtime
+window.DEBUG_MATRIX = false;
+
 // Memory management configurations
 const RECENT_TRIGGERS_MAX_AGE = 10; // Time in seconds before a trigger is considered stale
 const PENDING_TRIGGERS_MAX_SIZE = 1000; // Maximum number of pending triggers to store
@@ -1161,7 +1167,7 @@ function recordLayerVertexPositions(layer, timestamp) {
     ).length - 1; // Subtract 1 for the debug sphere
   }
   
-    // Skip if no copies or zero segments
+  // Skip if no copies or zero segments
   if (copies <= 0 || state.segments <= 0) return;
 
   // Skip position recording during geometry transitions
@@ -1228,33 +1234,73 @@ function recordLayerVertexPositions(layer, timestamp) {
     // Calculate world matrix without rotation
     const tempWorldMatrix = new THREE.Matrix4();
     mesh.updateMatrixWorld();
-    tempWorldMatrix.copy(mesh.matrixWorld);
+    
+    // Get the parent world matrix (excluding this mesh's matrix)
+    const parentWorldMatrix = new THREE.Matrix4();
+    if (mesh.parent) {
+      mesh.parent.updateMatrixWorld();
+      parentWorldMatrix.copy(mesh.parent.matrixWorld);
+    }
+    
+    // Get local matrix without rotation
+    const localMatrix = new THREE.Matrix4();
+    localMatrix.copy(mesh.matrix);
+    
+    // Decompose to remove rotation but keep position and scale
+    const position = new THREE.Vector3();
+    const quaternion = new THREE.Quaternion();
+    const scale = new THREE.Vector3();
+    localMatrix.decompose(position, quaternion, scale);
+    
+    // Reconstruct local matrix with position and scale, but no rotation
+    tempWorldMatrix.compose(position, new THREE.Quaternion(), scale);
+    
+    // Combine with parent world matrix
+    tempWorldMatrix.premultiply(parentWorldMatrix);
+    
+    // Apply inverse rotation at world level
     tempWorldMatrix.premultiply(inverseRotationMatrix);
+    
+    // Get the scale from the mesh's matrix for debugging
+    const finalScale = scale.x;
+    if (window.DEBUG_MATRIX) {
+      console.log('[MATRIX DEBUG] finalScale:', finalScale);
+      console.log('[MATRIX DEBUG] position:', position.x, position.y, position.z);
+      console.log('[MATRIX DEBUG] scale:', scale.x, scale.y, scale.z);
+    }
     
     // Temp vector for calculations
     const worldPos = new THREE.Vector3();
     
-    // Process each vertex in this copy using the actual vertex count from geometry
+    // Process each vertex
     for (let vi = 0; vi < count; vi++) {
-      // Create a unique vertex ID
       const vertexId = `${layer.id}-${ci}-${vi}`;
       
       try {
-        // Get current vertex world position (unrotated)
+        // Get current vertex position
         worldPos.fromBufferAttribute(positions, vi);
+        if (window.DEBUG_MATRIX) {
+          console.log('[MATRIX DEBUG] Original vertex:', worldPos.x, worldPos.y, worldPos.z);
+        }
         
         // Skip invalid vertices
         if (isNaN(worldPos.x) || isNaN(worldPos.y) || isNaN(worldPos.z)) {
           continue;
         }
         
-        // Apply unrotated world matrix to get position in world space
+        // Apply world matrix transformation (includes position, scale, but no rotation)
         worldPos.applyMatrix4(tempWorldMatrix);
+        if (window.DEBUG_MATRIX) {
+          console.log('[MATRIX DEBUG] After world matrix:', worldPos.x, worldPos.y, worldPos.z);
+        }
         
-        // Apply rotation for trigger detection
+        // Apply final rotation for trigger detection
         const rotatedPos = worldPos.clone().applyMatrix4(rotationMatrix);
+        if (window.DEBUG_MATRIX) {
+          console.log('[MATRIX DEBUG] After rotation:', rotatedPos.x, rotatedPos.y, rotatedPos.z);
+        }
         
-        // Record position in subframe engine
+        // Record position in subframe engine with scaling compensation
         subframeEngine.recordVertexPosition(
           vertexId,
           {

@@ -429,11 +429,14 @@ export function createStarPolygonPoints(radius, n, k) {
   const points = [];
   const angleStep = (2 * Math.PI) / n;
   
+  // Use half radius to match regular polygon scaling
+  const adjustedRadius = radius / 2;
+  
   // Create vertices at regular intervals around a circle
   for (let i = 0; i < n; i++) {
     const angle = i * angleStep;
-    const x = radius * Math.cos(angle);
-    const y = radius * Math.sin(angle);
+    const x = adjustedRadius * Math.cos(angle);
+    const y = adjustedRadius * Math.sin(angle);
     points.push(new THREE.Vector2(x, y));
   }
   
@@ -462,11 +465,14 @@ export function createRegularStarPolygonPoints(radius, n, k) {
   const points = [];
   const angleStep = (2 * Math.PI) / n;
   
+  // Use half radius to match regular polygon scaling
+  const adjustedRadius = radius / 2;
+  
   // Create vertices at regular intervals around a circle
   for (let i = 0; i < n; i++) {
     const angle = i * angleStep;
-    const x = radius * Math.cos(angle);
-    const y = radius * Math.sin(angle);
+    const x = adjustedRadius * Math.cos(angle);
+    const y = adjustedRadius * Math.sin(angle);
     points.push(new THREE.Vector2(x, y));
   }
   
