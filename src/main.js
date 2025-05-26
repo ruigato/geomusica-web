@@ -263,7 +263,8 @@ function handleGeometryUpdates(state, activeLayer) {
     const hasCriticalChanges = criticalChanges.some(param => state.parameterChanges[param]);
     
     if (hasCriticalChanges) {
-      state.needsIntersectionUpdate = true;
+      // DEPRECATED: needsIntersectionUpdate removed
+  // state.needsIntersectionUpdate = true;
       
       // Explicitly force a geometry update for Euclidean rhythm and Stars parameters
       const forceGeometryUpdate = ['euclidValue', 'useEuclid', 'starSkip', 'useStars'];

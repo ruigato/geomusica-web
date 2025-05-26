@@ -1695,16 +1695,17 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
     }
     
     // Process intersection triggers for this copy if we have more than one copy
-    if (copies > 1 && state.useIntersections) {
-      const isIntersectionTriggered = detectIntersectionSubframeTriggers(
-        layer, ci, angle, audioTime, audioCallback, 
-        triggeredNow, triggeredPoints, camera, renderer, scene, cooldownTime
-      );
-      
-      if (isIntersectionTriggered) {
-        anyTriggers = true;
-      }
-    }
+    // DEPRECATED: useIntersections functionality removed
+    // if (copies > 1 && state.useIntersections) {
+    //   const isIntersectionTriggered = detectIntersectionSubframeTriggers(
+    //     layer, ci, angle, audioTime, audioCallback, 
+    //     triggeredNow, triggeredPoints, camera, renderer, scene, cooldownTime
+    //   );
+    //   
+    //   if (isIntersectionTriggered) {
+    //     anyTriggers = true;
+    //   }
+    // }
   }
   
   return anyTriggers;
@@ -1935,9 +1936,11 @@ export function detectIntersections(layer) {
   if (!layer.state) return [];
   
   // IMPORTANT: Skip intersection detection if explicitly disabled
-  const useIntersections = layer.state.useIntersections === true;
+  // DEPRECATED: useIntersections functionality removed
+  // const useIntersections = layer.state.useIntersections === true;
   
-  if (!useIntersections) {
+  // if (!useIntersections) {
+  if (true) { // Always skip intersection detection since it's deprecated
     // Return empty array when intersections are disabled
     return [];
   }
@@ -1960,7 +1963,9 @@ export function detectIntersections(layer) {
   // Find intersections between elements in the layer
   let intersections = [];
   if (layer.group) {
-    intersections = findAllIntersections(layer.group);
+    // DEPRECATED: findAllIntersections functionality removed
+    // intersections = findAllIntersections(layer.group);
+    intersections = []; // Return empty array since intersections.js is deprecated
   }
   
   // Create markers for new intersections

@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { getCurrentTime } from '../time/time.js';
 import { processPendingTriggers, clearLayerMarkers, detectLayerTriggers, resetTriggerSystem } from '../triggers/triggers.js';
 import { ANIMATION_STATES, MAX_VELOCITY } from '../config/constants.js';
-import { detectIntersections, applyVelocityToMarkers } from '../geometry/intersections.js';
+// DEPRECATED: Removed import from intersections.js - functionality deprecated
+// import { detectIntersections, applyVelocityToMarkers } from '../geometry/intersections.js';
 import { updateLabelPositions, updateAxisLabels } from '../ui/domLabels.js';
 
 // Frame counter and timing stats
@@ -161,21 +162,24 @@ export function animate(props) {
     }
     
     // Update markers (dots) based on intersections
-    if (activeLayer.state.needsIntersectionUpdate) {
-      // Only detect intersections if they're enabled
-      const useIntersections = activeLayer.state.useIntersections === true;
-      const useStarCuts = activeLayer.state.useStars === true && activeLayer.state.useCuts === true;
-      
-      if (useIntersections || useStarCuts) {
-        detectIntersections(activeLayer);
-      }
-      
-      // Always reset the flag regardless
-      activeLayer.state.needsIntersectionUpdate = false;
-    }
+    // DEPRECATED: needsIntersectionUpdate functionality removed
+    // if (activeLayer.state.needsIntersectionUpdate) {
+    //   // Only detect intersections if they're enabled
+    //   const useIntersections = activeLayer.state.useIntersections === true;
+    //   const useStarCuts = activeLayer.state.useStars === true && activeLayer.state.useCuts === true;
+    //   
+    //   // DEPRECATED: detectIntersections functionality removed
+    //   // if (useIntersections || useStarCuts) {
+    //   //   detectIntersections(activeLayer);
+    //   // }
+    //   
+    //   // Always reset the flag regardless
+    //   activeLayer.state.needsIntersectionUpdate = false;
+    // }
     
+    // DEPRECATED: applyVelocityToMarkers functionality removed
     // Apply velocity updates to markers with audio-synchronized timing
-    applyVelocityToMarkers(activeLayer, timeDelta);
+    // applyVelocityToMarkers(activeLayer, timeDelta);
     
     // Ensure camera and renderer are set in the layer's group before updating
     if (activeLayer.group && cam && renderer) {

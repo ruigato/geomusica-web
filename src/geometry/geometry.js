@@ -8,7 +8,8 @@ import {
   INTERSECTION_POINT_COLOR,
   INTERSECTION_POINT_OPACITY
 } from '../config/constants.js';
-import { findAllIntersections, processIntersections } from './intersections.js';
+// DEPRECATED: Removed import from intersections.js - functionality moved to starCuts.js
+// import { findAllIntersections, processIntersections } from './intersections.js';
 import { createOrUpdateLabel } from '../ui/domLabels.js';
 // Import the frequency utilities at the top of geometry.js
 import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils.js';
@@ -356,13 +357,13 @@ export function calculateBoundingSphere(group, state) {
     }
   }
   
-  // Account for intersection points if needed
-  if ((state.useIntersections || (state.useStars && state.useCuts)) && state.intersectionPoints && state.intersectionPoints.length > 0) {
-    for (const point of state.intersectionPoints) {
-      const dist = Math.hypot(point.x, point.y);
-      maxDistance = Math.max(maxDistance, dist * 1.1); // Add 10% margin
-    }
-  }
+  // DEPRECATED: Account for intersection points - functionality removed
+  // if ((state.useIntersections || (state.useStars && state.useCuts)) && state.intersectionPoints && state.intersectionPoints.length > 0) {
+  //   for (const point of state.intersectionPoints) {
+  //     const dist = Math.hypot(point.x, point.y);
+  //     maxDistance = Math.max(maxDistance, dist * 1.1); // Add 10% margin
+  //   }
+  // }
   
   // Never go below minimum visible distance
   return Math.max(maxDistance, 500);
@@ -515,12 +516,13 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   const useStarCuts = state && state.useStars && state.useCuts && state.starSkip > 1;
   
   // Force intersection update when star cuts are enabled
-  if (useStarCuts && state) {
-    state.needsIntersectionUpdate = true;
-    // Process the intersections for star cuts
-    processIntersections(state, baseGeo, group);
-    justCalculatedIntersections = true;
-  }
+  // DEPRECATED: Removed processIntersections call - functionality moved to starCuts.js
+  // if (useStarCuts && state) {
+  //   state.needsIntersectionUpdate = true;
+  //   // Process the intersections for star cuts
+  //   processIntersections(state, baseGeo, group);
+  //   justCalculatedIntersections = true;
+  // }
   
   // Get justCalculatedIntersections from group userData if it's available and not provided
   if (!justCalculatedIntersections && group.userData && group.userData.justCalculatedIntersections) {
@@ -848,132 +850,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       // Add the whole copy group to the main group
       group.add(copyGroup);
       
-      // FIXED: After creating a copy, add intersection markers to ALL copies, not just the first one
-      if (state && state.intersectionPoints && state.intersectionPoints.length > 0 &&
-          (state.useIntersections || useStarCuts) && !isLerping) {
-        try {
-          // Create a group to hold the intersection markers
-          const intersectionMarkerGroup = new THREE.Group();
-          
-          // Tag this group for identification during audio triggers
-          intersectionMarkerGroup.userData.isIntersectionGroup = true;
-          
-          // Add visual representation for each intersection point
-          for (let j = 0; j < state.intersectionPoints.length; j++) {
-            const point = state.intersectionPoints[j];
-            
-            // IMPORTANT: Apply the same modulus scaling to intersection points
-            // This ensures star cuts scale with the polygon when modulus is used
-            let scaledX = point.x * finalScale;
-            let scaledY = point.y * finalScale;
-            
-            // Create trigger data for this intersection point
-            const triggerData = {
-              x: scaledX,
-              y: scaledY,
-              isIntersection: true,
-              intersectionIndex: j,
-              globalIndex: globalVertexIndex
-            };
-            
-            // Increment the global vertex index
-            globalVertexIndex++;
-            
-            // Create a note object to get duration and velocity parameters
-            const note = createNote(triggerData, state);
-            
-            // Calculate size factors for this intersection marker
-            const basePointSize = useStarCuts ? INTERSECTION_POINT_SIZE * 1.5 : INTERSECTION_POINT_SIZE;
-            const durationScaleFactor = 0.5 + note.duration;
-            
-            // Size that remains visually consistent at different camera distances
-            // Make star intersection points larger for better visibility
-            const sizeMultiplier = useStarCuts ? 0.5 : 0.3;
-            const sizeScaleFactor = (cameraDistance / 1000) * basePointSize * durationScaleFactor * sizeMultiplier;
-            
-            // Create material for intersection point - use brighter color for star cuts
-            const intersectionMaterial = new THREE.MeshBasicMaterial({
-              // Use the layer's color with higher brightness for intersections
-              color: useStarCuts ? 
-                (mat && mat.color ? mat.color.clone().multiplyScalar(1.8) : 0xffff00) : 
-                (mat && mat.color ? mat.color.clone().multiplyScalar(1.2) : INTERSECTION_POINT_COLOR),
-              transparent: true,
-              opacity: useStarCuts ? 0.9 : note.velocity,
-              depthTest: false,
-              side: THREE.DoubleSide
-            });
-            
-            // FIXED: Track created materials for proper disposal
-            materialsToDispose.push(intersectionMaterial);
-            
-            // Create a mesh for the intersection point using shared geometry
-            const pointMesh = new THREE.Mesh(vertexCircleGeometry, intersectionMaterial);
-            
-            pointMesh.scale.set(sizeScaleFactor, sizeScaleFactor, 1);
-            // IMPORTANT: Use scaled coordinates for intersection points
-            pointMesh.position.set(scaledX, scaledY, 0);
-            
-            // Set renderOrder higher to ensure it renders on top
-            pointMesh.renderOrder = 2; // Even higher render order for intersections
-            
-            // Add to the intersection marker group
-            intersectionMarkerGroup.add(pointMesh);
-            
-            // Add persistent frequency label for intersection point if enabled
-            if (shouldCreatePointLabels && camera && renderer) {
-              try {
-                // Calculate frequency for this intersection point
-                const freq = Math.hypot(scaledX, scaledY);
-                
-                // Format display text
-                let labelText;
-                // Check global state for equal temperament
-                const globalState = window._globalState;
-                if (globalState && globalState.useEqualTemperament && note.noteName) {
-                  labelText = `${freq.toFixed(1)}Hz (${note.noteName}) ${note.duration.toFixed(2)}s`;
-                } else {
-                  labelText = `${freq.toFixed(2)}Hz ${note.duration.toFixed(2)}s`;
-                }
-                
-                // Create a text label for this intersection point
-                const textLabel = createTextLabel(
-                  labelText, 
-                  new THREE.Vector3(scaledX, scaledY, 0), 
-                  intersectionMarkerGroup, // Parent is not really used for DOM labels
-                  false, // Not an axis label
-                  camera,
-                  renderer
-                );
-                
-                // Update the label immediately
-                textLabel.update(camera, renderer);
-                
-                // Store reference for cleanup
-                const labelInfo = {
-                  label: textLabel,
-                  isIntersection: true,
-                  position: new THREE.Vector3(scaledX, scaledY, 0)
-                };
-                
-                state.pointFreqLabels.push(labelInfo);
-                pointFreqLabelsCreated.push(labelInfo);
-              } catch (labelError) {
-                
-                // Continue processing other intersection points
-              }
-            }
-          }
-          
-          // Add the whole marker group to the copy group to apply proper rotation
-          copyGroup.add(intersectionMarkerGroup);
-          
-          // Store reference to the intersection marker group
-          copyGroup.userData.intersectionMarkerGroup = intersectionMarkerGroup;
-        } catch (intersectionError) {
-          console.error("Error creating intersection markers:", intersectionError);
-          // Continue execution even if intersection markers fail
-        }
-      }
+      // DEPRECATED: Intersection markers functionality removed - star cuts are now handled in starCuts.js
     }
     
     // After all copies are created, restore debug objects

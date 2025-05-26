@@ -861,7 +861,8 @@ export class Layer {
     }
     
     // Force the state to update the group
-    this.state.needsIntersectionUpdate = true;
+    // DEPRECATED: needsIntersectionUpdate removed
+    // this.state.needsIntersectionUpdate = true;
     
     // Log that geometry was recreated
     if (DEBUG_LOGGING) {

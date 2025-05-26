@@ -129,10 +129,11 @@ export function createAppState() {
     maxVelocity: 0.9, // Maximum velocity (0-1)
     
     // Intersection related parameters
-    useIntersections: DEFAULT_VALUES.USE_INTERSECTIONS,
-    lastUseIntersections: DEFAULT_VALUES.USE_INTERSECTIONS,
-    intersectionPoints: [],
-    needsIntersectionUpdate: true,
+    // DEPRECATED: Intersection-related properties - functionality removed
+    useIntersections: false, // Always false - deprecated
+    lastUseIntersections: false, // Always false - deprecated
+    intersectionPoints: [], // Always empty - deprecated
+    needsIntersectionUpdate: false, // Always false - deprecated
     
     // Cuts related parameters
     useCuts: false,
@@ -212,7 +213,8 @@ export function createAppState() {
       
       // Did something actually change that requires an update?
       const hasChanges = 
-        this.needsIntersectionUpdate || 
+        // DEPRECATED: needsIntersectionUpdate removed
+      // this.needsIntersectionUpdate || 
         this.needsPointFreqLabelsUpdate ||
         this.justCalculatedIntersections ||
         this.hasParameterChanged();
@@ -269,7 +271,7 @@ export function createAppState() {
           this.radius = newValue;
         }
         
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         
         // FIXED: Reset trigger state when radius changes to prevent false triggers
         this.resetTriggerState();
@@ -287,7 +289,7 @@ export function createAppState() {
         this.targetCopies = newValue;
         this.copies = newValue; // Always update copies immediately, even when lerping
         this.parameterChanges.copies = true;
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         
         // FIXED: Reset trigger state when copies change to prevent false triggers
         this.resetTriggerState();
@@ -303,7 +305,7 @@ export function createAppState() {
       if (this.segments !== newValue) {
         this.segments = newValue;
         this.parameterChanges.segments = true;
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         
         // FIXED: Reset trigger state when segments change to prevent false triggers
         this.resetTriggerState();
@@ -322,7 +324,7 @@ export function createAppState() {
         if (!this.useLerp) {
           this.stepScale = this.targetStepScale;
         }
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         
         // FIXED: Reset trigger state when step scale changes to prevent false triggers
         this.resetTriggerState();
@@ -341,7 +343,7 @@ export function createAppState() {
         if (!this.useLerp) {
           this.angle = this.targetAngle;
         }
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
       }
     },
     
@@ -355,7 +357,7 @@ export function createAppState() {
         this.modulusValue = newValue;
         this.parameterChanges.modulus = true;
         if (this.useModulus) {
-          this.needsIntersectionUpdate = true;
+          // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         }
       }
     },
@@ -369,7 +371,7 @@ export function createAppState() {
       if (this.useModulus !== newValue) {
         this.useModulus = newValue;
         this.parameterChanges.useModulus = true;
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
       }
     },
     
@@ -483,7 +485,7 @@ export function createAppState() {
         
         // Always mark for intersection update when alt scale is being used
         if (this.useAltScale) {
-          this.needsIntersectionUpdate = true;
+          // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
           
           // Mark that geometry needs to be recreated
           this.segmentsChanged = true;
@@ -505,7 +507,7 @@ export function createAppState() {
         this.altStepN = newValue;
         this.parameterChanges.altStepN = true;
         if (this.useAltScale) {
-          this.needsIntersectionUpdate = true;
+          // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
           
           // Force recreation of base geometry when available
           if (this.baseGeo) {
@@ -528,7 +530,7 @@ export function createAppState() {
       if (this.useAltScale !== newValue) {
         this.useAltScale = newValue;
         this.parameterChanges.useAltScale = true;
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         
         // Force recreation of base geometry when available
         if (this.baseGeo) {
@@ -545,10 +547,13 @@ export function createAppState() {
      * Toggle intersections
      * @param {boolean} value Enable/disable intersections
      */
-    setUseIntersections(value) {
-      this.useIntersections = Boolean(value);
-      this.needsIntersectionUpdate = true;
-    },
+      // DEPRECATED: setUseIntersections method - functionality removed
+  setUseIntersections(value) {
+    console.warn('setUseIntersections is deprecated. Intersection functionality has been removed.');
+    // Do nothing - always keep intersections disabled
+    this.useIntersections = false;
+    this.needsIntersectionUpdate = false;
+  },
     
     /**
      * Toggle lerping/lag
@@ -585,7 +590,7 @@ export function createAppState() {
         this.angle = this.targetAngle;
         this.altScale = this.targetAltScale;
         // Copies already set directly, no need to update here
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
       }
     },
     
@@ -856,7 +861,8 @@ export function createAppState() {
       let count = this.segments * this.copies; // Regular vertices
       
       if (this.intersectionPoints) {
-        count += this.intersectionPoints.length; // Intersection points
+        // DEPRECATED: intersectionPoints removed
+      // count += this.intersectionPoints.length; // Intersection points
       }
       
       return count;
@@ -886,23 +892,23 @@ export function createAppState() {
       
       // Check if significant changes occurred and explicitly mark parameters as changed
       if (Math.abs(oldRadius - this.radius) > 0.1) {
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         this.parameterChanges.radius = true;
       }
       
       if (Math.abs(oldStepScale - this.stepScale) > 0.001) {
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         this.parameterChanges.stepScale = true;
       }
       
       if (Math.abs(oldAngle - this.angle) > 0.1) {
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         this.parameterChanges.angle = true;
       }
       
       // Check for significant alt scale changes and mark parameter as changed
       if (Math.abs(oldAltScale - this.altScale) > 0.001 && this.useAltScale) {
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         this.parameterChanges.altScale = true;
       }
     },
@@ -938,7 +944,7 @@ export function createAppState() {
       if (this.fractalValue !== newValue) {
         this.fractalValue = newValue;
         this.parameterChanges.fractal = true;
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         
         // Force recreation of base geometry when available
         if (this.baseGeo && this.useFractal) {
@@ -960,7 +966,7 @@ export function createAppState() {
       if (this.useFractal !== newValue) {
         this.useFractal = newValue;
         this.parameterChanges.useFractal = true;
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         
         // Update shape type when fractal is toggled
         if (newValue && this.shapeType === 'regular' && !this.useEuclid && !this.useStars) {
@@ -990,7 +996,7 @@ export function createAppState() {
       if (this.euclidValue !== newValue) {
         this.euclidValue = newValue;
         this.parameterChanges.euclidValue = true;
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         
         // Force recreation of base geometry when available
         if (this.baseGeo && this.useEuclid) {
@@ -1013,7 +1019,7 @@ export function createAppState() {
       if (this.useEuclid !== newValue) {
         this.useEuclid = newValue;
         this.parameterChanges.useEuclid = true;
-        this.needsIntersectionUpdate = true;
+        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         
         // Update shape type when Euclidean is toggled
         if (newValue) {
@@ -1049,7 +1055,7 @@ export function createAppState() {
           if (DEBUG_STAR_CUTS) {
             
           }
-          this.needsIntersectionUpdate = true;
+          // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
           
           // Add forceRegularStarPolygon flag to ensure proper star geometry
           this.forceRegularStarPolygon = true;
@@ -1097,7 +1103,7 @@ export function createAppState() {
           if (DEBUG_STAR_CUTS) {
             
           }
-          this.needsIntersectionUpdate = true;
+          // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         }
         
         // Always force geometry recreation when toggling stars feature
@@ -1124,7 +1130,7 @@ export function createAppState() {
           if (DEBUG_STAR_CUTS) {
             
           }
-          this.needsIntersectionUpdate = true;
+          // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
           
           // Add forceRegularStarPolygon flag to ensure proper star geometry
           this.forceRegularStarPolygon = true;
@@ -1246,7 +1252,7 @@ export function createAppState() {
         if (this.baseGeo) {
           this.segmentsChanged = true;
           this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
-          this.needsIntersectionUpdate = true;
+          // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         }
       }
     },

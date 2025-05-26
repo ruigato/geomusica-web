@@ -60,7 +60,7 @@ export const DEFAULT_VALUES = {
   // Feature toggles and values
   MODULUS_VALUE: 4,
   USE_MODULUS: false,
-  USE_INTERSECTIONS: false, // Default for intersection feature
+  USE_INTERSECTIONS: false, // DEPRECATED: Intersection feature removed
   SHOW_AXIS_FREQ_LABELS: true, // Default for axis crossing frequency labels
   SHOW_POINTS_FREQ_LABELS: false, // Default for point frequency labels
   ALT_SCALE: 1.2, // Default alt scale value
@@ -146,7 +146,7 @@ export const PARAMETER_RANGES = {
   ALT_STEP_N: { MIN: 1, MAX: 32, STEP: 1 },
   USE_ALT_SCALE: { MIN: false, MAX: true, STEP: null },
   
-  // Intersection ranges
+  // DEPRECATED: Intersection ranges - functionality removed
   USE_INTERSECTIONS: { MIN: false, MAX: true, STEP: null },
   
   // Frequency label ranges

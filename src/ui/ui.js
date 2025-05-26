@@ -422,7 +422,7 @@ export function setupUI(state) {
 
   const useAltScaleCheckbox = document.getElementById('useAltScaleCheckbox');
   
-  // Intersections control
+  // DEPRECATED: Intersections control - functionality removed
   const useIntersectionsCheckbox = document.getElementById('useIntersectionsCheckbox');
 
   // Get UI elements for display settings
@@ -652,16 +652,16 @@ export function setupUI(state) {
     });
   }
   
-  // Setup intersections checkbox with null check
+  // DEPRECATED: Setup intersections checkbox - functionality removed
   if (useIntersectionsCheckbox) {
-    useIntersectionsCheckbox.checked = state.useIntersections;
-    useIntersectionsCheckbox.addEventListener('change', e => {
-      // Get the current active layer state
-      const activeState = typeof window.getActiveState === 'function' ? 
-        window.getActiveState() : state;
-        
-      activeState.setUseIntersections(e.target.checked);
-    });
+    useIntersectionsCheckbox.checked = false; // Always false since deprecated
+    useIntersectionsCheckbox.disabled = true; // Disable the control
+    // Remove event listener since functionality is deprecated
+    // useIntersectionsCheckbox.addEventListener('change', e => {
+    //   const activeState = typeof window.getActiveState === 'function' ? 
+    //     window.getActiveState() : state;
+    //   activeState.setUseIntersections(e.target.checked);
+    // });
   }
 
   // Setup duration mode radio buttons with null check
