@@ -1265,14 +1265,33 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       
       // Create indices for line segments - each tesselated copy should have its own line segments
       const tesselatedIndices = [];
-      for (let copyIndex = 0; copyIndex < originalPoints.length; copyIndex++) {
-        const startIdx = copyIndex * originalPoints.length;
+      
+      // STAR POLYGON FIX: Preserve the original geometry's index pattern for each tessellated copy
+      if (baseGeo.index && baseGeo.index.array) {
+        // Use the original index pattern for each tessellated copy
+        const originalIndices = baseGeo.index.array;
         
-        // Create line segments for this tesselated copy (connecting consecutive vertices in a loop)
-        for (let i = 0; i < originalPoints.length; i++) {
-          const currentIdx = startIdx + i;
-          const nextIdx = startIdx + ((i + 1) % originalPoints.length);
-          tesselatedIndices.push(currentIdx, nextIdx);
+        for (let copyIndex = 0; copyIndex < originalPoints.length; copyIndex++) {
+          const startIdx = copyIndex * originalPoints.length;
+          
+          // Copy the original index pattern, offsetting by the start index for this copy
+          for (let i = 0; i < originalIndices.length; i++) {
+            const originalIndex = originalIndices[i];
+            const offsetIndex = startIdx + originalIndex;
+            tesselatedIndices.push(offsetIndex);
+          }
+        }
+      } else {
+        // Fallback: Create consecutive line segments for geometries without indices (regular polygons)
+        for (let copyIndex = 0; copyIndex < originalPoints.length; copyIndex++) {
+          const startIdx = copyIndex * originalPoints.length;
+          
+          // Create line segments for this tesselated copy (connecting consecutive vertices in a loop)
+          for (let i = 0; i < originalPoints.length; i++) {
+            const currentIdx = startIdx + i;
+            const nextIdx = startIdx + ((i + 1) % originalPoints.length);
+            tesselatedIndices.push(currentIdx, nextIdx);
+          }
         }
       }
       
