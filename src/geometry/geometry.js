@@ -64,7 +64,239 @@ function applyFractalSubdivision(points, fractalValue) {
 }
 
 /**
+ * Apply fractal subdivision to line segments
+ * @param {Array<Array<THREE.Vector2>>} lineSegments Array of line segments, each segment is [start, end]
+ * @param {number} fractalValue Fractal iteration value
+ * @returns {Array<THREE.Vector2>} All points from fractalized line segments
+ */
+function applyFractalSubdivisionToLineSegments(lineSegments, fractalValue) {
+  if (fractalValue <= 1 || !lineSegments || lineSegments.length === 0) {
+    // Return all unique points from the line segments
+    const allPoints = [];
+    const pointSet = new Set();
+    
+    for (const segment of lineSegments) {
+      for (const point of segment) {
+        const key = `${point.x.toFixed(6)},${point.y.toFixed(6)}`;
+        if (!pointSet.has(key)) {
+          pointSet.add(key);
+          allPoints.push(point);
+        }
+      }
+    }
+    return allPoints;
+  }
+  
+  const divisions = Math.max(2, Math.round(fractalValue));
+  const allPoints = [];
+  const pointSet = new Set();
+  
+  // Apply fractal subdivision to each line segment
+  for (const segment of lineSegments) {
+    const [start, end] = segment;
+    
+    // Add the start point
+    const startKey = `${start.x.toFixed(6)},${start.y.toFixed(6)}`;
+    if (!pointSet.has(startKey)) {
+      pointSet.add(startKey);
+      allPoints.push(start);
+    }
+    
+    // Add fractal subdivision points along this segment
+    for (let div = 1; div < divisions; div++) {
+      const factor = div / divisions;
+      const midX = start.x + (end.x - start.x) * factor;
+      const midY = start.y + (end.y - start.y) * factor;
+      const midPoint = new THREE.Vector2(midX, midY);
+      
+      const midKey = `${midX.toFixed(6)},${midY.toFixed(6)}`;
+      if (!pointSet.has(midKey)) {
+        pointSet.add(midKey);
+        allPoints.push(midPoint);
+      }
+    }
+    
+    // Add the end point
+    const endKey = `${end.x.toFixed(6)},${end.y.toFixed(6)}`;
+    if (!pointSet.has(endKey)) {
+      pointSet.add(endKey);
+      allPoints.push(end);
+    }
+  }
+  
+  return allPoints;
+}
+
+/**
+ * Apply fractal subdivision to line segments and return both points and segment information
+ * @param {Array<Array<THREE.Vector2>>} lineSegments Array of line segments, each segment is [start, end]
+ * @param {number} fractalValue Fractal iteration value
+ * @returns {Object} Object with points array and segments array for proper line drawing
+ */
+function applyFractalSubdivisionToLineSegmentsWithSegments(lineSegments, fractalValue) {
+  if (fractalValue <= 1 || !lineSegments || lineSegments.length === 0) {
+    // Return all unique points from the line segments and the original segments
+    const allPoints = [];
+    const pointSet = new Set();
+    const pointIndexMap = new Map();
+    
+    for (const segment of lineSegments) {
+      for (const point of segment) {
+        const key = `${point.x.toFixed(6)},${point.y.toFixed(6)}`;
+        if (!pointSet.has(key)) {
+          pointSet.add(key);
+          pointIndexMap.set(key, allPoints.length);
+          allPoints.push(point);
+        }
+      }
+    }
+    
+    // Convert original segments to indices
+    const segmentIndices = [];
+    for (const segment of lineSegments) {
+      const startKey = `${segment[0].x.toFixed(6)},${segment[0].y.toFixed(6)}`;
+      const endKey = `${segment[1].x.toFixed(6)},${segment[1].y.toFixed(6)}`;
+      const startIdx = pointIndexMap.get(startKey);
+      const endIdx = pointIndexMap.get(endKey);
+      segmentIndices.push([startIdx, endIdx]);
+    }
+    
+    return { points: allPoints, segments: segmentIndices };
+  }
+  
+  const divisions = Math.max(2, Math.round(fractalValue));
+  const allPoints = [];
+  const pointSet = new Set();
+  const pointIndexMap = new Map();
+  const segmentIndices = [];
+  
+  // Apply fractal subdivision to each line segment
+  for (const segment of lineSegments) {
+    const [start, end] = segment;
+    const segmentPoints = [];
+    
+    // Add the start point
+    const startKey = `${start.x.toFixed(6)},${start.y.toFixed(6)}`;
+    if (!pointSet.has(startKey)) {
+      pointSet.add(startKey);
+      pointIndexMap.set(startKey, allPoints.length);
+      allPoints.push(start);
+    }
+    segmentPoints.push(pointIndexMap.get(startKey));
+    
+    // Add fractal subdivision points along this segment
+    for (let div = 1; div < divisions; div++) {
+      const factor = div / divisions;
+      const midX = start.x + (end.x - start.x) * factor;
+      const midY = start.y + (end.y - start.y) * factor;
+      const midPoint = new THREE.Vector2(midX, midY);
+      
+      const midKey = `${midX.toFixed(6)},${midY.toFixed(6)}`;
+      if (!pointSet.has(midKey)) {
+        pointSet.add(midKey);
+        pointIndexMap.set(midKey, allPoints.length);
+        allPoints.push(midPoint);
+      }
+      segmentPoints.push(pointIndexMap.get(midKey));
+    }
+    
+    // Add the end point
+    const endKey = `${end.x.toFixed(6)},${end.y.toFixed(6)}`;
+    if (!pointSet.has(endKey)) {
+      pointSet.add(endKey);
+      pointIndexMap.set(endKey, allPoints.length);
+      allPoints.push(end);
+    }
+    segmentPoints.push(pointIndexMap.get(endKey));
+    
+    // Create line segments connecting consecutive points in this fractalized segment
+    for (let i = 0; i < segmentPoints.length - 1; i++) {
+      segmentIndices.push([segmentPoints[i], segmentPoints[i + 1]]);
+    }
+  }
+  
+  return { points: allPoints, segments: segmentIndices };
+}
+
+/**
+ * Generate line segments for a regular polygon
+ * @param {Array<THREE.Vector2>} points Array of polygon vertices
+ * @returns {Array<Array<THREE.Vector2>>} Array of line segments
+ */
+function generateRegularPolygonLineSegments(points) {
+  const segments = [];
+  for (let i = 0; i < points.length; i++) {
+    const start = points[i];
+    const end = points[(i + 1) % points.length];
+    segments.push([start, end]);
+  }
+  return segments;
+}
+
+/**
+ * Generate line segments for a star polygon (without cuts)
+ * @param {Array<THREE.Vector2>} points Array of star polygon vertices
+ * @param {number} starSkip Skip value for the star
+ * @returns {Array<Array<THREE.Vector2>>} Array of line segments
+ */
+function generateStarLineSegments(points, starSkip) {
+  const segments = [];
+  const vertexCount = points.length;
+  
+  for (let i = 0; i < vertexCount; i++) {
+    const startIdx = i;
+    const endIdx = (i + starSkip) % vertexCount;
+    segments.push([points[startIdx], points[endIdx]]);
+  }
+  
+  return segments;
+}
+
+/**
+ * Generate line segments for a star polygon with cuts
+ * This creates the new line segments that replace the original star lines
+ * @param {Array<THREE.Vector2>} allPoints Array of all points (original vertices + intersection points)
+ * @param {Array<THREE.Vector2>} intersectionPoints Array of intersection points
+ * @param {number} starSkip Skip value for the star
+ * @param {number} originalVertexCount Number of original vertices
+ * @returns {Array<Array<THREE.Vector2>>} Array of line segments
+ */
+function generateStarCutLineSegments(allPoints, intersectionPoints, starSkip, originalVertexCount) {
+  // For now, return the original star line segments plus segments to intersection points
+  // This is a simplified approach - a more sophisticated implementation would
+  // trace the actual star cut paths
+  
+  const segments = [];
+  
+  // Add original star line segments
+  for (let i = 0; i < originalVertexCount; i++) {
+    const startIdx = i;
+    const endIdx = (i + starSkip) % originalVertexCount;
+    segments.push([allPoints[startIdx], allPoints[endIdx]]);
+  }
+  
+  // Add segments from original vertices to nearby intersection points
+  for (let i = 0; i < originalVertexCount; i++) {
+    const vertex = allPoints[i];
+    
+    // Find closest intersection points to this vertex
+    for (const intersection of intersectionPoints) {
+      const distance = Math.hypot(vertex.x - intersection.x, vertex.y - intersection.y);
+      
+      // Only connect if the intersection is reasonably close
+      if (distance < 200) { // Adjust this threshold as needed
+        segments.push([vertex, intersection]);
+      }
+    }
+  }
+  
+  return segments;
+}
+
+/**
  * Create a polygon geometry with the given parameters
+ * Pipeline order: 1-base geometry, 2-star geometry+cuts, 3-fractal on line segments, 4-euclid, 5-copies, 6-intersections, 7-delete
+ * Note: Star cuts generate NEW line segments that replace original star lines, then fractal operates on those segments
  * @param {number} radius Radius of the polygon
  * @param {number} segments Number of segments in the polygon
  * @param {Object} state Application state for additional parameters
@@ -80,20 +312,32 @@ export function createPolygonGeometry(radius, segments, state = null) {
   
   // Step 1: Determine base polygon type and create initial points
   let points = [];
+  
+  // Check if we're using Euclidean rhythm - if so, skip star creation entirely
+  const isUsingEuclidean = state?.useEuclidean || shapeType === 'euclidean';
+  
   switch (shapeType) {
     case 'star':
-      points = createStarPolygonPointsLocal(radius, segments, state?.starSkip || 1, state);
+      // Only create star if not using Euclidean
+      if (!isUsingEuclidean) {
+        points = createStarPolygonPointsLocal(radius, segments, state?.starSkip || 1, state);
+      } else {
+        points = createRegularPolygonPoints(radius, segments, state);
+      }
       break;
     case 'euclidean':
-      points = createEuclideanPoints(radius, segments, state?.euclidValue || 3, state);
+      // For euclidean shape type, start with regular polygon and apply euclidean later
+      points = createRegularPolygonPoints(radius, segments, state);
       break;
     case 'fractal':
-      points = createFractalPolygonPoints(radius, segments, state?.fractalValue || 1, state);
+      // For fractal shape type, start with regular polygon and apply fractal later
+      points = createRegularPolygonPoints(radius, segments, state);
       break;
     case 'regular':
     default:
       // Handle star polygon creation even in regular mode if useStars is enabled
-      if (state?.useStars && state?.starSkip > 1) {
+      // But skip if using Euclidean rhythm
+      if (state?.useStars && state?.starSkip > 1 && !isUsingEuclidean) {
         points = createStarPolygonPointsLocal(radius, segments, state.starSkip, state);
       } else {
         points = createRegularPolygonPoints(radius, segments, state);
@@ -101,25 +345,60 @@ export function createPolygonGeometry(radius, segments, state = null) {
       break;
   }
 
-  // Step 2: Apply fractal subdivision if enabled
-  // Skip if we already created a fractal shape or if fractal is disabled
-  if (state?.useFractal && state?.fractalValue > 1 && shapeType !== 'fractal') {
-    points = applyFractalSubdivision(points, state.fractalValue);
-  }
-
-  // Step 3: Add star cuts if enabled
-  // Only add cuts for star polygons when explicitly enabled
-  if (state?.useStars && state?.useCuts && state?.starSkip > 1) {
-    const originalVertexCount = points.length;
-    const intersectionPoints = calculateStarCutsVertices(points, state.starSkip);
-    
-    if (intersectionPoints.length > 0) {
-      points = [...points, ...intersectionPoints];
+  // Step 2: Handle star polygons and star cuts
+  // This determines the line segments that fractal will operate on
+  const isStarPolygon = state?.useStars && state?.starSkip > 1 && !isUsingEuclidean;
+  let lineSegments = [];
+  
+  if (isStarPolygon) {
+    if (state?.useCuts) {
+      // Star cuts enabled: Generate line segments from star cuts
+      const intersectionPoints = calculateStarCutsVertices(points, state.starSkip);
+      
+      if (intersectionPoints.length > 0) {
+        // Add intersection points to the vertex array
+        points = [...points, ...intersectionPoints];
+        
+        // Generate line segments that include the star cuts
+        lineSegments = generateStarCutLineSegments(points, intersectionPoints, state.starSkip, state.segments);
+      } else {
+        // No intersections found, use regular star line segments
+        lineSegments = generateStarLineSegments(points, state.starSkip);
+      }
+    } else {
+      // Star cuts disabled: Use regular star line segments
+      lineSegments = generateStarLineSegments(points, state.starSkip);
     }
+  } else {
+    // Regular polygon: Generate consecutive line segments
+    lineSegments = generateRegularPolygonLineSegments(points);
   }
 
-  // Step 4: Create geometry from final points
-  const geometry = createGeometryFromPoints(points, state);
+  // Step 3: Apply fractal subdivision to the line segments
+  let fractalizedLineSegments = null;
+  if (state?.useFractal && state?.fractalValue > 1 && shapeType !== 'fractal') {
+    const result = applyFractalSubdivisionToLineSegmentsWithSegments(lineSegments, state.fractalValue);
+    points = result.points;
+    fractalizedLineSegments = result.segments;
+  } else if (shapeType === 'fractal') {
+    const result = applyFractalSubdivisionToLineSegmentsWithSegments(lineSegments, state?.fractalValue || 1);
+    points = result.points;
+    fractalizedLineSegments = result.segments;
+  }
+
+  // Step 4: Apply Euclidean rhythm if enabled
+  // Skip if we already created a euclidean shape or if euclidean is disabled
+  if (state?.useEuclidean && state?.euclidValue > 0 && shapeType !== 'euclidean') {
+    // Apply euclidean rhythm to existing points
+    const euclideanPattern = calculateEuclideanRhythm(points.length, state.euclidValue);
+    points = points.filter((point, index) => euclideanPattern[index]);
+  } else if (shapeType === 'euclidean') {
+    // For euclidean shape type, apply euclidean rhythm to the base polygon
+    points = createEuclideanPoints(radius, segments, state?.euclidValue || 3, state);
+  }
+
+  // Step 5: Create geometry from final points
+  const geometry = createGeometryFromPoints(points, state, fractalizedLineSegments);
 
   // Add metadata to geometry
   if (geometry.userData === undefined) {
@@ -133,12 +412,13 @@ export function createPolygonGeometry(radius, segments, state = null) {
 
   // Add information about geometry composition
   geometry.userData.geometryInfo = {
-    type: state?.useStars && state?.starSkip > 1 ? 'star' : shapeType,
+    type: state?.useStars && state?.starSkip > 1 && !isUsingEuclidean ? 'star' : shapeType,
     baseVertexCount: segments,
     totalVertexCount: points.length,
-    hasIntersections: state?.useStars && state?.useCuts && state?.starSkip > 1,
+    hasIntersections: state?.useStars && state?.useCuts && state?.starSkip > 1 && !isUsingEuclidean,
     starSkip: state?.starSkip,
-    fractalLevel: state?.useFractal ? state.fractalValue : 1
+    fractalLevel: state?.useFractal ? state.fractalValue : 1,
+    isUsingEuclidean: isUsingEuclidean
   };
 
   return geometry;
@@ -163,14 +443,37 @@ function createRegularPolygonGeometry(radius, segments, state) {
  * Create geometry from an array of points
  * @param {Array<THREE.Vector2>} points Array of 2D points
  * @param {Object} state Application state
+ * @param {Array<Array<number>>} fractalSegments Optional array of line segment indices for fractalized geometry
  * @returns {THREE.BufferGeometry} The created geometry
  */
-function createGeometryFromPoints(points, state) {
+function createGeometryFromPoints(points, state, fractalSegments = null) {
   // Create geometry
   const geometry = new THREE.BufferGeometry();
   
-  // For star patterns, we need to create a custom indexed geometry
-  if (state?.useStars && state?.starSkip > 1 && points.length >= 3) {
+  // Check if we're using Euclidean rhythm - if so, skip star geometry creation
+  const isUsingEuclidean = state?.useEuclidean || state?.shapeType === 'euclidean';
+  
+  // Check if we have fractal segments to use for line drawing
+  if (fractalSegments && fractalSegments.length > 0) {
+    // Use the fractal segments for proper line drawing
+    const vertices = [];
+    const indices = [];
+    
+    // Create position vertices for all points
+    for (let i = 0; i < points.length; i++) {
+      vertices.push(points[i].x, points[i].y, 0);
+    }
+    
+    // Use the fractal segments for indices
+    for (const [start, end] of fractalSegments) {
+      indices.push(start, end);
+    }
+    
+    // Set the attributes
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setIndex(indices);
+  } else if (state?.useStars && state?.starSkip > 1 && points.length >= 3 && !isUsingEuclidean) {
+    // For star patterns without fractal, we need to create a custom indexed geometry
     const vertices = [];
     const indices = [];
     
@@ -227,7 +530,8 @@ function createGeometryFromPoints(points, state) {
   geometry.userData.vertexCount = points.length;
   
   // Add star polygon specific metadata
-  if (state?.useStars && state?.starSkip > 1) {
+  // But only if not using Euclidean rhythm (they are mutually exclusive)
+  if (state?.useStars && state?.starSkip > 1 && !isUsingEuclidean) {
     const hasIntersections = hasStarSelfIntersections(state.segments, state.starSkip);
     geometry.userData.geometryInfo = {
       type: 'star_with_cuts',
