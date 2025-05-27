@@ -431,7 +431,7 @@ function isPointOnLineSegment(point, lineStart, lineEnd) {
 
 /**
  * Create a polygon geometry with the given parameters
- * Pipeline order: 1-base geometry, 2-star geometry+cuts, 3-fractal on line segments, 4-euclid, 5-copies, 6-intersections, 7-delete
+ * Pipeline order: 1-base geometry, 2-star geometry+cuts, 3-euclid, 4-fractal on line segments, 5-copies, 6-intersections, 7-delete
  * Note: Star cuts generate NEW line segments that replace original star lines, then fractal operates on those segments
  * @param {number} radius Radius of the polygon
  * @param {number} segments Number of segments in the polygon
@@ -510,7 +510,23 @@ export function createPolygonGeometry(radius, segments, state = null) {
     lineSegments = generateRegularPolygonLineSegments(points);
   }
 
-  // Step 3: Apply fractal subdivision to the line segments
+  // Step 3: Apply Euclidean rhythm if enabled (BEFORE fractal)
+  // Skip if we already created a euclidean shape or if euclidean is disabled
+  if (state?.useEuclidean && state?.euclidValue > 0 && shapeType !== 'euclidean') {
+    // Apply euclidean rhythm to existing points
+    const euclideanPattern = calculateEuclideanRhythm(points.length, state.euclidValue);
+    points = points.filter((point, index) => euclideanPattern[index]);
+    
+    // Update line segments to match the filtered points
+    lineSegments = generateRegularPolygonLineSegments(points);
+  } else if (shapeType === 'euclidean') {
+    // For euclidean shape type, apply euclidean rhythm to the base polygon
+    points = createEuclideanPoints(radius, segments, state?.euclidValue || 3, state);
+    // Update line segments for euclidean points
+    lineSegments = generateRegularPolygonLineSegments(points);
+  }
+
+  // Step 4: Apply fractal subdivision to the line segments (AFTER euclidean)
   let fractalizedLineSegments = null;
   
   if (state?.useFractal && state?.fractalValue > 1 && shapeType !== 'fractal') {
@@ -521,17 +537,6 @@ export function createPolygonGeometry(radius, segments, state = null) {
     const result = applyFractalSubdivisionToLineSegmentsWithSegments(lineSegments, state?.fractalValue || 1);
     points = result.points;
     fractalizedLineSegments = result.segments;
-  }
-
-  // Step 4: Apply Euclidean rhythm if enabled
-  // Skip if we already created a euclidean shape or if euclidean is disabled
-  if (state?.useEuclidean && state?.euclidValue > 0 && shapeType !== 'euclidean') {
-    // Apply euclidean rhythm to existing points
-    const euclideanPattern = calculateEuclideanRhythm(points.length, state.euclidValue);
-    points = points.filter((point, index) => euclideanPattern[index]);
-  } else if (shapeType === 'euclidean') {
-    // For euclidean shape type, apply euclidean rhythm to the base polygon
-    points = createEuclideanPoints(radius, segments, state?.euclidValue || 3, state);
   }
 
   // Step 5: Create geometry from final points
