@@ -30,12 +30,14 @@ export function createNote(triggerData, state) {
     vertexIndex, 
     isIntersection = false,
     isStarCut = false,  // New flag to identify star cut intersections
+    isTessellated = false,  // New flag to identify tessellated vertices
     angle = 0, 
     lastAngle = 0, 
     globalIndex 
   } = triggerData;
   
   // Calculate base frequency from coordinates
+  // For tessellated vertices, always use the actual coordinates
   let frequency = Math.hypot(x, y);
   let noteName = null;
   
@@ -59,6 +61,17 @@ export function createNote(triggerData, state) {
     const intersectionIndex = triggerData.intersectionIndex || 0;
     const totalRegularPoints = state ? (state.copies * state.segments) : 0;
     pointIndex = totalRegularPoints + intersectionIndex;
+  } else if (isTessellated && copyIndex !== undefined && vertexIndex !== undefined) {
+    // TESSELLATION FIX: For tessellated vertices, calculate point index differently
+    // Each tessellated copy has originalVertexCount vertices, and we need to account for
+    // both the regular copy index and the tessellated sub-copy structure
+    const copies = state ? state.copies : 1;
+    const segments = state ? state.segments : 2;
+    
+    // For tessellated geometry, the vertex index includes both the tessellated copy
+    // and the vertex within that copy. We use the actual vertex index as-is
+    // to maintain unique point indices for duration/velocity calculations
+    pointIndex = (copyIndex * segments * segments) + vertexIndex;
   } else if (copyIndex !== undefined && vertexIndex !== undefined) {
     // For regular vertices, combine copy index and vertex index
     const copies = state ? state.copies : 1;
@@ -95,6 +108,7 @@ export function createNote(triggerData, state) {
     vertexIndex: vertexIndex || 0,
     isIntersection,
     isStarCut,  // Add the star cut flag to the note
+    isTessellated,  // Add the tessellated flag to the note
     coordinates: { x, y },
     time: Date.now(), // Current time in ms
     noteName,

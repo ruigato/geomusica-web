@@ -1360,66 +1360,64 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
               continue;
             }
             
-            // Get the base vertex index
-            let baseVertexIndex;
-            
-            // TESSELATION FIX: For tesselated vertices, use the tesselated vertex index
+            // TESSELATION FIX: For tesselated vertices, use actual position directly
             if (state && state.useTesselation && triggerableObj.mesh && triggerableObj.mesh.geometry && triggerableObj.mesh.geometry.userData && triggerableObj.mesh.geometry.userData.isTesselated) {
-              const originalVertexCount = triggerableObj.mesh.geometry.userData.originalVertexCount;
-              baseVertexIndex = triggerableObj.vertexIndex % originalVertexCount;
+              // For tessellated vertices, use the actual crossing position directly
+              // This ensures the frequency calculation matches the visual position
+              note = createNote({
+                x: crossingResult.position.x,
+                y: crossingResult.position.y,
+                copyIndex: triggerableObj.copyIndex,
+                vertexIndex: triggerableObj.vertexIndex,
+                isIntersection: false,
+                angle: angle,
+                isTessellated: true // Flag to indicate this is a tessellated vertex
+              }, state);
               
-              // DEBUG: Log vertex index calculation for tesselated vertices
+              // DEBUG: Log successful tessellated note creation
               if (state.useTesselation) {
+                // console.log(`[TESSELLATION] Created note for tessellated vertex at (${crossingResult.position.x.toFixed(2)}, ${crossingResult.position.y.toFixed(2)}) with freq ${note.frequency.toFixed(2)}Hz`);
               }
             } else {
+              // Regular vertex processing for non-tessellated geometry
+              // Get the base vertex index
+              let baseVertexIndex;
+              
               baseVertexIndex = state.useFractal ? (triggerableObj.vertexIndex % state.segments) : triggerableObj.vertexIndex;
-            }
-            
-            const basePositions = layer.baseGeo.getAttribute('position').array;
-            
-            // Check base geometry bounds
-            if (baseVertexIndex * 3 + 1 >= basePositions.length) {
-              // DEBUG: Log bounds issues for tesselated vertices
-              if (state && state.useTesselation) {
-              }
-              continue;
-            }
-            
-            // FRACTAL BUG FIX: Additional validation for fractal mode
-            // Ensure the baseVertexIndex makes sense for the current geometry
-            if (state.useFractal) {
-              const geometryInfo = layer.baseGeo.userData.geometryInfo;
-              const expectedBaseVertexCount = geometryInfo?.baseVertexCount || state.segments;
               
-              // If the expected base vertex count doesn't match, skip this trigger
-              if (expectedBaseVertexCount !== state.segments) {
-                // DEBUG: Log fractal issues for tesselated vertices
-                if (state && state.useTesselation) {
-                }
+              const basePositions = layer.baseGeo.getAttribute('position').array;
+              
+              // Check base geometry bounds
+              if (baseVertexIndex * 3 + 1 >= basePositions.length) {
                 continue;
               }
               
-              // Ensure the calculated baseVertexIndex is within the original segments range
-              if (baseVertexIndex >= state.segments) {
-                // DEBUG: Log fractal index issues for tesselated vertices
-                if (state && state.useTesselation) {
+              // FRACTAL BUG FIX: Additional validation for fractal mode
+              // Ensure the baseVertexIndex makes sense for the current geometry
+              if (state.useFractal) {
+                const geometryInfo = layer.baseGeo.userData.geometryInfo;
+                const expectedBaseVertexCount = geometryInfo?.baseVertexCount || state.segments;
+                
+                // If the expected base vertex count doesn't match, skip this trigger
+                if (expectedBaseVertexCount !== state.segments) {
+                  continue;
                 }
-                continue;
+                
+                // Ensure the calculated baseVertexIndex is within the original segments range
+                if (baseVertexIndex >= state.segments) {
+                  continue;
+                }
               }
-            }
-            
-            // Use createNote function to ensure equal temperament is applied
-            note = createNote({
-              x: crossingResult.position.x,
-              y: crossingResult.position.y,
-              copyIndex: triggerableObj.copyIndex,
-              vertexIndex: triggerableObj.vertexIndex,
-              isIntersection: false,
-              angle: angle
-            }, state);
-            
-            // DEBUG: Log successful note creation for tesselated vertices
-            if (state && state.useTesselation) {
+              
+              // Use createNote function to ensure equal temperament is applied
+              note = createNote({
+                x: crossingResult.position.x,
+                y: crossingResult.position.y,
+                copyIndex: triggerableObj.copyIndex,
+                vertexIndex: triggerableObj.vertexIndex,
+                isIntersection: false,
+                angle: angle
+              }, state);
             }
             
           } else if (triggerableObj.type === 'intersection') {
