@@ -219,6 +219,52 @@ function applyFractalSubdivisionToLineSegmentsWithSegments(lineSegments, fractal
 }
 
 /**
+ * Add line segments connecting star cut intersection points to the fractalized geometry
+ * @param {Array<Array<number>>} fractalSegments Existing fractal line segments
+ * @param {Array<THREE.Vector2>} allPoints All points including intersection points
+ * @param {Array<THREE.Vector2>} intersectionPoints Star cut intersection points
+ * @param {number} intersectionStartIndex Starting index of intersection points in allPoints array
+ * @returns {Array<Array<number>>} Updated line segments including intersection connections
+ */
+function addIntersectionPointSegments(fractalSegments, allPoints, intersectionPoints, intersectionStartIndex) {
+  const updatedSegments = [...fractalSegments];
+  
+  // For each intersection point, find the closest fractalized points and connect to them
+  for (let i = 0; i < intersectionPoints.length; i++) {
+    const intersection = intersectionPoints[i];
+    const intersectionIndex = intersectionStartIndex + i;
+    
+    // Find the closest fractalized points (excluding other intersection points)
+    const fractalizedPoints = allPoints.slice(0, intersectionStartIndex);
+    let closestDistances = [];
+    
+    for (let j = 0; j < fractalizedPoints.length; j++) {
+      const fractalPoint = fractalizedPoints[j];
+      const distance = Math.hypot(
+        intersection.x - fractalPoint.x,
+        intersection.y - fractalPoint.y
+      );
+      closestDistances.push({ index: j, distance });
+    }
+    
+    // Sort by distance and connect to the closest points
+    closestDistances.sort((a, b) => a.distance - b.distance);
+    
+    // Connect to the 2-3 closest points to create star cut lines
+    const connectionsToMake = Math.min(3, closestDistances.length);
+    for (let k = 0; k < connectionsToMake; k++) {
+      const closestPoint = closestDistances[k];
+      // Only connect if the distance is reasonable (not too far)
+      if (closestPoint.distance < 300) { // Adjust threshold as needed
+        updatedSegments.push([intersectionIndex, closestPoint.index]);
+      }
+    }
+  }
+  
+  return updatedSegments;
+}
+
+/**
  * Generate line segments for a regular polygon
  * @param {Array<THREE.Vector2>} points Array of polygon vertices
  * @returns {Array<Array<THREE.Vector2>>} Array of line segments
@@ -294,6 +340,96 @@ function generateStarCutLineSegments(allPoints, intersectionPoints, starSkip, or
 }
 
 /**
+ * Generate the actual star cut line segments that represent the star cut pattern
+ * This creates the line segments that should be fractalized, not just connections to intersection points
+ * @param {Array<THREE.Vector2>} allPoints Array of all points (original vertices + intersection points)
+ * @param {number} starSkip Skip value for the star
+ * @param {number} originalVertexCount Number of original vertices
+ * @returns {Array<Array<THREE.Vector2>>} Array of line segments representing the star cut pattern
+ */
+function generateActualStarCutLineSegments(allPoints, starSkip, originalVertexCount) {
+  const segments = [];
+  const originalVertices = allPoints.slice(0, originalVertexCount);
+  const intersectionPoints = allPoints.slice(originalVertexCount);
+  
+  // For each original star line, trace the path through intersection points
+  for (let i = 0; i < originalVertexCount; i++) {
+    const startVertex = originalVertices[i];
+    const endVertex = originalVertices[(i + starSkip) % originalVertexCount];
+    
+    // Find intersection points that lie on this star line
+    const lineIntersections = [];
+    
+    for (const intersection of intersectionPoints) {
+      // Check if this intersection point lies on the line between startVertex and endVertex
+      if (isPointOnLineSegment(intersection, startVertex, endVertex)) {
+        lineIntersections.push(intersection);
+      }
+    }
+    
+    // Sort intersection points by distance from start vertex
+    lineIntersections.sort((a, b) => {
+      const distA = Math.hypot(a.x - startVertex.x, a.y - startVertex.y);
+      const distB = Math.hypot(b.x - startVertex.x, b.y - startVertex.y);
+      return distA - distB;
+    });
+    
+    // Create line segments: start -> first intersection -> second intersection -> ... -> end
+    const pathPoints = [startVertex, ...lineIntersections, endVertex];
+    
+    for (let j = 0; j < pathPoints.length - 1; j++) {
+      segments.push([pathPoints[j], pathPoints[j + 1]]);
+    }
+  }
+  
+  return segments;
+}
+
+/**
+ * Check if a point lies on a line segment (with tolerance)
+ * @param {THREE.Vector2} point Point to check
+ * @param {THREE.Vector2} lineStart Start of line segment
+ * @param {THREE.Vector2} lineEnd End of line segment
+ * @returns {boolean} True if point is on the line segment
+ */
+function isPointOnLineSegment(point, lineStart, lineEnd) {
+  const epsilon = 1e-3; // Tolerance for floating-point comparison
+  
+  // Check if point is between the endpoints
+  const dxL = lineEnd.x - lineStart.x;
+  const dyL = lineEnd.y - lineStart.y;
+  const dxP = point.x - lineStart.x;
+  const dyP = point.y - lineStart.y;
+  
+  // If line is a point, check if the test point is close to that point
+  if (Math.abs(dxL) < epsilon && Math.abs(dyL) < epsilon) {
+    return Math.abs(dxP) < epsilon && Math.abs(dyP) < epsilon;
+  }
+  
+  // Calculate the t parameter (0 <= t <= 1 means the point is on the segment)
+  let t;
+  if (Math.abs(dxL) > Math.abs(dyL)) {
+    // Line is more horizontal, use x for t
+    t = dxP / dxL;
+  } else {
+    // Line is more vertical, use y for t
+    t = dyP / dyL;
+  }
+  
+  // Check if t is in range [0,1] with tolerance
+  if (t < -epsilon || t > 1 + epsilon) {
+    return false;
+  }
+  
+  // Check if the point is close to the line using the cross product method
+  const crossProduct = Math.abs(dxP * dyL - dyP * dxL);
+  const lineLength = Math.sqrt(dxL * dxL + dyL * dyL);
+  const distance = crossProduct / lineLength;
+  
+  return distance < epsilon;
+}
+
+/**
  * Create a polygon geometry with the given parameters
  * Pipeline order: 1-base geometry, 2-star geometry+cuts, 3-fractal on line segments, 4-euclid, 5-copies, 6-intersections, 7-delete
  * Note: Star cuts generate NEW line segments that replace original star lines, then fractal operates on those segments
@@ -352,15 +488,15 @@ export function createPolygonGeometry(radius, segments, state = null) {
   
   if (isStarPolygon) {
     if (state?.useCuts) {
-      // Star cuts enabled: Generate line segments from star cuts
+      // Star cuts enabled: Generate the actual star cut line segments
       const intersectionPoints = calculateStarCutsVertices(points, state.starSkip);
       
       if (intersectionPoints.length > 0) {
-        // Add intersection points to the vertex array
+        // Add intersection points to the vertex array for point rendering
         points = [...points, ...intersectionPoints];
         
-        // Generate line segments that include the star cuts
-        lineSegments = generateStarCutLineSegments(points, intersectionPoints, state.starSkip, state.segments);
+        // Generate the actual star cut line segments (not just connections to intersections)
+        lineSegments = generateActualStarCutLineSegments(points, state.starSkip, state.segments);
       } else {
         // No intersections found, use regular star line segments
         lineSegments = generateStarLineSegments(points, state.starSkip);
@@ -376,6 +512,7 @@ export function createPolygonGeometry(radius, segments, state = null) {
 
   // Step 3: Apply fractal subdivision to the line segments
   let fractalizedLineSegments = null;
+  
   if (state?.useFractal && state?.fractalValue > 1 && shapeType !== 'fractal') {
     const result = applyFractalSubdivisionToLineSegmentsWithSegments(lineSegments, state.fractalValue);
     points = result.points;
