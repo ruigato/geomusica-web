@@ -57,6 +57,7 @@ export function applyUnisonParameterChange(setterName, value, layerManager) {
     'setEuclidValue', 'setUseEuclid', 'setUseFractal', 'setUseStars',
     'setUseCuts', 'setUseAltScale', 'setUseLerp', 'setUseQuantization',
     'setUsePlainIntersections', 'setShowAxisFreqLabels', 'setShowPointsFreqLabels',
+    'setUseDelete', 'setDeleteMin', 'setDeleteMax', 'setDeleteMode', 'setDeleteTarget', 'setDeleteSeed',
     'setDurationMode', 'setVelocityMode',
     // Radio button parameters
     'setModulusValue', 'setUseModulus', 'setDurationModulo', 'setVelocityModulo',

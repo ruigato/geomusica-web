@@ -12,6 +12,7 @@ import {
 } from '../time/time.js';
 import { createNote } from '../notes/notes.js';
 import { TemporalTriggerEngine } from './SubframeTrigger.js';
+import { calculateDeletedVertices } from '../geometry/geometry.js';
 
 const DEBUG_PHANTOM_TRIGGERS = true;
 
@@ -985,8 +986,16 @@ function findAllTriggerableObjects(group, layer) {
   // Skip if no copies or zero segments
   if (copies <= 0 || state.segments <= 0) return triggerableObjects;
   
+  // Check if we need to account for deleted copies in primitives mode
+  let deletedCopies = new Set();
+  if (state && state.useDelete && state.deleteTarget === 'primitives') {
+    deletedCopies = calculateDeletedVertices(copies, state);
+  }
+
   // 1. Find all regular vertices in copy groups
   let foundCopyCount = 0;
+  let actualCopyIndex = 0; // Track the actual copy index (accounting for deleted copies)
+  
   for (let i = 0; i < group.children.length; i++) {
     const child = group.children[i];
     
@@ -995,9 +1004,15 @@ function findAllTriggerableObjects(group, layer) {
     if (child.type === 'Mesh' && child.geometry && child.geometry.type === 'SphereGeometry') continue;
     if (child.type === 'Line') continue;
     
+    // Find the next non-deleted copy index
+    while (deletedCopies.has(actualCopyIndex) && actualCopyIndex < copies) {
+      actualCopyIndex++;
+    }
+    
     // This is a valid copy group
-    const copyIndex = foundCopyCount;
+    const copyIndex = actualCopyIndex;
     foundCopyCount++;
+    actualCopyIndex++;
     
     if (copyIndex >= copies) break;
     
@@ -1012,14 +1027,33 @@ function findAllTriggerableObjects(group, layer) {
       
       // Add all vertices in this copy as triggerable objects
       for (let vi = 0; vi < vertexCount; vi++) {
-        triggerableObjects.push({
-          type: 'vertex',
-          id: `${layer.id}-${copyIndex}-${vi}`,
-          mesh: mesh,
-          vertexIndex: vi,
-          copyIndex: copyIndex,
-          layer: layer
-        });
+        // Calculate global vertex index for this vertex
+        const globalVertexIndex = copyIndex * vertexCount + vi;
+        
+        // Check if this vertex should be deleted using GLOBAL indexing (skip from triggering)
+        let isDeleted = false;
+        if (state && state.useDelete && state.deleteTarget === 'points') {
+          // Calculate total vertices across all copies for global indexing
+          const totalVertices = copies * vertexCount;
+          const deletedVertices = calculateDeletedVertices(totalVertices, state);
+          
+          if (deletedVertices.has(globalVertexIndex)) {
+            isDeleted = true;
+          }
+        }
+        
+        // Only add non-deleted vertices to triggerable objects
+        if (!isDeleted) {
+          triggerableObjects.push({
+            type: 'vertex',
+            id: `${layer.id}-${copyIndex}-${vi}`,
+            mesh: mesh,
+            vertexIndex: vi,
+            copyIndex: copyIndex,
+            layer: layer,
+            globalVertexIndex: globalVertexIndex
+          });
+        }
       }
       
       // 2. Find legacy intersection points in this copy group

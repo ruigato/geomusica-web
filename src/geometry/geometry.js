@@ -184,10 +184,17 @@ function createGeometryFromPoints(points, state) {
     const skip = state.starSkip;
     
     // Create indices to connect vertices in star pattern
+    const allIndices = [];
     for (let i = 0; i < baseVertexCount; i++) {
       const startIdx = i;
       const endIdx = (i + skip) % baseVertexCount;
-      indices.push(startIdx, endIdx);
+      allIndices.push([startIdx, endIdx]);
+    }
+    
+    // For star polygons, primitives deletion is handled at the copy level in updateGroup
+    // Here we just create the full geometry for each copy
+    for (const [start, end] of allIndices) {
+      indices.push(start, end);
     }
     
     // Set the attributes
@@ -195,6 +202,8 @@ function createGeometryFromPoints(points, state) {
     geometry.setIndex(indices);
   } else {
     // Standard non-indexed geometry for regular polygons
+    // FIXED: Don't delete vertices here - deletion is now handled at the copy level in updateGroup
+    // with global vertex indexing and visibility-only deletion
     const positionArray = new Float32Array(points.length * 3);
     
     for (let i = 0; i < points.length; i++) {
@@ -659,21 +668,36 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       pointFreqLabelsCreated = [];
     }
     
-    // Now create the actual polygon copies for display
-    for (let i = 0; i < copies; i++) {
-      // Base scale factor from step scale
-      let stepScaleFactor = Math.pow(stepScale, i);
-      
-      // Apply modulus scaling if enabled
-      let finalScale = stepScaleFactor;
-      if (state && state.useModulus) {
-        const modulusScale = state.getScaleFactorForCopy(i);
-        finalScale = modulusScale * stepScaleFactor;
-      }
-      // Apply alt scale if enabled
-      else if (state && state.useAltScale && ((i + 1) % state.altStepN === 0)) {
-        finalScale = stepScaleFactor * state.altScale;
-      }
+      // Check if we should delete entire copies (primitives mode)
+  let copiesToCreate = copies;
+  let deletedCopies = new Set();
+  
+  if (state && state.useDelete && state.deleteTarget === 'primitives') {
+    deletedCopies = calculateDeletedVertices(copies, state);
+    // Count how many copies will actually be created
+    copiesToCreate = copies - deletedCopies.size;
+  }
+
+  // Now create the actual polygon copies for display
+  for (let i = 0; i < copies; i++) {
+    // Skip this copy if it should be deleted in primitives mode
+    if (deletedCopies.has(i)) {
+      continue;
+    }
+    
+    // Base scale factor from step scale
+    let stepScaleFactor = Math.pow(stepScale, i);
+    
+    // Apply modulus scaling if enabled
+    let finalScale = stepScaleFactor;
+    if (state && state.useModulus) {
+      const modulusScale = state.getScaleFactorForCopy(i);
+      finalScale = modulusScale * stepScaleFactor;
+    }
+    // Apply alt scale if enabled
+    else if (state && state.useAltScale && ((i + 1) % state.altStepN === 0)) {
+      finalScale = stepScaleFactor * state.altScale;
+    }
       
       // Each copy gets a cumulative angle (i * angle) in degrees, plus the starting angle
       const startingAngle = state?.startingAngle || 0;
@@ -771,6 +795,20 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
           triggerData.isIntersection = v >= state?.segments;
         }
         
+        // FIXED: Check if this vertex should be deleted using GLOBAL vertex index
+        let isDeleted = false;
+        let deletedOpacity = 1.0;
+        if (state && state.useDelete && state.deleteTarget === 'points') {
+          // Calculate total vertices across all copies for global indexing
+          const totalVertices = copies * count;
+          const deletedVertices = calculateDeletedVertices(totalVertices, state);
+          
+          if (deletedVertices.has(globalVertexIndex)) {
+            isDeleted = true;
+            deletedOpacity = 0.1; // Make deleted vertices very faint but still visible
+          }
+        }
+        
         // Increment the global vertex index
         globalVertexIndex++;
         
@@ -792,19 +830,22 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         // Adjust the multiplier (0.3) to make points larger or smaller overall
         const sizeScaleFactor = (cameraDistance / 1000) * baseCircleSize * durationScaleFactor * 10.3 * sizeAdjustment;
         
-        // Create material with opacity based on velocity
+        // Create material with opacity based on velocity and delete status
+        const baseOpacity = note.velocity * deletedOpacity;
         const vertexCircleMaterial = new THREE.MeshBasicMaterial({ 
           color: mat && mat.color ? mat.color : VERTEX_CIRCLE_COLOR,
           transparent: true,
-          opacity: note.velocity, 
+          opacity: baseOpacity, 
           depthTest: false,
           side: THREE.DoubleSide // Render both sides for better visibility
         });
         
         // Store trigger data with the material for audio trigger detection
+        // Include delete status for trigger system
         vertexCircleMaterial.userData = {
           ...triggerData,
-          note: note
+          note: note,
+          isDeleted: isDeleted // Flag for trigger system to ignore deleted vertices
         };
         
         // FIXED: Track created materials for proper disposal
@@ -820,7 +861,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         // Position the circle at the vertex
         vertexCircle.position.set(x, y, 0);
         
-        // Add to the copy group
+        // Add to the copy group (always add, even if deleted - just with low opacity)
         copyGroup.add(vertexCircle);
         
         // Add persistent frequency label if enabled
@@ -1301,4 +1342,66 @@ function generateEuclideanRhythm(n, k) {
   // This function is now obsolete - replaced by calculateEuclideanRhythm
   
   return calculateEuclideanRhythm(n, k);
+}
+
+/**
+ * Calculate which vertices should be deleted based on delete parameters
+ * @param {number} totalVertices Total number of vertices
+ * @param {Object} state Application state containing delete parameters
+ * @returns {Set} Set of vertex indices to delete
+ */
+export function calculateDeletedVertices(totalVertices, state) {
+  if (!state || !state.useDelete || totalVertices <= 0) {
+    return new Set();
+  }
+  
+  const { deleteMin, deleteMax, deleteMode, deleteSeed } = state;
+  const deletedIndices = new Set();
+  
+  // Ensure min <= max
+  const min = Math.min(deleteMin, deleteMax);
+  const max = Math.max(deleteMin, deleteMax);
+  
+  if (deleteMode === 'pattern') {
+    // Pattern mode: for each max vertices, delete min vertices in sequence
+    for (let start = 0; start < totalVertices; start += max) {
+      for (let i = 0; i < min && (start + i) < totalVertices; i++) {
+        deletedIndices.add(start + i);
+      }
+    }
+  } else if (deleteMode === 'random') {
+    // Random mode: use seed to create deterministic random sequence
+    const rng = createSeededRandom(deleteSeed);
+    
+    // Create array of all vertex indices
+    const allIndices = Array.from({ length: totalVertices }, (_, i) => i);
+    
+    // Shuffle the array using seeded random
+    for (let i = allIndices.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [allIndices[i], allIndices[j]] = [allIndices[j], allIndices[i]];
+    }
+    
+    // Apply pattern deletion to the shuffled array
+    for (let start = 0; start < totalVertices; start += max) {
+      for (let i = 0; i < min && (start + i) < totalVertices; i++) {
+        deletedIndices.add(allIndices[start + i]);
+      }
+    }
+  }
+  
+  return deletedIndices;
+}
+
+/**
+ * Create a seeded random number generator
+ * @param {number} seed Random seed
+ * @returns {Function} Random number generator function
+ */
+function createSeededRandom(seed) {
+  let state = seed;
+  return function() {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    return state / 4294967296;
+  };
 }

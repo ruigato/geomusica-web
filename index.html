@@ -330,6 +330,72 @@
         <div class="control">
           <div id="validEuclidInfo" class="help-text">Current Euclidean pattern: k=3 out of n=5 vertices</div>
         </div>
+        
+        <div class="control">
+          <label for="useDeleteCheckbox">Use Delete:</label>
+          <input type="checkbox" id="useDeleteCheckbox">
+          <span class="help-text">When enabled, deletes vertices from visualization and triggering</span>
+        </div>
+        
+        <div class="control">
+          <label for="deleteMinRange">Delete Min:</label>
+          <div class="slider-container">
+            <input type="range" id="deleteMinRange" min="1" max="32" step="1" value="1">
+            <span id="deleteMinValue" class="slider-value">1</span>
+            <input type="number" id="deleteMinNumber" min="1" max="32" step="1" value="1">
+          </div>
+          <div class="help-text">Minimum number of vertices to delete from each pattern group</div>
+        </div>
+        
+        <div class="control">
+          <label for="deleteMaxRange">Delete Max:</label>
+          <div class="slider-container">
+            <input type="range" id="deleteMaxRange" min="1" max="32" step="1" value="4">
+            <span id="deleteMaxValue" class="slider-value">4</span>
+            <input type="number" id="deleteMaxNumber" min="1" max="32" step="1" value="4">
+          </div>
+          <div class="help-text">Maximum number of vertices in each pattern group</div>
+        </div>
+        
+        <div class="control">
+          <label>Delete Mode:</label>
+          <div class="radio-group">
+            <div class="radio-item">
+              <input type="radio" id="deleteMode-pattern" name="deleteMode" value="pattern" checked>
+              <label for="deleteMode-pattern">Pattern</label>
+            </div>
+            <div class="radio-item">
+              <input type="radio" id="deleteMode-random" name="deleteMode" value="random">
+              <label for="deleteMode-random">Random</label>
+            </div>
+          </div>
+          <div class="help-text">Pattern mode deletes in sequence, Random mode uses seed for randomization</div>
+        </div>
+        
+        <div class="control">
+          <label>Delete Target:</label>
+          <div class="radio-group">
+            <div class="radio-item">
+              <input type="radio" id="deleteTarget-points" name="deleteTarget" value="points" checked>
+              <label for="deleteTarget-points">Points</label>
+            </div>
+            <div class="radio-item">
+              <input type="radio" id="deleteTarget-primitives" name="deleteTarget" value="primitives">
+              <label for="deleteTarget-primitives">Primitives</label>
+            </div>
+          </div>
+          <div class="help-text">Points mode deletes individual vertices, Primitives mode deletes entire copies from the copy group</div>
+        </div>
+        
+        <div class="control">
+          <label for="deleteSeedRange">Delete Seed:</label>
+          <div class="slider-container">
+            <input type="range" id="deleteSeedRange" min="0" max="999" step="1" value="0">
+            <span id="deleteSeedValue" class="slider-value">0</span>
+            <input type="number" id="deleteSeedNumber" min="0" max="999" step="1" value="0">
+          </div>
+          <div class="help-text">Random seed for delete randomization (0-999)</div>
+        </div>
       </div>
     </section>
     

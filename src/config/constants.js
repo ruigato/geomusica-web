@@ -78,6 +78,15 @@ export const DEFAULT_VALUES = {
   EUCLID_VALUE: 1, // Default Euclidean rhythm value
   USE_EUCLID: false, // Default for Euclidean rhythm feature
   USE_PLAIN_INTERSECTIONS: false, // Default for plain intersection feature
+  
+  // Delete parameters
+  USE_DELETE: false, // Default for delete feature
+  DELETE_MIN: 1, // Default minimum delete value
+  DELETE_MAX: 8, // Default maximum delete value
+  DELETE_MODE: 'pattern', // Default delete mode ('pattern' or 'random')
+  DELETE_TARGET: 'points', // Default delete target ('points' or 'primitives')
+  DELETE_SEED: 0, // Default random seed for delete feature
+  
   QUANTIZATION_VALUE: "1/4", // Default quantization value
   USE_QUANTIZATION: false, // Default for quantization feature
   DURATION_MODE: "fixed", // Default duration mode
@@ -195,7 +204,15 @@ export const PARAMETER_RANGES = {
   VELOCITY_MODULO: { MIN: 1, MAX: 12, STEP: 1 },
   MIN_VELOCITY: { MIN: 0.1, MAX: 0.9, STEP: 0.01 },
   MAX_VELOCITY: { MIN: 0.2, MAX: 1.0, STEP: 0.01 },
-  VELOCITY_PHASE: { MIN: 0, MAX: 1, STEP: 0.01 }
+  VELOCITY_PHASE: { MIN: 0, MAX: 1, STEP: 0.01 },
+  
+  // Delete parameters
+  USE_DELETE: { MIN: false, MAX: true, STEP: null },
+  DELETE_MIN: { MIN: 1, MAX: 32, STEP: 1 },
+  DELETE_MAX: { MIN: 1, MAX: 32, STEP: 1 },
+  DELETE_MODE: { MIN: 'pattern', MAX: 'random', STEP: null },
+  DELETE_TARGET: { MIN: 'points', MAX: 'primitives', STEP: null },
+  DELETE_SEED: { MIN: 0, MAX: 999, STEP: 1 }
 };
 
 // Add this list of valid quantization values for reference

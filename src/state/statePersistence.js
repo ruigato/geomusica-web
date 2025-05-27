@@ -730,6 +730,43 @@ export function updateUIFromState(state, uiElements) {
       uiElements.validEuclidInfo.textContent = `Current Euclidean pattern: k=${state.euclidValue} out of n=${state.segments} vertices`;
     }
     
+    // Update Delete controls
+    if (uiElements.useDeleteCheckbox && state.useDelete !== undefined) {
+      uiElements.useDeleteCheckbox.checked = state.useDelete;
+    }
+    
+    if (uiElements.deleteMinRange && state.deleteMin !== undefined) {
+      uiElements.deleteMinRange.value = state.deleteMin;
+      if (uiElements.deleteMinNumber) uiElements.deleteMinNumber.value = state.deleteMin;
+      if (uiElements.deleteMinValue) uiElements.deleteMinValue.textContent = state.deleteMin;
+    }
+    
+    if (uiElements.deleteMaxRange && state.deleteMax !== undefined) {
+      uiElements.deleteMaxRange.value = state.deleteMax;
+      if (uiElements.deleteMaxNumber) uiElements.deleteMaxNumber.value = state.deleteMax;
+      if (uiElements.deleteMaxValue) uiElements.deleteMaxValue.textContent = state.deleteMax;
+    }
+    
+    if (uiElements.deleteSeedRange && state.deleteSeed !== undefined) {
+      uiElements.deleteSeedRange.value = state.deleteSeed;
+      if (uiElements.deleteSeedNumber) uiElements.deleteSeedNumber.value = state.deleteSeed;
+      if (uiElements.deleteSeedValue) uiElements.deleteSeedValue.textContent = state.deleteSeed;
+    }
+    
+    // Update Delete mode radio buttons
+    if (uiElements.deleteModeRadios && state.deleteMode !== undefined) {
+      uiElements.deleteModeRadios.forEach(radio => {
+        radio.checked = radio.value === state.deleteMode;
+      });
+    }
+    
+    // Update Delete target radio buttons
+    if (uiElements.deleteTargetRadios && state.deleteTarget !== undefined) {
+      uiElements.deleteTargetRadios.forEach(radio => {
+        radio.checked = radio.value === state.deleteTarget;
+      });
+    }
+    
     // Update checkbox states
     if (uiElements.useLerpCheckbox && state.useLerp !== undefined) {
       uiElements.useLerpCheckbox.checked = state.useLerp;

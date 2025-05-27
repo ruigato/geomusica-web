@@ -523,6 +523,27 @@ export function setupUI(state) {
   const useCutsCheckbox = document.getElementById('useCutsCheckbox');
   const validSkipsInfo = document.getElementById('validSkipsInfo');
   
+  // Euclidean rhythm controls
+  const euclidRange = document.getElementById('euclidRange');
+  const euclidNumber = document.getElementById('euclidNumber');
+  const euclidValue = document.getElementById('euclidValue');
+  const useEuclidCheckbox = document.getElementById('useEuclidCheckbox');
+  const validEuclidInfo = document.getElementById('validEuclidInfo');
+  
+  // Delete controls
+  const useDeleteCheckbox = document.getElementById('useDeleteCheckbox');
+  const deleteMinRange = document.getElementById('deleteMinRange');
+  const deleteMinNumber = document.getElementById('deleteMinNumber');
+  const deleteMinValue = document.getElementById('deleteMinValue');
+  const deleteMaxRange = document.getElementById('deleteMaxRange');
+  const deleteMaxNumber = document.getElementById('deleteMaxNumber');
+  const deleteMaxValue = document.getElementById('deleteMaxValue');
+  const deleteModeRadios = document.querySelectorAll('input[name="deleteMode"]');
+  const deleteTargetRadios = document.querySelectorAll('input[name="deleteTarget"]');
+  const deleteSeedRange = document.getElementById('deleteSeedRange');
+  const deleteSeedNumber = document.getElementById('deleteSeedNumber');
+  const deleteSeedValue = document.getElementById('deleteSeedValue');
+  
   // Note parameter controls - Duration
   const durationModeRadios = document.querySelectorAll('input[name="durationMode"]');
   const durationModuloRadioGroup = document.getElementById('durationModuloRadioGroup');
@@ -581,6 +602,8 @@ export function setupUI(state) {
   if (useStarsCheckbox) useStarsCheckbox.checked = state.useStars;
   if (useCutsCheckbox) useCutsCheckbox.checked = state.useCuts;
   if (useLerpCheckbox) useLerpCheckbox.checked = state.useLerp;
+  if (useEuclidCheckbox) useEuclidCheckbox.checked = state.useEuclid;
+  if (useDeleteCheckbox) useDeleteCheckbox.checked = state.useDelete;
   
   // Set initial values for scale mod controls from state with null checks
   if (altScaleRange && altScaleNumber && altScaleValue) {
@@ -706,6 +729,22 @@ export function setupUI(state) {
     });
   }
   
+  // Setup Euclidean rhythm checkbox with null check
+  if (useEuclidCheckbox) {
+    useEuclidCheckbox.checked = state.useEuclid;
+    useEuclidCheckbox.addEventListener('change', e => {
+      handleCheckboxChange('setUseEuclid', e.target.checked);
+    });
+  }
+  
+  // Setup Delete checkbox with null check
+  if (useDeleteCheckbox) {
+    useDeleteCheckbox.checked = state.useDelete;
+    useDeleteCheckbox.addEventListener('change', e => {
+      handleCheckboxChange('setUseDelete', e.target.checked);
+    });
+  }
+  
   // Setup plain intersections checkbox
   if (useIntersectionsCheckbox) {
     useIntersectionsCheckbox.addEventListener('change', e => {
@@ -742,6 +781,40 @@ export function setupUI(state) {
       radio.addEventListener('change', e => {
         if (e.target.checked) {
           handleRadioButtonChange('setVelocityMode', e.target.value);
+        }
+      });
+    });
+  }
+
+  // Setup Delete mode radio buttons with null check
+  if (deleteModeRadios && deleteModeRadios.length > 0) {
+    deleteModeRadios.forEach(radio => {
+      // Check the one that matches the current state
+      if (radio.value === state.deleteMode) {
+        radio.checked = true;
+      }
+      
+      // Add event listener
+      radio.addEventListener('change', e => {
+        if (e.target.checked) {
+          handleRadioButtonChange('setDeleteMode', e.target.value);
+        }
+      });
+    });
+  }
+  
+  // Setup Delete target radio buttons with null check
+  if (deleteTargetRadios && deleteTargetRadios.length > 0) {
+    deleteTargetRadios.forEach(radio => {
+      // Check the one that matches the current state
+      if (radio.value === state.deleteTarget) {
+        radio.checked = true;
+      }
+      
+      // Add event listener
+      radio.addEventListener('change', e => {
+        if (e.target.checked) {
+          handleRadioButtonChange('setDeleteTarget', e.target.value);
         }
       });
     });
@@ -1025,6 +1098,59 @@ export function setupUI(state) {
       UI_RANGES.FRACTAL_VALUE[0], UI_RANGES.FRACTAL_VALUE[1],
       Number);
   }
+  
+  // Link Euclidean rhythm controls
+  if (euclidRange && euclidNumber && euclidValue) {
+    syncPair(euclidRange, euclidNumber, euclidValue,
+      function setEuclidValue(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setEuclidValue(Number(value));
+        updateEuclidInfo();
+      },
+      1, 12,
+      Number);
+    // Initial update
+    updateEuclidInfo();
+  }
+  
+  // Link Delete controls
+  if (deleteMinRange && deleteMinNumber && deleteMinValue) {
+    syncPair(deleteMinRange, deleteMinNumber, deleteMinValue,
+      function setDeleteMin(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setDeleteMin(Number(value));
+      },
+      1, 8,
+      Number);
+  }
+  
+  if (deleteMaxRange && deleteMaxNumber && deleteMaxValue) {
+    syncPair(deleteMaxRange, deleteMaxNumber, deleteMaxValue,
+      function setDeleteMax(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setDeleteMax(Number(value));
+      },
+      1, 8,
+      Number);
+  }
+  
+  if (deleteSeedRange && deleteSeedNumber && deleteSeedValue) {
+    syncPair(deleteSeedRange, deleteSeedNumber, deleteSeedValue,
+      function setDeleteSeed(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setDeleteSeed(Number(value));
+      },
+      0, 999,
+      Number);
+  }
     
   // Link duration controls
   if (minDurationRange && minDurationNumber && minDurationValue) {
@@ -1114,6 +1240,35 @@ export function setupUI(state) {
       Number);
   }
 
+  // Update Euclidean rhythm info
+  function updateEuclidInfo() {
+    if (validEuclidInfo) {
+      const activeState = typeof window.getActiveState === 'function' ? 
+        window.getActiveState() : state;
+      const n = activeState.segments;
+      const k = activeState.euclidValue;
+      
+      // Make sure k is at most n
+      const effectiveK = Math.min(k, n);
+      
+      validEuclidInfo.textContent = `Current Euclidean pattern: ${effectiveK} vertices evenly distributed from a ${n}-sided polygon`;
+      
+      // If k > n, add a warning
+      if (k > n) {
+        validEuclidInfo.innerHTML += `<br><span style="color: #ff8866;">Note: Only using ${n} vertices since that's the maximum for this shape</span>`;
+      }
+    }
+  }
+  
+  // Setup a listener for segment changes to update Euclidean info
+  if (numberRange) {
+    numberRange.addEventListener('input', updateEuclidInfo);
+    numberRange.addEventListener('change', updateEuclidInfo);
+  }
+  
+  // Initial update
+  updateEuclidInfo();
+
   // Link star polygon controls
   if (starSkipRadioGroup && validSkipsInfo) {
     setupStarSkipRadioButtons(starSkipRadioGroup, state);
@@ -1172,59 +1327,40 @@ export function setupUI(state) {
     }
   }
 
-  const euclidRange = document.getElementById('euclidRange');
-  const euclidNumber = document.getElementById('euclidNumber');
-  const euclidValue = document.getElementById('euclidValue');
-  const useEuclidCheckbox = document.getElementById('useEuclidCheckbox');
-  const validEuclidInfo = document.getElementById('validEuclidInfo');
-  
-  // Setup Euclidean rhythm checkbox with null check
-  if (useEuclidCheckbox) {
-    useEuclidCheckbox.checked = state.useEuclid;
-    useEuclidCheckbox.addEventListener('change', e => {
-      handleCheckboxChange('setUseEuclid', e.target.checked);
-    });
+
+
+  // Set initial values for fractal controls from state with null checks
+  if (fractalRange && fractalNumber && fractalValue) {
+    fractalRange.value = state.fractalValue;
+    fractalNumber.value = state.fractalValue;
+    fractalValue.textContent = state.fractalValue;
   }
   
-  // Update Euclidean rhythm info
-  function updateEuclidInfo() {
-    if (validEuclidInfo) {
-      const n = state.segments;
-      const k = state.euclidValue;
-      
-      // Make sure k is at most n
-      const effectiveK = Math.min(k, n);
-      
-      validEuclidInfo.textContent = `Current Euclidean pattern: ${effectiveK} vertices evenly distributed from a ${n}-sided polygon`;
-      
-      // If k > n, add a warning
-      if (k > n) {
-        validEuclidInfo.innerHTML += `<br><span style="color: #ff8866;">Note: Only using ${n} vertices since that's the maximum for this shape</span>`;
-      }
-    }
-  }
-  
-  // Link Euclidean rhythm controls
+  // Set initial values for Euclidean rhythm controls from state with null checks
   if (euclidRange && euclidNumber && euclidValue) {
-    syncPair(euclidRange, euclidNumber, euclidValue,
-      value => {
-        state.setEuclidValue(Number(value));
-        updateEuclidInfo();
-      },
-      UI_RANGES.EUCLID_VALUE[0], UI_RANGES.EUCLID_VALUE[1],
-      Number);
-    // Initial update
-    updateEuclidInfo();
+    euclidRange.value = state.euclidValue;
+    euclidNumber.value = state.euclidValue;
+    euclidValue.textContent = state.euclidValue;
   }
   
-  // Setup a listener for segment changes to update Euclidean info
-  if (numberRange) {
-    numberRange.addEventListener('input', updateEuclidInfo);
-    numberRange.addEventListener('change', updateEuclidInfo);
+  // Set initial values for Delete controls from state with null checks
+  if (deleteMinRange && deleteMinNumber && deleteMinValue) {
+    deleteMinRange.value = state.deleteMin;
+    deleteMinNumber.value = state.deleteMin;
+    deleteMinValue.textContent = state.deleteMin;
   }
   
-  // Initial update
-  updateEuclidInfo();
+  if (deleteMaxRange && deleteMaxNumber && deleteMaxValue) {
+    deleteMaxRange.value = state.deleteMax;
+    deleteMaxNumber.value = state.deleteMax;
+    deleteMaxValue.textContent = state.deleteMax;
+  }
+  
+  if (deleteSeedRange && deleteSeedNumber && deleteSeedValue) {
+    deleteSeedRange.value = state.deleteSeed;
+    deleteSeedNumber.value = state.deleteSeed;
+    deleteSeedValue.textContent = state.deleteSeed;
+  }
 
   // Add event listeners for layer change events
   window.addEventListener('layerChanged', (event) => {
@@ -1255,6 +1391,11 @@ export function setupUI(state) {
       useEuclidCheckbox, validEuclidInfo,
       starSkipRadioGroup, useStarsCheckbox, validSkipsInfo,
       useCutsCheckbox,
+      useDeleteCheckbox,
+      deleteMinRange, deleteMinNumber, deleteMinValue,
+      deleteMaxRange, deleteMaxNumber, deleteMaxValue,
+      deleteModeRadios, deleteTargetRadios,
+      deleteSeedRange, deleteSeedNumber, deleteSeedValue,
       durationModeRadios, durationModuloRadioGroup,
       minDurationRange, minDurationNumber, minDurationValue,
       maxDurationRange, maxDurationNumber, maxDurationValue,
@@ -1293,6 +1434,11 @@ export function setupUI(state) {
       useEuclidCheckbox, validEuclidInfo,
       starSkipRadioGroup, useStarsCheckbox, validSkipsInfo,
       useCutsCheckbox,
+      useDeleteCheckbox,
+      deleteMinRange, deleteMinNumber, deleteMinValue,
+      deleteMaxRange, deleteMaxNumber, deleteMaxValue,
+      deleteModeRadios, deleteTargetRadios,
+      deleteSeedRange, deleteSeedNumber, deleteSeedValue,
       durationModeRadios, durationModuloRadioGroup,
       minDurationRange, minDurationNumber, minDurationValue,
       maxDurationRange, maxDurationNumber, maxDurationValue,
@@ -1330,6 +1476,11 @@ export function setupUI(state) {
     starSkipRadioGroup,
     useStarsCheckbox, validSkipsInfo,
     useCutsCheckbox,
+    useDeleteCheckbox,
+    deleteMinRange, deleteMinNumber, deleteMinValue,
+    deleteMaxRange, deleteMaxNumber, deleteMaxValue,
+    deleteModeRadios, deleteTargetRadios,
+    deleteSeedRange, deleteSeedNumber, deleteSeedValue,
     
     // Note parameter controls
     durationModeRadios, durationModuloRadioGroup,

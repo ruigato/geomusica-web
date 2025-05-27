@@ -58,7 +58,13 @@ export function createAppState() {
       euclidValue: false,
       useEuclid: false,
       forceRegularStarPolygon: false,
-      usePlainIntersections: false
+      usePlainIntersections: false,
+      useDelete: false,
+      deleteMin: false,
+      deleteMax: false,
+      deleteMode: false,
+      deleteTarget: false,
+      deleteSeed: false
     },
     
     // Performance and frame tracking
@@ -182,6 +188,14 @@ export function createAppState() {
     // SHAPE MOD Euclidean rhythm parameters
     euclidValue: 3, // Default value 3
     useEuclid: false, // Default to off
+    
+    // Delete parameters
+    useDelete: DEFAULT_VALUES.USE_DELETE, // Default to off
+    deleteMin: DEFAULT_VALUES.DELETE_MIN, // Default minimum delete value
+    deleteMax: DEFAULT_VALUES.DELETE_MAX, // Default maximum delete value
+    deleteMode: DEFAULT_VALUES.DELETE_MODE, // Default delete mode
+    deleteTarget: DEFAULT_VALUES.DELETE_TARGET, // Default delete target
+    deleteSeed: DEFAULT_VALUES.DELETE_SEED, // Default random seed
     
     // STARS parameters
     starSkip: 1, // Default skip value
@@ -1027,14 +1041,9 @@ export function createAppState() {
       if (this.euclidValue !== newValue) {
         this.euclidValue = newValue;
         this.parameterChanges.euclidValue = true;
-        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         
         // Force recreation of base geometry when available
         if (this.baseGeo && this.useEuclid) {
-          
-          
-          // We need to import this dynamically - handled by the main.js overrides
-          // Just set a flag to signal that geometry needs recreation
           this.segmentsChanged = true;
           this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
         }
@@ -1065,6 +1074,114 @@ export function createAppState() {
         // Force recreation of base geometry when available
         if (this.baseGeo) {
           // Set flags to signal that geometry needs recreation
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        }
+      }
+    },
+    
+    /**
+     * Set delete minimum value
+     * @param {number} value Delete minimum value (1-32)
+     */
+    setDeleteMin(value) {
+      const newValue = Math.max(1, Math.min(32, Math.round(Number(value))));
+      if (this.deleteMin !== newValue) {
+        this.deleteMin = newValue;
+        this.parameterChanges.deleteMin = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo && this.useDelete) {
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        }
+      }
+    },
+    
+    /**
+     * Set delete maximum value
+     * @param {number} value Delete maximum value (1-32)
+     */
+    setDeleteMax(value) {
+      const newValue = Math.max(1, Math.min(32, Math.round(Number(value))));
+      if (this.deleteMax !== newValue) {
+        this.deleteMax = newValue;
+        this.parameterChanges.deleteMax = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo && this.useDelete) {
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        }
+      }
+    },
+    
+    /**
+     * Set delete mode
+     * @param {string} value Delete mode ('pattern' or 'random')
+     */
+    setDeleteMode(value) {
+      const validModes = ['pattern', 'random'];
+      if (validModes.includes(value) && this.deleteMode !== value) {
+        this.deleteMode = value;
+        this.parameterChanges.deleteMode = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo && this.useDelete) {
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        }
+      }
+    },
+    
+    /**
+     * Set delete target
+     * @param {string} value Delete target ('points' or 'primitives')
+     */
+    setDeleteTarget(value) {
+      const validTargets = ['points', 'primitives'];
+      if (validTargets.includes(value) && this.deleteTarget !== value) {
+        this.deleteTarget = value;
+        this.parameterChanges.deleteTarget = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo && this.useDelete) {
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        }
+      }
+    },
+    
+    /**
+     * Set delete random seed
+     * @param {number} value Delete random seed (0-999)
+     */
+    setDeleteSeed(value) {
+      const newValue = Math.max(0, Math.min(999, Math.round(Number(value))));
+      if (this.deleteSeed !== newValue) {
+        this.deleteSeed = newValue;
+        this.parameterChanges.deleteSeed = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo && this.useDelete) {
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        }
+      }
+    },
+    
+    /**
+     * Toggle delete feature
+     * @param {boolean} value Enable/disable delete feature
+     */
+    setUseDelete(value) {
+      const newValue = Boolean(value);
+      if (this.useDelete !== newValue) {
+        this.useDelete = newValue;
+        this.parameterChanges.useDelete = true;
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo) {
           this.segmentsChanged = true;
           this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
         }
