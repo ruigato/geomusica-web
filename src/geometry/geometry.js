@@ -1376,7 +1376,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     
     // Process intersections between copies after all copies are created
     if (state && state.usePlainIntersections && state.copies > 1) {
-      processIntersectionsBetweenCopies(group, baseGeo, state, materialsToDispose, geometriesToDispose);
+      processIntersectionsBetweenCopies(group, baseGeo, state, materialsToDispose, geometriesToDispose, mat);
     }
     
     // Clear any old intersection group references from userData
@@ -1809,8 +1809,9 @@ function calculateAndApplyIntersections(points, lineSegments, state) {
  * @param {Object} state - Application state
  * @param {Array} materialsToDispose - Array to track materials for disposal
  * @param {Array} geometriesToDispose - Array to track geometries for disposal
+ * @param {THREE.Material} mat - Material for color consistency
  */
-function processIntersectionsBetweenCopies(group, baseGeo, state, materialsToDispose, geometriesToDispose) {
+function processIntersectionsBetweenCopies(group, baseGeo, state, materialsToDispose, geometriesToDispose, mat) {
   // Calculate intersections between the transformed copies
   const intersectionPoints = calculateCopyIntersections(baseGeo, state);
   
@@ -1838,7 +1839,9 @@ function processIntersectionsBetweenCopies(group, baseGeo, state, materialsToDis
       }
     }
     
-    if (!lineMesh) continue;
+    if (!lineMesh) {
+      continue;
+    }
     
     // Get the transformation parameters for this copy
     const copyTransform = getCopyTransformation(copyIndex, state);
@@ -1866,11 +1869,12 @@ function processIntersectionsBetweenCopies(group, baseGeo, state, materialsToDis
       
       // Add vertex circles for the intersection points in this copy
       addIntersectionVertexCircles(
-        copyGroup, 
+        copyGroup.parent, // Add to main group, not copy group
         relevantIntersections, 
         copyIndex, 
         state, 
-        materialsToDispose
+        materialsToDispose,
+        mat // Pass the material for color consistency
       );
     }
   }
@@ -1992,16 +1996,17 @@ function createCopyGeometryWithIntersections(baseGeo, intersectionPoints, copyTr
 }
 
 /**
- * Add vertex circles for intersection points in a copy group
- * @param {THREE.Group} copyGroup - Copy group to add circles to
+ * Add vertex circles for intersection points in a group
+ * @param {THREE.Group} parentGroup - Group to add circles to (main group, not copy group)
  * @param {Array<THREE.Vector2>} intersectionPoints - Intersection points in world coordinates
  * @param {number} copyIndex - Index of this copy
  * @param {Object} state - Application state
  * @param {Array} materialsToDispose - Array to track materials for disposal
+ * @param {THREE.Material} mat - Material for color consistency
  */
-function addIntersectionVertexCircles(copyGroup, intersectionPoints, copyIndex, state, materialsToDispose) {
+function addIntersectionVertexCircles(parentGroup, intersectionPoints, copyIndex, state, materialsToDispose, mat) {
   // Get camera distance for size calculation
-  const camera = copyGroup.parent?.userData?.camera;
+  const camera = parentGroup?.userData?.camera;
   const cameraDistance = camera ? camera.position.z : 2000;
   
   for (let i = 0; i < intersectionPoints.length; i++) {
@@ -2023,13 +2028,13 @@ function addIntersectionVertexCircles(copyGroup, intersectionPoints, copyIndex, 
     // Calculate size factor that scales with camera distance
     const baseCircleSize = VERTEX_CIRCLE_SIZE;
     const durationScaleFactor = 0.5 + note.duration;
-    const sizeScaleFactor = (cameraDistance / 1000) * baseCircleSize * durationScaleFactor * 0.3;
+    const sizeScaleFactor = (cameraDistance / 1000) * baseCircleSize * durationScaleFactor * 3.0; // Make intersection points much bigger
     
-    // Create material for intersection point
+    // Create material for intersection point - use same color as regular vertices
     const intersectionMaterial = new THREE.MeshBasicMaterial({ 
-      color: INTERSECTION_POINT_COLOR,
+      color: mat && mat.color ? mat.color : VERTEX_CIRCLE_COLOR, // Use same color logic as regular vertices
       transparent: true,
-      opacity: note.velocity * INTERSECTION_POINT_OPACITY, 
+      opacity: note.velocity, // Use velocity-based opacity like regular vertices
       depthTest: false,
       side: THREE.DoubleSide
     });
@@ -2046,20 +2051,15 @@ function addIntersectionVertexCircles(copyGroup, intersectionPoints, copyIndex, 
     // Create a mesh using the shared geometry
     const intersectionCircle = new THREE.Mesh(vertexCircleGeometry, intersectionMaterial);
     intersectionCircle.scale.set(sizeScaleFactor, sizeScaleFactor, 1);
-    intersectionCircle.renderOrder = 2; // Higher than regular vertices
+    intersectionCircle.renderOrder = 1; // Same render order as regular vertices
     
-    // Convert world coordinates to local coordinates for positioning
-    const cos = Math.cos(-copyGroup.rotation.z);
-    const sin = Math.sin(-copyGroup.rotation.z);
-    const rotX = intersection.x * cos - intersection.y * sin;
-    const rotY = intersection.x * sin + intersection.y * cos;
+    // The intersection points are already in world coordinates
+    // Since the copyGroup has its own transformation, we need to position
+    // the intersection circles in world coordinates, not local coordinates
+    intersectionCircle.position.set(intersection.x, intersection.y, 0);
     
-    // Apply inverse scale
-    const scale = copyGroup.scale.x; // Assuming uniform scaling
-    intersectionCircle.position.set(rotX / scale, rotY / scale, 0);
-    
-    // Add to the copy group
-    copyGroup.add(intersectionCircle);
+    // Add to the parent group (main group)
+    parentGroup.add(intersectionCircle);
   }
 }
 
