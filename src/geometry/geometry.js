@@ -2028,7 +2028,7 @@ function addIntersectionVertexCircles(parentGroup, intersectionPoints, copyIndex
     // Calculate size factor that scales with camera distance
     const baseCircleSize = VERTEX_CIRCLE_SIZE;
     const durationScaleFactor = 0.5 + note.duration;
-    const sizeScaleFactor = (cameraDistance / 1000) * baseCircleSize * durationScaleFactor * 3.0; // Make intersection points much bigger
+    const sizeScaleFactor = (cameraDistance / 1000) * baseCircleSize * durationScaleFactor * 9.0; // Make intersection points much bigger
     
     // Create material for intersection point - use same color as regular vertices
     const intersectionMaterial = new THREE.MeshBasicMaterial({ 

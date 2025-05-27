@@ -23,7 +23,7 @@ export const VERTEX_CIRCLE_OPACITY = 0.7;
 export const VERTEX_CIRCLE_COLOR = 0x33ccff;
 
 // Intersection visualization
-export const INTERSECTION_POINT_SIZE = 16;
+export const INTERSECTION_POINT_SIZE = 48;
 export const INTERSECTION_POINT_COLOR = 0xff3366;
 export const INTERSECTION_POINT_OPACITY = 0.8;
 export const INTERSECTION_MERGE_THRESHOLD = 5; // Distance threshold for merging intersection points
