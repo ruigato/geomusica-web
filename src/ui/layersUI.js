@@ -159,6 +159,50 @@ export function setupLayersUI(layerManager) {
   
   layerTab.appendChild(layerColorContainer);
   
+  // Add Rainbow Colors button
+  const rainbowColorsContainer = document.createElement('div');
+  rainbowColorsContainer.className = 'control';
+  
+  const rainbowColorsButton = document.createElement('button');
+  rainbowColorsButton.textContent = 'Rainbow Colors';
+  rainbowColorsButton.className = 'rainbow-colors-button';
+  rainbowColorsButton.style.padding = '8px 16px';
+  rainbowColorsButton.style.backgroundColor = '#4CAF50';
+  rainbowColorsButton.style.color = 'white';
+  rainbowColorsButton.style.border = 'none';
+  rainbowColorsButton.style.borderRadius = '4px';
+  rainbowColorsButton.style.cursor = 'pointer';
+  rainbowColorsButton.style.fontSize = '14px';
+  rainbowColorsButton.style.fontWeight = 'bold';
+  rainbowColorsButton.style.transition = 'background-color 0.3s ease';
+  
+  // Add hover effect
+  rainbowColorsButton.addEventListener('mouseenter', () => {
+    rainbowColorsButton.style.backgroundColor = '#45a049';
+  });
+  rainbowColorsButton.addEventListener('mouseleave', () => {
+    rainbowColorsButton.style.backgroundColor = '#4CAF50';
+  });
+  
+  // Add click handler to apply sine wave colors
+  rainbowColorsButton.addEventListener('click', () => {
+    if (layerManager && typeof layerManager.applySineWaveColors === 'function') {
+      layerManager.applySineWaveColors();
+    } else {
+      console.error('Rainbow Colors: LayerManager or applySineWaveColors method not available');
+    }
+  });
+  
+  rainbowColorsContainer.appendChild(rainbowColorsButton);
+  
+  // Add help text
+  const rainbowHelpText = document.createElement('div');
+  rainbowHelpText.className = 'help-text';
+  rainbowHelpText.textContent = 'Apply mathematical sine wave color palette to all layers';
+  rainbowColorsContainer.appendChild(rainbowHelpText);
+  
+  layerTab.appendChild(rainbowColorsContainer);
+  
   // Initial UI update
   updateLayerButtons(layerManager);
   

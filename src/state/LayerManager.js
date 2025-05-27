@@ -6,6 +6,7 @@ import { updateGroup } from '../geometry/geometry.js';
 // Plain intersection processing now happens in updateGroup after copies are created
 import { detectLayerTriggers, clearLayerMarkers } from '../triggers/triggers.js';
 import { resetTriggerSystem } from '../triggers/triggers.js';
+import { generateSineWaveColorPalette } from '../utils/colorPalette.js';
 
 // Debug flag to control logging
 const DEBUG_LOGGING = false;
@@ -1075,5 +1076,76 @@ export class LayerManager {
     
     
     return { camera, renderer };
+  }
+
+  /**
+   * Apply sine wave color palette to all layers
+   * @param {Object} options - Palette configuration options
+   */
+  applySineWaveColors(options = {}) {
+    try {
+      // Handle edge case of no layers
+      if (this.layers.length === 0) {
+        console.warn('applySineWaveColors: No layers to apply colors to');
+        return;
+      }
+
+      const colors = generateSineWaveColorPalette(
+        this.layers.length,
+        options.offset || 0.125,
+        options.brightness || 1.0,
+        options.saturation || 1.0
+      );
+      
+      // Apply colors to each layer
+      this.layers.forEach((layer, index) => {
+        if (layer && typeof layer.setColor === 'function') {
+          layer.setColor(colors[index]);
+          
+          // Force material update for all children in the layer's group
+          if (layer.group) {
+            layer.group.traverse(child => {
+              if (child.material) {
+                if (Array.isArray(child.material)) {
+                  child.material.forEach(mat => {
+                    mat.color = layer.color;
+                    mat.needsUpdate = true;
+                  });
+                } else {
+                  child.material.color = layer.color;
+                  child.material.needsUpdate = true;
+                }
+              }
+            });
+          }
+        } else {
+          console.warn(`applySineWaveColors: Layer ${index} does not have a setColor method`);
+        }
+      });
+      
+      // Force UI update
+      if (typeof window.updateLayersUI === 'function') {
+        window.updateLayersUI(this);
+      }
+      
+      // Update layer buttons
+      if (typeof window.updateLayerButtons === 'function') {
+        window.updateLayerButtons(this);
+      }
+      
+      // Update color picker if active layer changed
+      const activeLayer = this.getActiveLayer();
+      if (activeLayer) {
+        const colorPicker = document.getElementById('layerColorPicker');
+        if (colorPicker) {
+          const hexColor = '#' + activeLayer.color.getHexString();
+          colorPicker.value = hexColor;
+        }
+      }
+      
+      console.log(`Applied sine wave colors to ${this.layers.length} layers`);
+    } catch (error) {
+      console.error('Error applying sine wave colors:', error);
+    }
   }
 } 
