@@ -774,6 +774,28 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
     }
   }
   
+  // FRACTAL BUG FIX: Skip triggers during fractal geometry transitions
+  // When fractal mode is enabled/disabled, there's a brief period where the baseGeo
+  // doesn't match the current fractal state, causing phantom triggers
+  if (state.useFractal && layer.baseGeo && layer.baseGeo.userData) {
+    const geometryInfo = layer.baseGeo.userData.geometryInfo;
+    const currentFractalLevel = state.fractalValue || 1;
+    const geometryFractalLevel = geometryInfo?.fractalLevel || 1;
+    
+    // If fractal levels don't match, skip triggers until geometry is updated
+    if (currentFractalLevel !== geometryFractalLevel) {
+      return false;
+    }
+    
+    // Also check if geometry was created very recently when fractal is involved
+    const timeSinceCreation = Date.now() - layer.baseGeo.userData.createdAt;
+    const FRACTAL_GRACE_PERIOD = 200; // Extended grace period for fractal transitions
+    
+    if (timeSinceCreation < FRACTAL_GRACE_PERIOD) {
+      return false;
+    }
+  }
+  
   // FIXED: Ensure layer's baseGeo has proper userData for correct trigger detection
   if (layer.baseGeo && (!layer.baseGeo.userData || layer.baseGeo.userData.layerId !== layer.id)) {
     layer.baseGeo.userData = layer.baseGeo.userData || {};
@@ -835,6 +857,18 @@ function recordLayerVertexPositions(layer, audioTime) {
   if (layer.baseGeo && layer.baseGeo.userData && layer.baseGeo.userData.createdAt) {
     const timeSinceCreation = Date.now() - layer.baseGeo.userData.createdAt;
     if (timeSinceCreation < 200) return; // 200ms stabilization period
+  }
+
+  // FRACTAL BUG FIX: Skip position recording during fractal geometry transitions
+  if (state.useFractal && layer.baseGeo && layer.baseGeo.userData) {
+    const geometryInfo = layer.baseGeo.userData.geometryInfo;
+    const currentFractalLevel = state.fractalValue || 1;
+    const geometryFractalLevel = geometryInfo?.fractalLevel || 1;
+    
+    // If fractal levels don't match, skip position recording until geometry is updated
+    if (currentFractalLevel !== geometryFractalLevel) {
+      return;
+    }
   }
 
   // Skip if group structure is inconsistent
@@ -1239,6 +1273,23 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
             // Check base geometry bounds
             if (baseVertexIndex * 3 + 1 >= basePositions.length) {
               continue;
+            }
+            
+            // FRACTAL BUG FIX: Additional validation for fractal mode
+            // Ensure the baseVertexIndex makes sense for the current geometry
+            if (state.useFractal) {
+              const geometryInfo = layer.baseGeo.userData.geometryInfo;
+              const expectedBaseVertexCount = geometryInfo?.baseVertexCount || state.segments;
+              
+              // If the expected base vertex count doesn't match, skip this trigger
+              if (expectedBaseVertexCount !== state.segments) {
+                continue;
+              }
+              
+              // Ensure the calculated baseVertexIndex is within the original segments range
+              if (baseVertexIndex >= state.segments) {
+                continue;
+              }
             }
             
             // Use createNote function to ensure equal temperament is applied

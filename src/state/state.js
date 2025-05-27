@@ -3,6 +3,8 @@ import { getCurrentTime } from '../time/time.js';
 import { DEFAULT_VALUES, UI_RANGES, TICKS_PER_BEAT, TICKS_PER_MEASURE } from '../config/constants.js';
 import { clearLabels } from '../ui/domLabels.js';
 import { ParameterMode } from '../notes/notes.js';
+import * as THREE from 'three';
+import { resetTriggerSystem } from '../triggers/triggers.js';
 
 /**
  * Generate sequence from 1/modulus to 1.0 in even steps
@@ -999,6 +1001,10 @@ export function createAppState() {
           this.segmentsChanged = true;
           this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
         }
+        
+        // FRACTAL BUG FIX: Reset trigger system when fractal mode is toggled
+        // This clears any stale vertex position data that could cause phantom triggers
+        resetTriggerSystem();
       }
     },
     
@@ -1029,6 +1035,10 @@ export function createAppState() {
           this.segmentsChanged = true;
           this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
         }
+        
+        // FRACTAL BUG FIX: Reset trigger system when fractal mode is toggled
+        // This clears any stale vertex position data that could cause phantom triggers
+        resetTriggerSystem();
       }
     },
     
