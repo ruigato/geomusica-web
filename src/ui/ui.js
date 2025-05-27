@@ -521,6 +521,7 @@ export function setupUI(state) {
   const starSkipRadioGroup = document.getElementById('starSkipRadioGroup');
   const useStarsCheckbox = document.getElementById('useStarsCheckbox');
   const useCutsCheckbox = document.getElementById('useCutsCheckbox');
+  const useTesselationCheckbox = document.getElementById('useTesselationCheckbox');
   const validSkipsInfo = document.getElementById('validSkipsInfo');
   
   // Euclidean rhythm controls
@@ -601,6 +602,7 @@ export function setupUI(state) {
   if (useFractalCheckbox) useFractalCheckbox.checked = state.useFractal;
   if (useStarsCheckbox) useStarsCheckbox.checked = state.useStars;
   if (useCutsCheckbox) useCutsCheckbox.checked = state.useCuts;
+  if (useTesselationCheckbox) useTesselationCheckbox.checked = state.useTesselation;
   if (useLerpCheckbox) useLerpCheckbox.checked = state.useLerp;
   if (useEuclidCheckbox) useEuclidCheckbox.checked = state.useEuclid;
   if (useDeleteCheckbox) useDeleteCheckbox.checked = state.useDelete;
@@ -726,6 +728,14 @@ export function setupUI(state) {
     useCutsCheckbox.checked = state.useCuts;
     useCutsCheckbox.addEventListener('change', e => {
       handleCheckboxChange('setUseCuts', e.target.checked);
+    });
+  }
+  
+  // Setup tesselation checkbox with null check
+  if (useTesselationCheckbox) {
+    useTesselationCheckbox.checked = state.useTesselation;
+    useTesselationCheckbox.addEventListener('change', e => {
+      handleCheckboxChange('setUseTesselation', e.target.checked);
     });
   }
   
@@ -1391,6 +1401,7 @@ export function setupUI(state) {
       useEuclidCheckbox, validEuclidInfo,
       starSkipRadioGroup, useStarsCheckbox, validSkipsInfo,
       useCutsCheckbox,
+      useTesselationCheckbox,
       useDeleteCheckbox,
       deleteMinRange, deleteMinNumber, deleteMinValue,
       deleteMaxRange, deleteMaxNumber, deleteMaxValue,
@@ -1434,6 +1445,7 @@ export function setupUI(state) {
       useEuclidCheckbox, validEuclidInfo,
       starSkipRadioGroup, useStarsCheckbox, validSkipsInfo,
       useCutsCheckbox,
+      useTesselationCheckbox,
       useDeleteCheckbox,
       deleteMinRange, deleteMinNumber, deleteMinValue,
       deleteMaxRange, deleteMaxNumber, deleteMaxValue,
@@ -1476,6 +1488,7 @@ export function setupUI(state) {
     starSkipRadioGroup,
     useStarsCheckbox, validSkipsInfo,
     useCutsCheckbox,
+    useTesselationCheckbox,
     useDeleteCheckbox,
     deleteMinRange, deleteMinNumber, deleteMinValue,
     deleteMaxRange, deleteMaxNumber, deleteMaxValue,

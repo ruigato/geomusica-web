@@ -836,6 +836,27 @@ export function calculateBoundingSphere(group, state) {
   
   let maxDistance = state.radius || 500; // Start with base radius
   
+  // TESSELATION FIX: Account for tesselation expansion
+  if (state.useTesselation) {
+    // When tesselation is enabled, the geometry is expanded to include copies
+    // centered at each vertex of the original geometry. This can significantly
+    // increase the bounding sphere.
+    
+    // Calculate the maximum distance from center to any vertex of the original geometry
+    const originalRadius = state.radius || 500;
+    
+    // For a regular polygon, the maximum distance from center to vertex is the radius
+    // When tesselated, we get copies centered at each vertex, so the maximum extent
+    // becomes: original_vertex_distance + original_radius
+    // For a regular polygon: radius + radius = 2 * radius
+    const tesselatedRadius = originalRadius * 2;
+    
+    // Use the tesselated radius as the base for further scaling calculations
+    maxDistance = tesselatedRadius;
+    
+    console.log(`[TESSELATION BOUNDS] Original radius: ${originalRadius}, Tesselated radius: ${tesselatedRadius}`);
+  }
+  
   // Consider copies and scale factor
   if (state.copies > 0) {
     // If using modulus
@@ -848,7 +869,7 @@ export function calculateBoundingSphere(group, state) {
         const totalScale = scaleFactor * stepScale;
         maxScale = Math.max(maxScale, totalScale);
       }
-      maxDistance = state.radius * maxScale * 1.2; // Add 20% margin
+      maxDistance = maxDistance * maxScale * 1.2; // Add 20% margin
     } else if (state.useAltScale) {
       // Consider alt scale pattern
       let maxScale = 1.0;
@@ -860,11 +881,11 @@ export function calculateBoundingSphere(group, state) {
         }
         maxScale = Math.max(maxScale, scale);
       }
-      maxDistance = state.radius * maxScale * 1.2;
+      maxDistance = maxDistance * maxScale * 1.2;
     } else {
       // Simple step scale formula
       const maxScale = Math.pow(state.stepScale, state.copies - 1);
-      maxDistance = state.radius * maxScale * 1.2; // Add 20% margin
+      maxDistance = maxDistance * maxScale * 1.2; // Add 20% margin
     }
   }
   
@@ -1178,6 +1199,108 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     copiesToCreate = copies - deletedCopies.size;
   }
 
+  // Apply tesselation if enabled - this happens right before the copy operation
+  // When tesselation is enabled, we modify the base geometry to contain multiple copies
+  // of the original geometry centered on each vertex of the original geometry
+  let workingBaseGeo = baseGeo;
+  if (state && state.useTesselation) {
+    // Check if we already have a tesselated geometry cached
+    if (baseGeo.userData && baseGeo.userData.tesselatedGeometry) {
+      workingBaseGeo = baseGeo.userData.tesselatedGeometry;
+    } else {
+      // Get the original geometry points
+      const originalPositions = baseGeo.getAttribute('position').array;
+      const originalCount = baseGeo.getAttribute('position').count;
+      
+      // Extract original points as Vector2 for easier manipulation
+      const originalPoints = [];
+      for (let i = 0; i < originalCount; i++) {
+        originalPoints.push(new THREE.Vector2(
+          originalPositions[i * 3],
+          originalPositions[i * 3 + 1]
+        ));
+      }
+      
+      // Create tesselated points - for each original vertex, create a copy of the entire geometry centered on that vertex
+      const tesselatedPoints = [];
+      
+      // Calculate the centroid (center) of the original geometry
+      let centerX = 0, centerY = 0;
+      for (const point of originalPoints) {
+        centerX += point.x;
+        centerY += point.y;
+      }
+      centerX /= originalPoints.length;
+      centerY /= originalPoints.length;
+      const geometryCenter = new THREE.Vector2(centerX, centerY);
+      
+      for (let centerIndex = 0; centerIndex < originalPoints.length; centerIndex++) {
+        const centerPoint = originalPoints[centerIndex];
+        
+        console.log(`[TESSELATION] Copy ${centerIndex} centered at: (${centerPoint.x.toFixed(2)}, ${centerPoint.y.toFixed(2)})`);
+        
+        // For each vertex in the original geometry, create a translated copy
+        for (let vertexIndex = 0; vertexIndex < originalPoints.length; vertexIndex++) {
+          const originalVertex = originalPoints[vertexIndex];
+          // Translate the vertex so the geometry center is positioned at the current center point
+          const tesselatedVertex = new THREE.Vector2(
+            originalVertex.x - geometryCenter.x + centerPoint.x,
+            originalVertex.y - geometryCenter.y + centerPoint.y
+          );
+          tesselatedPoints.push(tesselatedVertex);
+          
+          console.log(`  Vertex ${tesselatedPoints.length - 1}: (${tesselatedVertex.x.toFixed(2)}, ${tesselatedVertex.y.toFixed(2)}) [copy=${centerIndex}, vert=${vertexIndex}]`);
+        }
+      }
+      
+      // Create new geometry with tesselated points
+      const tesselatedGeometry = new THREE.BufferGeometry();
+      const tesselatedPositions = new Float32Array(tesselatedPoints.length * 3);
+      
+      // Fill position array
+      for (let i = 0; i < tesselatedPoints.length; i++) {
+        tesselatedPositions[i * 3] = tesselatedPoints[i].x;
+        tesselatedPositions[i * 3 + 1] = tesselatedPoints[i].y;
+        tesselatedPositions[i * 3 + 2] = 0;
+      }
+      
+      tesselatedGeometry.setAttribute('position', new THREE.Float32BufferAttribute(tesselatedPositions, 3));
+      
+      // Create indices for line segments - each tesselated copy should have its own line segments
+      const tesselatedIndices = [];
+      for (let copyIndex = 0; copyIndex < originalPoints.length; copyIndex++) {
+        const startIdx = copyIndex * originalPoints.length;
+        
+        // Create line segments for this tesselated copy (connecting consecutive vertices in a loop)
+        for (let i = 0; i < originalPoints.length; i++) {
+          const currentIdx = startIdx + i;
+          const nextIdx = startIdx + ((i + 1) % originalPoints.length);
+          tesselatedIndices.push(currentIdx, nextIdx);
+        }
+      }
+      
+      tesselatedGeometry.setIndex(tesselatedIndices);
+      
+      // Copy metadata from original geometry
+      if (baseGeo.userData) {
+        tesselatedGeometry.userData = { ...baseGeo.userData };
+        tesselatedGeometry.userData.isTesselated = true;
+        tesselatedGeometry.userData.originalVertexCount = originalCount;
+        tesselatedGeometry.userData.tesselatedVertexCount = tesselatedPoints.length;
+      }
+      
+      // Cache the tesselated geometry on the base geometry
+      baseGeo.userData = baseGeo.userData || {};
+      baseGeo.userData.tesselatedGeometry = tesselatedGeometry;
+      
+      // Track the tesselated geometry for disposal
+      geometriesToDispose.push(tesselatedGeometry);
+      
+      // Use the tesselated geometry for all subsequent copy operations
+      workingBaseGeo = tesselatedGeometry;
+    }
+  }
+
   // Now create the actual polygon copies for display
   for (let i = 0; i < copies; i++) {
     // Skip this copy if it should be deleted in primitives mode
@@ -1226,13 +1349,13 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       materialsToDispose.push(lineMaterial);
       
       // Check if this is a star polygon
-      const isStarPolygon = baseGeo.userData?.geometryInfo?.type === 'star_with_cuts' ||
+      const isStarPolygon = workingBaseGeo.userData?.geometryInfo?.type === 'star_with_cuts' ||
                             (state && state.useStars && state.starSkip > 1);
                             
       // All geometries now use indexed line segments, so use LINE_SEGMENTS for all
-      if (baseGeo.index) {
+      if (workingBaseGeo.index) {
         // Create line segments for indexed geometry (star patterns, fractals, and regular polygons)
-        const lines = new THREE.LineSegments(baseGeo, lineMaterial);
+        const lines = new THREE.LineSegments(workingBaseGeo, lineMaterial);
         lines.scale.set(finalScale, finalScale, 1);
         
         // Set renderOrder to ensure it renders on top of other objects
@@ -1242,7 +1365,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         copyGroup.add(lines);
       } else {
         // Fallback for non-indexed geometry (shouldn't happen with new pipeline)
-        const lines = new THREE.LineLoop(baseGeo, lineMaterial);
+        const lines = new THREE.LineLoop(workingBaseGeo, lineMaterial);
         lines.scale.set(finalScale, finalScale, 1);
         
         // Set renderOrder to ensure it renders on top of other objects
@@ -1253,14 +1376,14 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       }
       
       // Get the positions from the base geometry
-      const positions = baseGeo.getAttribute('position').array;
-      const count = baseGeo.getAttribute('position').count;
+      const positions = workingBaseGeo.getAttribute('position').array;
+      const count = workingBaseGeo.getAttribute('position').count;
       
       // For star polygons, add the original vertices information to userData to help with triggers
-      if (isStarPolygon && baseGeo.index) {
+      if (isStarPolygon && workingBaseGeo.index) {
         // Store the original vertex indices to help with trigger detection
         const originalVertexIndices = [];
-        const originalVertexCount = baseGeo.getAttribute('position').count;
+        const originalVertexCount = workingBaseGeo.getAttribute('position').count;
         for (let v = 0; v < originalVertexCount; v++) {
           // For vertices up to the base vertex count, they're part of the star polygon
           if (v < state?.segments) {
@@ -1280,7 +1403,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         const y = positions[v * 3 + 1] * finalScale;
         
         // Create trigger data for this vertex
-        const triggerData = {
+        let triggerData = {
           x: x,
           y: y,
           copyIndex: i,
@@ -1288,6 +1411,30 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
           isIntersection: false, // Will be updated when intersections are added
           globalIndex: globalVertexIndex
         };
+        
+        // TESSELATION FIX: When tesselation is enabled, modify vertex indexing
+        // to ensure each tesselated copy gets unique vertex IDs for trigger detection
+        if (state && state.useTesselation && workingBaseGeo.userData && workingBaseGeo.userData.isTesselated) {
+          const originalVertexCount = workingBaseGeo.userData.originalVertexCount;
+          
+          // Calculate which tesselated copy this vertex belongs to
+          const tesselatedCopyIndex = Math.floor(v / originalVertexCount);
+          const tesselatedVertexIndex = v % originalVertexCount;
+          
+          // Create a unique vertex index that combines the regular copy index,
+          // tesselated copy index, and vertex index within the tesselated copy
+          triggerData = {
+            x: x,
+            y: y,
+            copyIndex: i, // Regular copy index
+            vertexIndex: v, // Keep original vertex index for geometry consistency
+            tesselatedCopyIndex: tesselatedCopyIndex, // Which tesselated copy this vertex belongs to
+            tesselatedVertexIndex: tesselatedVertexIndex, // Vertex index within the tesselated copy
+            isIntersection: false,
+            globalIndex: globalVertexIndex,
+            isTesselated: true
+          };
+        }
         
         // For star polygons, mark if this is a base vertex or intersection point
         if (isStarPolygon) {
@@ -2121,3 +2268,5 @@ function convertLineSegmentsToIndices(points, lineSegments) {
   
   return indices.length > 0 ? indices : null;
 }
+
+// Check if we should delete entire copies (primitives mode)

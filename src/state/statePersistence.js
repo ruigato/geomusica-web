@@ -125,6 +125,7 @@ function extractSerializableState(state) {
     starSkip: state.starSkip,
     useStars: state.useStars,
     useCuts: state.useCuts,
+    useTesselation: state.useTesselation,
     
     // Time parameters
     bpm: state.bpm,
@@ -303,6 +304,7 @@ export function applyPropertiesToState(targetState, sourceState) {
     { name: 'starSkip', setter: 'setStarSkip' },
     { name: 'useStars', setter: 'setUseStars' },
     { name: 'useCuts', setter: 'setUseCuts' },
+    { name: 'useTesselation', setter: 'setUseTesselation' },
     
     // Time parameters
     { name: 'bpm', setter: 'setBpm' },
@@ -992,6 +994,9 @@ export function updateUIFromState(state, uiElements) {
       uiElements.useCutsCheckbox.checked = state.useCuts;
     }
     
+    if (uiElements.useTesselationCheckbox && state.useTesselation !== undefined) {
+      uiElements.useTesselationCheckbox.checked = state.useTesselation;
+    }
     
     return true;
   } catch (error) {

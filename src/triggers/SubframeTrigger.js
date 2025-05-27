@@ -372,6 +372,9 @@ export class TemporalTriggerEngine {
       return { hasCrossed: false, crossingFactor: 0 };
     }
     
+    // For Y-axis crossing detection, we only care about X coordinate sign changes
+    // when both points are above the X-axis (y > 0)
+    
     // Case 1: Direct crossing from right to left (x > 0 to x <= 0)
     if (prevPos.x > 0 && currPos.x <= 0) {
       const crossingFactor = prevPos.x / (prevPos.x - currPos.x);

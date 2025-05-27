@@ -57,6 +57,7 @@ export function createAppState() {
       starSkip: false,
       useStars: false,
       useCuts: false,
+      useTesselation: false,
       euclidValue: false,
       useEuclid: false,
       forceRegularStarPolygon: false,
@@ -202,6 +203,9 @@ export function createAppState() {
     // STARS parameters
     starSkip: 1, // Default skip value
     useStars: false, // Default to off
+    
+    // TESSELATION parameters
+    useTesselation: false, // Default to off
     
     // New flag for regular star polygon
     forceRegularStarPolygon: false,
@@ -1301,6 +1305,25 @@ export function createAppState() {
           // Force recreation of the layer's geometry if this state belongs to a layer
           this.forceGeometryRecreation();
         }
+      }
+    },
+    
+    /**
+     * Toggle tesselation
+     * @param {boolean} value Enable/disable tesselation
+     */
+    setUseTesselation(value) {
+      const newValue = Boolean(value);
+      if (this.useTesselation !== newValue) {
+        this.useTesselation = newValue;
+        this.parameterChanges.useTesselation = true;
+        
+        // Force geometry recreation when toggling tesselation
+        this.segmentsChanged = true;
+        this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
+        
+        // Force recreation of the layer's geometry if this state belongs to a layer
+        this.forceGeometryRecreation();
       }
     },
     

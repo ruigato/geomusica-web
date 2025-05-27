@@ -55,7 +55,7 @@ export function applyUnisonParameterChange(setterName, value, layerManager) {
     'setMinDuration', 'setMaxDuration', 'setDurationPhase',
     'setMinVelocity', 'setMaxVelocity', 'setVelocityPhase',
     'setEuclidValue', 'setUseEuclid', 'setUseFractal', 'setUseStars',
-    'setUseCuts', 'setUseAltScale', 'setUseLerp', 'setUseQuantization',
+    'setUseCuts', 'setUseTesselation', 'setUseAltScale', 'setUseLerp', 'setUseQuantization',
     'setUsePlainIntersections', 'setShowAxisFreqLabels', 'setShowPointsFreqLabels',
     'setUseDelete', 'setDeleteMin', 'setDeleteMax', 'setDeleteMode', 'setDeleteTarget', 'setDeleteSeed',
     'setDurationMode', 'setVelocityMode',
