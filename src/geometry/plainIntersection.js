@@ -226,6 +226,8 @@ export function calculateCopyIntersections(baseGeo, state) {
     console.log(`[PLAIN INTERSECTION] Calculating intersections for ${state.copies} copies`);
   }
   
+
+  
   const allIntersections = [];
   const copyData = [];
   
@@ -271,6 +273,8 @@ export function calculateCopyIntersections(baseGeo, state) {
     if (debugEnabled) {
       console.log(`[PLAIN INTERSECTION] Copy ${i}: scale=${finalScale.toFixed(3)}, angle=${cumulativeAngleDegrees.toFixed(1)}°, ${vertices.length} vertices, ${segments.length} segments`);
     }
+    
+
   }
   
   // Now calculate intersections between all pairs of copies
@@ -309,6 +313,50 @@ export function calculateCopyIntersections(baseGeo, state) {
   }
   
   return allIntersections;
+}
+
+/**
+ * Check if a 2D point lies on a line segment (with tolerance)
+ * @param {THREE.Vector2} point - Point to check
+ * @param {THREE.Vector3} lineStart - Start of line segment
+ * @param {THREE.Vector3} lineEnd - End of line segment
+ * @returns {boolean} True if point is on the line segment
+ */
+function isPointOnLineSegment2D(point, lineStart, lineEnd) {
+  const epsilon = 1e-3; // Tolerance for floating-point comparison
+  
+  // Check if point is between the endpoints
+  const dxL = lineEnd.x - lineStart.x;
+  const dyL = lineEnd.y - lineStart.y;
+  const dxP = point.x - lineStart.x;
+  const dyP = point.y - lineStart.y;
+  
+  // If line is a point, check if the test point is close to that point
+  if (Math.abs(dxL) < epsilon && Math.abs(dyL) < epsilon) {
+    return Math.abs(dxP) < epsilon && Math.abs(dyP) < epsilon;
+  }
+  
+  // Calculate the t parameter (0 <= t <= 1 means the point is on the segment)
+  let t;
+  if (Math.abs(dxL) > Math.abs(dyL)) {
+    // Line is more horizontal, use x for t
+    t = dxP / dxL;
+  } else {
+    // Line is more vertical, use y for t
+    t = dyP / dyL;
+  }
+  
+  // Check if t is in range [0,1] with tolerance
+  if (t < -epsilon || t > 1 + epsilon) {
+    return false;
+  }
+  
+  // Check if the point is close to the line using the cross product method
+  const crossProduct = Math.abs(dxP * dyL - dyP * dxL);
+  const lineLength = Math.sqrt(dxL * dxL + dyL * dyL);
+  const distance = crossProduct / lineLength;
+  
+  return distance < epsilon;
 }
 
 /**
@@ -354,13 +402,64 @@ export function createGeometryWithIntersections(baseGeo, intersectionPoints) {
   const newGeometry = new THREE.BufferGeometry();
   newGeometry.setAttribute('position', new THREE.BufferAttribute(newPositions, 3));
   
-  // IMPORTANT: Do NOT copy the index when we add intersection points
-  // The index only knows about the original vertices and would create invalid connections
-  // if we include the intersection points. The intersection points are only for triggers.
-  // For line drawing, we only want to connect the original vertices.
-  if (baseGeo.index && intersectionPoints.length === 0) {
-    // Only copy index if we haven't added intersection points
-    newGeometry.setIndex(baseGeo.index.clone());
+  // Create new line segments that include intersection points
+  if (baseGeo.index) {
+    // Get the original line segments from the base geometry
+    const originalIndices = baseGeo.index.array;
+    const newIndices = [];
+    
+    // For each original line segment, check if it intersects with any intersection points
+    // and split the segment accordingly
+    for (let i = 0; i < originalIndices.length; i += 2) {
+      const startIdx = originalIndices[i];
+      const endIdx = originalIndices[i + 1];
+      
+      if (startIdx < originalCount && endIdx < originalCount) {
+        const startPos = new THREE.Vector3(
+          originalPositions[startIdx * 3],
+          originalPositions[startIdx * 3 + 1],
+          originalPositions[startIdx * 3 + 2]
+        );
+        const endPos = new THREE.Vector3(
+          originalPositions[endIdx * 3],
+          originalPositions[endIdx * 3 + 1],
+          originalPositions[endIdx * 3 + 2]
+        );
+        
+        // Find intersection points that lie on this line segment
+        const segmentIntersections = [];
+        for (let j = 0; j < intersectionPoints.length; j++) {
+          const intersection = intersectionPoints[j];
+          if (isPointOnLineSegment2D(intersection, startPos, endPos)) {
+            segmentIntersections.push({
+              point: intersection,
+              index: originalCount + j,
+              distance: startPos.distanceTo(new THREE.Vector3(intersection.x, intersection.y, 0))
+            });
+          }
+        }
+        
+        if (segmentIntersections.length === 0) {
+          // No intersections on this segment, keep original
+          newIndices.push(startIdx, endIdx);
+        } else {
+          // Sort intersections by distance from start point
+          segmentIntersections.sort((a, b) => a.distance - b.distance);
+          
+          // Create line segments: start -> first intersection -> second intersection -> ... -> end
+          let currentIdx = startIdx;
+          for (const intersection of segmentIntersections) {
+            newIndices.push(currentIdx, intersection.index);
+            currentIdx = intersection.index;
+          }
+          // Final segment from last intersection to end
+          newIndices.push(currentIdx, endIdx);
+        }
+      }
+    }
+    
+    // Set the new indices
+    newGeometry.setIndex(newIndices);
   }
   
   // Copy userData and update it

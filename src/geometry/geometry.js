@@ -1,4 +1,18 @@
 // src/geometry/geometry.js - Performance-optimized with camera-independent sizing and fixed segments rounding
+// 
+// GEOMETRY PIPELINE ORDER (corrected):
+// 1. Base geometry - Create regular polygon points and line segments
+// 2. Star geometry - Apply star pattern to line segments (mutually exclusive with euclidean)
+//    2.1. Star cuts - Calculate intersections and update line segments
+// 3. Euclidean - Apply euclidean rhythm (mutually exclusive with star geometry)
+// 4. Fractal - Apply fractal subdivision to line segments
+// 5. Copies - Apply transformations (scaling, rotation) - handled in updateGroup
+// 6. Intersections - Calculate intersections between copies and update line segments
+// 7. Delete - Apply deletion patterns during rendering - handled in updateGroup
+//
+// Key principle: Steps 1-6 modify the base geometry and its line segments.
+// Steps 5-7 are applied during rendering/display, not during base geometry creation.
+//
 import * as THREE from 'three';
 import { 
   VERTEX_CIRCLE_SIZE, 
@@ -431,8 +445,9 @@ function isPointOnLineSegment(point, lineStart, lineEnd) {
 
 /**
  * Create a polygon geometry with the given parameters
- * Pipeline order: 1-base geometry, 2-star geometry+cuts, 3-euclid, 4-fractal on line segments, 5-copies, 6-intersections, 7-delete
- * Note: Star cuts generate NEW line segments that replace original star lines, then fractal operates on those segments
+ * Pipeline order: 1-base geometry, 2-star geometry+cuts, 3-euclid, 4-fractal, 5-copies, 6-intersections, 7-delete
+ * Note: Steps 1-6 modify the base geometry and its line segments. Step 5 (copies) only applies transformations.
+ * Step 7 (delete) is applied during rendering in updateGroup.
  * @param {number} radius Radius of the polygon
  * @param {number} segments Number of segments in the polygon
  * @param {Object} state Application state for additional parameters
@@ -446,101 +461,77 @@ export function createPolygonGeometry(radius, segments, state = null) {
   // Get the specific shape type from state if available
   const shapeType = state?.shapeType || 'regular';
   
-  // Step 1: Determine base polygon type and create initial points
+  // Step 1: Create base geometry points
   let points = [];
+  let lineSegments = [];
   
   // Check if we're using Euclidean rhythm - if so, skip star creation entirely
   const isUsingEuclidean = state?.useEuclidean || shapeType === 'euclidean';
   
-  switch (shapeType) {
-    case 'star':
-      // Only create star if not using Euclidean
-      if (!isUsingEuclidean) {
-        points = createStarPolygonPointsLocal(radius, segments, state?.starSkip || 1, state);
-      } else {
-        points = createRegularPolygonPoints(radius, segments, state);
-      }
-      break;
-    case 'euclidean':
-      // For euclidean shape type, start with regular polygon and apply euclidean later
-      points = createRegularPolygonPoints(radius, segments, state);
-      break;
-    case 'fractal':
-      // For fractal shape type, start with regular polygon and apply fractal later
-      points = createRegularPolygonPoints(radius, segments, state);
-      break;
-    case 'regular':
-    default:
-      // Handle star polygon creation even in regular mode if useStars is enabled
-      // But skip if using Euclidean rhythm
-      if (state?.useStars && state?.starSkip > 1 && !isUsingEuclidean) {
-        points = createStarPolygonPointsLocal(radius, segments, state.starSkip, state);
-      } else {
-        points = createRegularPolygonPoints(radius, segments, state);
-      }
-      break;
-  }
-
-  // Step 2: Handle star polygons and star cuts
-  // This determines the line segments that fractal will operate on
+  // Always start with regular polygon points
+  points = createRegularPolygonPoints(radius, segments, state);
+  lineSegments = generateRegularPolygonLineSegments(points);
+  
+  // Step 2: Apply star geometry (mutually exclusive with euclidean)
   const isStarPolygon = state?.useStars && state?.starSkip > 1 && !isUsingEuclidean;
-  let lineSegments = [];
   
   if (isStarPolygon) {
+    // For star polygons, we keep the same points but change the line segments
+    lineSegments = generateStarLineSegments(points, state.starSkip);
+    
+    // Step 2.1: Apply star cuts if enabled
     if (state?.useCuts) {
-      // Star cuts enabled: Generate the actual star cut line segments
       const intersectionPoints = calculateStarCutsVertices(points, state.starSkip);
       
       if (intersectionPoints.length > 0) {
-        // Add intersection points to the vertex array for point rendering
+        // Add intersection points to the vertex array
         points = [...points, ...intersectionPoints];
         
-        // Generate the actual star cut line segments (not just connections to intersections)
+        // Generate the actual star cut line segments that replace the original star lines
         lineSegments = generateActualStarCutLineSegments(points, state.starSkip, state.segments);
-      } else {
-        // No intersections found, use regular star line segments
-        lineSegments = generateStarLineSegments(points, state.starSkip);
       }
-    } else {
-      // Star cuts disabled: Use regular star line segments
-      lineSegments = generateStarLineSegments(points, state.starSkip);
     }
-  } else {
-    // Regular polygon: Generate consecutive line segments
-    lineSegments = generateRegularPolygonLineSegments(points);
   }
 
-  // Step 3: Apply Euclidean rhythm if enabled (BEFORE fractal)
-  // Skip if we already created a euclidean shape or if euclidean is disabled
-  if (state?.useEuclidean && state?.euclidValue > 0 && shapeType !== 'euclidean') {
-    // Apply euclidean rhythm to existing points
-    const euclideanPattern = calculateEuclideanRhythm(points.length, state.euclidValue);
-    points = points.filter((point, index) => euclideanPattern[index]);
+  // Step 3: Apply Euclidean rhythm (mutually exclusive with star geometry)
+  if ((state?.useEuclidean || shapeType === 'euclidean') && state?.euclidValue > 0 && !isStarPolygon) {
+    if (shapeType === 'euclidean') {
+      // For euclidean shape type, create euclidean points from scratch
+      points = createEuclideanPoints(radius, segments, state?.euclidValue || 3, state);
+    } else {
+      // Apply euclidean rhythm to existing points
+      const euclideanPattern = calculateEuclideanRhythm(points.length, state.euclidValue);
+      points = points.filter((point, index) => euclideanPattern[index]);
+    }
     
-    // Update line segments to match the filtered points
-    lineSegments = generateRegularPolygonLineSegments(points);
-  } else if (shapeType === 'euclidean') {
-    // For euclidean shape type, apply euclidean rhythm to the base polygon
-    points = createEuclideanPoints(radius, segments, state?.euclidValue || 3, state);
-    // Update line segments for euclidean points
+    // Update line segments to match the filtered/new points
     lineSegments = generateRegularPolygonLineSegments(points);
   }
 
-  // Step 4: Apply fractal subdivision to the line segments (AFTER euclidean)
-  let fractalizedLineSegments = null;
+  // Step 4: Apply fractal subdivision to the line segments
+  let finalIndices = null;
   
-  if (state?.useFractal && state?.fractalValue > 1 && shapeType !== 'fractal') {
-    const result = applyFractalSubdivisionToLineSegmentsWithSegments(lineSegments, state.fractalValue);
+  if ((state?.useFractal && state?.fractalValue > 1) || shapeType === 'fractal') {
+    const fractalValue = shapeType === 'fractal' ? (state?.fractalValue || 2) : state.fractalValue;
+    const result = applyFractalSubdivisionToLineSegmentsWithSegments(lineSegments, fractalValue);
     points = result.points;
-    fractalizedLineSegments = result.segments;
-  } else if (shapeType === 'fractal') {
-    const result = applyFractalSubdivisionToLineSegmentsWithSegments(lineSegments, state?.fractalValue || 1);
-    points = result.points;
-    fractalizedLineSegments = result.segments;
+    finalIndices = result.segments; // This is already in index format
+  } else {
+    // Convert line segments to indices for non-fractal cases
+    finalIndices = convertLineSegmentsToIndices(points, lineSegments);
   }
 
-  // Step 5: Create geometry from final points
-  const geometry = createGeometryFromPoints(points, state, fractalizedLineSegments);
+  // Step 5: Copies - This step is handled in updateGroup, not here
+  // The base geometry created here will be copied with transformations
+
+  // Step 6: Intersections - This should be handled in updateGroup after copies are created
+  // Intersections need to be calculated between transformed copies, not base geometry
+  // So we skip this step here and handle it in updateGroup
+
+  // Step 7: Delete - This is handled in updateGroup during rendering
+
+  // Create geometry from final points and line segment indices
+  const geometry = createGeometryFromPoints(points, state, finalIndices);
 
   // Add metadata to geometry
   if (geometry.userData === undefined) {
@@ -554,13 +545,14 @@ export function createPolygonGeometry(radius, segments, state = null) {
 
   // Add information about geometry composition
   geometry.userData.geometryInfo = {
-    type: state?.useStars && state?.starSkip > 1 && !isUsingEuclidean ? 'star' : shapeType,
+    type: isStarPolygon ? 'star' : shapeType,
     baseVertexCount: segments,
     totalVertexCount: points.length,
-    hasIntersections: state?.useStars && state?.useCuts && state?.starSkip > 1 && !isUsingEuclidean,
+    hasIntersections: isStarPolygon && state?.useCuts,
     starSkip: state?.starSkip,
-    fractalLevel: state?.useFractal ? state.fractalValue : 1,
-    isUsingEuclidean: isUsingEuclidean
+    fractalLevel: (state?.useFractal || shapeType === 'fractal') ? (state?.fractalValue || 2) : 1,
+    isUsingEuclidean: isUsingEuclidean,
+    lineIndices: finalIndices // Store final line indices after all pipeline steps
   };
 
   return geometry;
@@ -646,18 +638,25 @@ function createGeometryFromPoints(points, state, fractalSegments = null) {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
     geometry.setIndex(indices);
   } else {
-    // Standard non-indexed geometry for regular polygons
-    // FIXED: Don't delete vertices here - deletion is now handled at the copy level in updateGroup
-    // with global vertex indexing and visibility-only deletion
-    const positionArray = new Float32Array(points.length * 3);
+    // Standard indexed geometry for regular polygons
+    const vertices = [];
+    const indices = [];
     
+    // Create position vertices for all points
     for (let i = 0; i < points.length; i++) {
-      positionArray[i * 3] = points[i].x;
-      positionArray[i * 3 + 1] = points[i].y;
-      positionArray[i * 3 + 2] = 0;
+      vertices.push(points[i].x, points[i].y, 0);
     }
     
-    geometry.setAttribute('position', new THREE.BufferAttribute(positionArray, 3));
+    // Create indices to connect consecutive vertices in a loop
+    for (let i = 0; i < points.length; i++) {
+      const start = i;
+      const end = (i + 1) % points.length;
+      indices.push(start, end);
+    }
+    
+    // Set the attributes
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setIndex(indices);
   }
   
   // Add metadata
@@ -1175,9 +1174,9 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       const isStarPolygon = baseGeo.userData?.geometryInfo?.type === 'star_with_cuts' ||
                             (state && state.useStars && state.starSkip > 1);
                             
-      // For star polygons, use LINE_SEGMENTS with indexed geometry
-      if (isStarPolygon && baseGeo.index) {
-        // Create line segments for star patterns
+      // All geometries now use indexed line segments, so use LINE_SEGMENTS for all
+      if (baseGeo.index) {
+        // Create line segments for indexed geometry (star patterns, fractals, and regular polygons)
         const lines = new THREE.LineSegments(baseGeo, lineMaterial);
         lines.scale.set(finalScale, finalScale, 1);
         
@@ -1187,7 +1186,7 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         // Add the line geometry to the copy group
         copyGroup.add(lines);
       } else {
-        // For regular polygons, use the standard LINE_LOOP
+        // Fallback for non-indexed geometry (shouldn't happen with new pipeline)
         const lines = new THREE.LineLoop(baseGeo, lineMaterial);
         lines.scale.set(finalScale, finalScale, 1);
         
@@ -1375,10 +1374,9 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       // DEPRECATED: Intersection markers functionality removed - star cuts are now handled in starCuts.js
     }
     
-    // FIXED: Process plain intersections AFTER all copies are created
-    // This adds intersection points as vertices to each copy's geometry
+    // Process intersections between copies after all copies are created
     if (state && state.usePlainIntersections && state.copies > 1) {
-      processPlainIntersectionsAfterCopies(group, state, baseGeo);
+      processIntersectionsBetweenCopies(group, baseGeo, state, materialsToDispose, geometriesToDispose);
     }
     
     // Clear any old intersection group references from userData
@@ -1452,99 +1450,8 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
   }
 }
 
-/**
- * Process plain intersections after copies have been created
- * This adds intersection points as regular vertices to each copy's geometry
- * @param {THREE.Group} group - The group containing all copy groups
- * @param {Object} state - Application state
- * @param {THREE.BufferGeometry} baseGeo - Base geometry
- */
-function processPlainIntersectionsAfterCopies(group, state, baseGeo) {
-  if (!group || !state || !baseGeo || state.copies <= 1) {
-    return;
-  }
-  
-  const DEBUG_ENABLED = false; // Set to true for debugging
-  
-  if (DEBUG_ENABLED) {
-    console.log(`[PLAIN INTERSECTION] Processing intersections after copies created for ${state.copies} copies`);
-  }
-  
-  // Calculate intersections between copies using the existing logic
-  const intersectionPoints = calculateCopyIntersections(baseGeo, state);
-  
-  if (intersectionPoints.length === 0) {
-    if (DEBUG_ENABLED) {
-      console.log(`[PLAIN INTERSECTION] No intersections found`);
-    }
-    return;
-  }
-  
-  if (DEBUG_ENABLED) {
-    console.log(`[PLAIN INTERSECTION] Found ${intersectionPoints.length} intersection points`);
-  }
-  
-  // Add intersection points as vertex circles to the main group (not to individual copies)
-  // Each intersection point should exist only once in the world
-  for (let i = 0; i < intersectionPoints.length; i++) {
-    const point = intersectionPoints[i];
-    
-    // The intersection points are already in world coordinates
-    const worldX = point.x;
-    const worldY = point.y;
-    
-    // Create trigger data for this intersection point
-    const triggerData = {
-      x: worldX,
-      y: worldY,
-      copyIndex: -1, // Not associated with any specific copy
-      vertexIndex: -1, // Special marker for intersection points
-      isIntersection: true,
-      globalIndex: -1 // Will be set by overlapping cleaner
-    };
-    
-    // Create a note object to get duration and velocity parameters
-    const note = createNote(triggerData, state);
-    
-    // Calculate size factor
-    const baseCircleSize = VERTEX_CIRCLE_SIZE;
-    const durationScaleFactor = 0.5 + note.duration;
-    const cameraDistance = 2000; // Default camera distance
-    const sizeScaleFactor = (cameraDistance / 1000) * baseCircleSize * durationScaleFactor * 10.3 * 0.8; // Smaller for intersections
-    
-    // Create material for intersection point
-    const vertexCircleMaterial = new THREE.MeshBasicMaterial({ 
-      color: INTERSECTION_POINT_COLOR,
-      transparent: true,
-      opacity: note.velocity, 
-      depthTest: false,
-      side: THREE.DoubleSide
-    });
-    
-    // Store trigger data with the material
-    vertexCircleMaterial.userData = {
-      ...triggerData,
-      note: note
-    };
-    
-    // Create vertex circle for intersection point
-    const vertexCircle = new THREE.Mesh(vertexCircleGeometry, vertexCircleMaterial);
-    vertexCircle.scale.set(sizeScaleFactor, sizeScaleFactor, 1);
-    vertexCircle.renderOrder = 1;
-    vertexCircle.position.set(worldX, worldY, 0);
-    
-    // Add to the main group (not to individual copy groups)
-    group.add(vertexCircle);
-    
-    if (DEBUG_ENABLED) {
-      console.log(`[PLAIN INTERSECTION] Added intersection point ${i} at (${worldX.toFixed(2)}, ${worldY.toFixed(2)})`);
-    }
-  }
-  
-  if (DEBUG_ENABLED) {
-    console.log(`[PLAIN INTERSECTION] Added ${intersectionPoints.length} intersection points to main group`);
-  }
-}
+// REMOVED: processPlainIntersectionsAfterCopies function
+// Intersections are now handled in the geometry pipeline (step 6) in createPolygonGeometry
 
 /**
  * Get vertex positions for a specific copy
@@ -1850,4 +1757,346 @@ function createSeededRandom(seed) {
     state = (state * 1664525 + 1013904223) % 4294967296;
     return state / 4294967296;
   };
+}
+
+/**
+ * Calculate intersections between polygon copies and update line segments
+ * This is step 6 of the geometry pipeline - intersections should modify line segments
+ * @param {Array<THREE.Vector2>} points Current points array
+ * @param {Array<Array<THREE.Vector2>>} lineSegments Current line segments
+ * @param {Object} state Application state
+ * @returns {Object} Object with updated points and lineSegments
+ */
+function calculateAndApplyIntersections(points, lineSegments, state) {
+  if (!state || !state.usePlainIntersections || state.copies <= 1) {
+    return { points, lineSegments };
+  }
+  
+  // Create a temporary geometry to use with the existing intersection calculation
+  const tempGeometry = new THREE.BufferGeometry();
+  const vertices = [];
+  for (const point of points) {
+    vertices.push(point.x, point.y, 0);
+  }
+  tempGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  
+  // Calculate intersection points using existing logic
+  const intersectionPoints = calculateCopyIntersections(tempGeometry, state);
+  
+  if (intersectionPoints.length === 0) {
+    return { points, lineSegments };
+  }
+  
+  // Add intersection points to the points array
+  const allPoints = [...points, ...intersectionPoints];
+  
+  // For intersections, we should NOT add extra connecting lines
+  // The intersection points are just additional vertices for audio triggers
+  // The original line segments should remain unchanged for proper geometry display
+  const allLineSegments = [...lineSegments];
+  
+  // Do NOT add connecting lines to intersection points - this creates the "ghost copy" effect
+  // Intersection points are purely for audio triggers and should not affect the visual geometry
+  
+  return { points: allPoints, lineSegments: allLineSegments };
+}
+
+/**
+ * Process intersections between copies after they have been created with transformations
+ * This modifies each copy's geometry to include intersection points and split line segments
+ * @param {THREE.Group} group - Group containing all copy groups
+ * @param {THREE.BufferGeometry} baseGeo - Base geometry
+ * @param {Object} state - Application state
+ * @param {Array} materialsToDispose - Array to track materials for disposal
+ * @param {Array} geometriesToDispose - Array to track geometries for disposal
+ */
+function processIntersectionsBetweenCopies(group, baseGeo, state, materialsToDispose, geometriesToDispose) {
+  // Calculate intersections between the transformed copies
+  const intersectionPoints = calculateCopyIntersections(baseGeo, state);
+  
+  if (intersectionPoints.length === 0) {
+    return; // No intersections to process
+  }
+  
+  // Get all copy groups (excluding debug objects)
+  const copyGroups = group.children.filter(child => child.type === 'Group');
+  
+  if (copyGroups.length === 0) {
+    return;
+  }
+  
+  // For each copy group, modify its geometry to include relevant intersection points
+  for (let copyIndex = 0; copyIndex < copyGroups.length; copyIndex++) {
+    const copyGroup = copyGroups[copyIndex];
+    
+    // Find the line mesh in this copy group
+    let lineMesh = null;
+    for (const child of copyGroup.children) {
+      if (child.type === 'LineSegments' || child.type === 'LineLoop') {
+        lineMesh = child;
+        break;
+      }
+    }
+    
+    if (!lineMesh) continue;
+    
+    // Get the transformation parameters for this copy
+    const copyTransform = getCopyTransformation(copyIndex, state);
+    
+    // Find intersection points that are relevant to this copy
+    const relevantIntersections = findRelevantIntersections(
+      intersectionPoints, 
+      baseGeo, 
+      copyTransform
+    );
+    
+    if (relevantIntersections.length > 0) {
+      // Create a new geometry for this copy that includes intersection points
+      const newGeometry = createCopyGeometryWithIntersections(
+        baseGeo, 
+        relevantIntersections, 
+        copyTransform
+      );
+      
+      // Replace the line mesh geometry
+      if (lineMesh.geometry !== baseGeo) {
+        geometriesToDispose.push(lineMesh.geometry);
+      }
+      lineMesh.geometry = newGeometry;
+      
+      // Add vertex circles for the intersection points in this copy
+      addIntersectionVertexCircles(
+        copyGroup, 
+        relevantIntersections, 
+        copyIndex, 
+        state, 
+        materialsToDispose
+      );
+    }
+  }
+}
+
+/**
+ * Get transformation parameters for a specific copy
+ * @param {number} copyIndex - Index of the copy
+ * @param {Object} state - Application state
+ * @returns {Object} Transformation parameters
+ */
+function getCopyTransformation(copyIndex, state) {
+  // Calculate scale factor (same logic as in updateGroup)
+  let stepScaleFactor = Math.pow(state.stepScale, copyIndex);
+  
+  // Apply modulus scaling if enabled
+  let finalScale = stepScaleFactor;
+  if (state.useModulus) {
+    const modulusScale = state.getScaleFactorForCopy(copyIndex);
+    finalScale = modulusScale * stepScaleFactor;
+  }
+  // Apply alt scale if enabled
+  else if (state.useAltScale && ((copyIndex + 1) % state.altStepN === 0)) {
+    finalScale = stepScaleFactor * state.altScale;
+  }
+  
+  // Calculate rotation angle (same logic as in updateGroup)
+  const startingAngle = state?.startingAngle || 0;
+  const cumulativeAngleDegrees = startingAngle + (copyIndex * state.angle);
+  const cumulativeAngleRadians = (cumulativeAngleDegrees * Math.PI) / 180;
+  
+  return {
+    scale: finalScale,
+    rotation: cumulativeAngleRadians,
+    copyIndex: copyIndex
+  };
+}
+
+/**
+ * Find intersection points that are relevant to a specific copy
+ * @param {Array<THREE.Vector2>} intersectionPoints - All intersection points
+ * @param {THREE.BufferGeometry} baseGeo - Base geometry
+ * @param {Object} copyTransform - Transformation parameters for this copy
+ * @returns {Array<THREE.Vector2>} Relevant intersection points
+ */
+function findRelevantIntersections(intersectionPoints, baseGeo, copyTransform) {
+  // For now, return all intersection points as they are all relevant
+  // In a more sophisticated implementation, we could filter based on
+  // which intersection points lie on this copy's line segments
+  return intersectionPoints;
+}
+
+/**
+ * Create a new geometry for a copy that includes intersection points
+ * @param {THREE.BufferGeometry} baseGeo - Base geometry
+ * @param {Array<THREE.Vector2>} intersectionPoints - Relevant intersection points
+ * @param {Object} copyTransform - Transformation parameters
+ * @returns {THREE.BufferGeometry} New geometry with intersection points
+ */
+function createCopyGeometryWithIntersections(baseGeo, intersectionPoints, copyTransform) {
+  // Get original positions
+  const originalPositions = baseGeo.getAttribute('position').array;
+  const originalCount = baseGeo.getAttribute('position').count;
+  
+  // Create new positions array with original vertices + intersection points
+  // Note: intersection points are in world coordinates, but we need them in local coordinates
+  const newVertexCount = originalCount + intersectionPoints.length;
+  const newPositions = new Float32Array(newVertexCount * 3);
+  
+  // Copy original vertices (these will be transformed by the copy group's transformation)
+  for (let i = 0; i < originalPositions.length; i++) {
+    newPositions[i] = originalPositions[i];
+  }
+  
+  // Add intersection points as new vertices
+  // Convert world coordinates to local coordinates by applying inverse transformation
+  for (let i = 0; i < intersectionPoints.length; i++) {
+    const point = intersectionPoints[i];
+    const offset = (originalCount + i) * 3;
+    
+    // Apply inverse transformation to convert world coordinates to local coordinates
+    const cos = Math.cos(-copyTransform.rotation);
+    const sin = Math.sin(-copyTransform.rotation);
+    const rotX = point.x * cos - point.y * sin;
+    const rotY = point.x * sin + point.y * cos;
+    
+    newPositions[offset] = rotX / copyTransform.scale;
+    newPositions[offset + 1] = rotY / copyTransform.scale;
+    newPositions[offset + 2] = 0;
+  }
+  
+  // Create new geometry
+  const newGeometry = new THREE.BufferGeometry();
+  newGeometry.setAttribute('position', new THREE.BufferAttribute(newPositions, 3));
+  
+  // Copy the original index (line segments) - intersection points will be handled by vertex circles
+  if (baseGeo.index) {
+    newGeometry.setIndex(baseGeo.index.clone());
+  }
+  
+  // Copy userData and update it
+  if (baseGeo.userData) {
+    newGeometry.userData = { ...baseGeo.userData };
+  } else {
+    newGeometry.userData = {};
+  }
+  
+  // Update geometry info
+  if (newGeometry.userData.geometryInfo) {
+    newGeometry.userData.geometryInfo = {
+      ...newGeometry.userData.geometryInfo,
+      totalVertexCount: newVertexCount,
+      intersectionCount: intersectionPoints.length,
+      hasPlainIntersections: true
+    };
+  }
+  
+  return newGeometry;
+}
+
+/**
+ * Add vertex circles for intersection points in a copy group
+ * @param {THREE.Group} copyGroup - Copy group to add circles to
+ * @param {Array<THREE.Vector2>} intersectionPoints - Intersection points in world coordinates
+ * @param {number} copyIndex - Index of this copy
+ * @param {Object} state - Application state
+ * @param {Array} materialsToDispose - Array to track materials for disposal
+ */
+function addIntersectionVertexCircles(copyGroup, intersectionPoints, copyIndex, state, materialsToDispose) {
+  // Get camera distance for size calculation
+  const camera = copyGroup.parent?.userData?.camera;
+  const cameraDistance = camera ? camera.position.z : 2000;
+  
+  for (let i = 0; i < intersectionPoints.length; i++) {
+    const intersection = intersectionPoints[i];
+    
+    // Create trigger data for this intersection point
+    const triggerData = {
+      x: intersection.x,
+      y: intersection.y,
+      copyIndex: copyIndex,
+      vertexIndex: -1, // Special value for intersection points
+      isIntersection: true,
+      globalIndex: -1 // Will be set by the calling function
+    };
+    
+    // Create a note object to get duration and velocity parameters
+    const note = createNote(triggerData, state);
+    
+    // Calculate size factor that scales with camera distance
+    const baseCircleSize = VERTEX_CIRCLE_SIZE;
+    const durationScaleFactor = 0.5 + note.duration;
+    const sizeScaleFactor = (cameraDistance / 1000) * baseCircleSize * durationScaleFactor * 0.3;
+    
+    // Create material for intersection point
+    const intersectionMaterial = new THREE.MeshBasicMaterial({ 
+      color: INTERSECTION_POINT_COLOR,
+      transparent: true,
+      opacity: note.velocity * INTERSECTION_POINT_OPACITY, 
+      depthTest: false,
+      side: THREE.DoubleSide
+    });
+    
+    // Store trigger data with the material
+    intersectionMaterial.userData = {
+      ...triggerData,
+      note: note,
+      isDeleted: false
+    };
+    
+    materialsToDispose.push(intersectionMaterial);
+    
+    // Create a mesh using the shared geometry
+    const intersectionCircle = new THREE.Mesh(vertexCircleGeometry, intersectionMaterial);
+    intersectionCircle.scale.set(sizeScaleFactor, sizeScaleFactor, 1);
+    intersectionCircle.renderOrder = 2; // Higher than regular vertices
+    
+    // Convert world coordinates to local coordinates for positioning
+    const cos = Math.cos(-copyGroup.rotation.z);
+    const sin = Math.sin(-copyGroup.rotation.z);
+    const rotX = intersection.x * cos - intersection.y * sin;
+    const rotY = intersection.x * sin + intersection.y * cos;
+    
+    // Apply inverse scale
+    const scale = copyGroup.scale.x; // Assuming uniform scaling
+    intersectionCircle.position.set(rotX / scale, rotY / scale, 0);
+    
+    // Add to the copy group
+    copyGroup.add(intersectionCircle);
+  }
+}
+
+/**
+ * Convert line segments (Vector2 pairs) to index pairs for geometry creation
+ * @param {Array<THREE.Vector2>} points Array of all points
+ * @param {Array<Array<THREE.Vector2>>} lineSegments Array of line segments as Vector2 pairs
+ * @returns {Array<Array<number>>} Array of index pairs
+ */
+function convertLineSegmentsToIndices(points, lineSegments) {
+  if (!lineSegments || lineSegments.length === 0) {
+    return null;
+  }
+  
+  const indices = [];
+  const pointMap = new Map();
+  
+  // Create a map from point coordinates to indices for fast lookup
+  for (let i = 0; i < points.length; i++) {
+    const key = `${points[i].x.toFixed(6)},${points[i].y.toFixed(6)}`;
+    pointMap.set(key, i);
+  }
+  
+  // Convert each line segment to index pairs
+  for (const segment of lineSegments) {
+    if (segment.length >= 2) {
+      const startKey = `${segment[0].x.toFixed(6)},${segment[0].y.toFixed(6)}`;
+      const endKey = `${segment[1].x.toFixed(6)},${segment[1].y.toFixed(6)}`;
+      
+      const startIdx = pointMap.get(startKey);
+      const endIdx = pointMap.get(endKey);
+      
+      if (startIdx !== undefined && endIdx !== undefined) {
+        indices.push([startIdx, endIdx]);
+      }
+    }
+  }
+  
+  return indices.length > 0 ? indices : null;
 }
