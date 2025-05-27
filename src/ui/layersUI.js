@@ -5,6 +5,97 @@ import { updateUIFromState } from '../state/statePersistence.js';
 // Import DEBUG_BUTTONS flag from main.js if it exists, otherwise default to false
 const DEBUG_BUTTONS = window.DEBUG_BUTTONS !== undefined ? window.DEBUG_BUTTONS : false;
 
+// Global UNISON state
+let unisonMode = false;
+
+/**
+ * Get the current UNISON mode state
+ * @returns {boolean} Whether UNISON mode is enabled
+ */
+export function getUnisonMode() {
+  return unisonMode;
+}
+
+/**
+ * Set the UNISON mode state
+ * @param {boolean} enabled Whether to enable UNISON mode
+ */
+export function setUnisonMode(enabled) {
+  unisonMode = enabled;
+  
+  // Update the checkbox if it exists
+  const unisonCheckbox = document.getElementById('unisonModeCheckbox');
+  if (unisonCheckbox) {
+    unisonCheckbox.checked = enabled;
+  }
+  
+  // Dispatch event to notify other systems
+  window.dispatchEvent(new CustomEvent('unisonModeChanged', { 
+    detail: { enabled } 
+  }));
+  
+  console.log(`UNISON mode ${enabled ? 'enabled' : 'disabled'}: Parameter changes will now apply to ${enabled ? 'all layers' : 'active layer only'}`);
+}
+
+/**
+ * Apply a parameter change to all layers when UNISON mode is enabled
+ * @param {string} setterName Name of the setter function
+ * @param {*} value Value to set
+ * @param {LayerManager} layerManager Layer manager instance
+ */
+export function applyUnisonParameterChange(setterName, value, layerManager) {
+  if (!unisonMode || !layerManager) {
+    return false; // Not in UNISON mode or no layer manager
+  }
+  
+  // List of parameters that should be applied to all layers in UNISON mode
+  const unisonParameters = [
+    'setRadius', 'setSegments', 'setCopies', 'setStepScale', 'setAngle',
+    'setLerpTime', 'setAltScale', 'setAltStepN', 'setFractalValue',
+    'setMinDuration', 'setMaxDuration', 'setDurationPhase',
+    'setMinVelocity', 'setMaxVelocity', 'setVelocityPhase',
+    'setEuclidValue', 'setUseEuclid', 'setUseFractal', 'setUseStars',
+    'setUseCuts', 'setUseAltScale', 'setUseLerp', 'setUseQuantization',
+    'setUsePlainIntersections', 'setShowAxisFreqLabels', 'setShowPointsFreqLabels',
+    'setDurationMode', 'setVelocityMode',
+    // Radio button parameters
+    'setModulusValue', 'setUseModulus', 'setDurationModulo', 'setVelocityModulo',
+    'setTimeSubdivisionValue', 'setUseTimeSubdivision', 'setQuantizationValue',
+    'setStarSkip'
+  ];
+  
+  if (!unisonParameters.includes(setterName)) {
+    return false; // This parameter is not supported in UNISON mode
+  }
+  
+  let appliedCount = 0;
+  
+  // Apply the parameter change to all layers
+  layerManager.layers.forEach((layer, index) => {
+    if (layer && layer.state && typeof layer.state[setterName] === 'function') {
+      try {
+        layer.state[setterName](value);
+        appliedCount++;
+      } catch (error) {
+        console.error(`Error applying ${setterName}(${value}) to layer ${index}:`, error);
+      }
+    }
+  });
+  
+  if (appliedCount > 0) {
+    console.log(`UNISON: Applied ${setterName}(${value}) to ${appliedCount} layers`);
+    
+    // Force UI update to reflect changes
+    if (typeof window.syncStateAcrossSystems === 'function') {
+      window.syncStateAcrossSystems();
+    }
+    
+    return true;
+  }
+  
+  return false;
+}
+
 /**
  * Set up the Layer tab UI with controls for managing layers
  * @param {LayerManager} layerManager The layer manager instance
@@ -80,6 +171,35 @@ export function setupLayersUI(layerManager) {
   layerSelectorContainer.appendChild(layerButtonsContainer);
   
   layerTab.appendChild(layerSelectorContainer);
+  
+  // Add UNISON mode control
+  const unisonContainer = document.createElement('div');
+  unisonContainer.className = 'control';
+  
+  const unisonLabel = document.createElement('label');
+  unisonLabel.textContent = 'UNISON Mode:';
+  unisonLabel.setAttribute('for', 'unisonModeCheckbox');
+  unisonContainer.appendChild(unisonLabel);
+  
+  // Create UNISON checkbox
+  const unisonCheckbox = document.createElement('input');
+  unisonCheckbox.type = 'checkbox';
+  unisonCheckbox.id = 'unisonModeCheckbox';
+  unisonCheckbox.checked = unisonMode;
+  
+  unisonCheckbox.addEventListener('change', (e) => {
+    setUnisonMode(e.target.checked);
+  });
+  
+  unisonContainer.appendChild(unisonCheckbox);
+  
+  // Add help text
+  const unisonHelpText = document.createElement('div');
+  unisonHelpText.className = 'help-text';
+  unisonHelpText.textContent = 'When enabled, parameter changes apply to all layers simultaneously';
+  unisonContainer.appendChild(unisonHelpText);
+  
+  layerTab.appendChild(unisonContainer);
   
   // Add layer color control
   const layerColorContainer = document.createElement('div');
@@ -214,7 +334,8 @@ export function setupLayersUI(layerManager) {
   // Return references to UI elements
   return {
     layerCountInput,
-    layerColorPicker
+    layerColorPicker,
+    unisonCheckbox
   };
 }
 

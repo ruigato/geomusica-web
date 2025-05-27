@@ -1,6 +1,7 @@
 // src/ui/ui.js - Updated with Number parameter rounding fix
 import { UI_RANGES, QUANTIZATION_VALUES } from '../config/constants.js';
 import { ParameterMode } from '../notes/notes.js';
+import { getUnisonMode, applyUnisonParameterChange } from './layersUI.js';
 
 // Debug flag to control logging
 const DEBUG_LOGGING = false;
@@ -34,6 +35,87 @@ const QUANTIZATION_VALUES_FOR_RADIO_BUTTONS = [
   'off', '1/1', '1/2', '1/4', '1/8', '1/16', '1/32', '1/64',
   '1/4T', '1/8T', '1/16T', '1/32T',
 ];
+
+// Helper function for checkbox UNISON handling
+const handleCheckboxChange = (setterName, value) => {
+  // Check if UNISON mode is enabled and apply to all layers
+  const unisonApplied = getUnisonMode() && applyUnisonParameterChange(setterName, value, window._layers);
+  
+  if (!unisonApplied) {
+    // Normal mode - apply to active layer only
+    try {
+      const { state: targetState, id, valid } = getTargetState(setterName);
+      
+      if (!targetState) {
+        console.error(`[UI] No target state found for ${setterName}, skipping update`);
+        return;
+      }
+      
+      if (typeof targetState[setterName] === 'function') {
+        targetState[setterName](value);
+      } else {
+        // Fallback to the original approach if the method doesn't exist
+        if (typeof window.getActiveState === 'function') {
+          const activeState = window.getActiveState();
+          if (activeState && typeof activeState[setterName] === 'function') {
+            activeState[setterName](value);
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`[UI] Error setting ${setterName}:`, error);
+    }
+  }
+};
+
+// Helper function for radio button UNISON handling
+const handleRadioButtonChange = (setterName, value, additionalSetters = []) => {
+  // Check if UNISON mode is enabled and apply to all layers
+  const unisonApplied = getUnisonMode() && applyUnisonParameterChange(setterName, value, window._layers);
+  
+  if (!unisonApplied) {
+    // Normal mode - apply to active layer only
+    try {
+      const { state: targetState, id, valid } = getTargetState(setterName);
+      
+      if (!targetState) {
+        console.error(`[UI] No target state found for ${setterName}, skipping update`);
+        return;
+      }
+      
+      if (typeof targetState[setterName] === 'function') {
+        targetState[setterName](value);
+      } else {
+        // Fallback to the original approach if the method doesn't exist
+        if (typeof window.getActiveState === 'function') {
+          const activeState = window.getActiveState();
+          if (activeState && typeof activeState[setterName] === 'function') {
+            activeState[setterName](value);
+          }
+        }
+      }
+      
+      // Handle additional setters (e.g., auto-enable/disable related features)
+      additionalSetters.forEach(({ setterName: additionalSetter, value: additionalValue }) => {
+        const additionalUnisonApplied = getUnisonMode() && applyUnisonParameterChange(additionalSetter, additionalValue, window._layers);
+        
+        if (!additionalUnisonApplied) {
+          if (typeof targetState[additionalSetter] === 'function') {
+            targetState[additionalSetter](additionalValue);
+          }
+        }
+      });
+      
+    } catch (error) {
+      console.error(`[UI] Error setting ${setterName}:`, error);
+    }
+  } else {
+    // UNISON mode was applied for the main setter, now handle additional setters
+    additionalSetters.forEach(({ setterName: additionalSetter, value: additionalValue }) => {
+      applyUnisonParameterChange(additionalSetter, additionalValue, window._layers);
+    });
+  }
+};
 
 // FIXED: More robust helper function to get the current target state for parameter changes
 const getTargetState = (setterName) => {
@@ -194,20 +276,17 @@ function setupModulusRadioButtons(container, state, type = null) {
     // Add event listener with appropriate state setter
     radioInput.addEventListener('change', () => {
       if (radioInput.checked) {
-        // Get the current active layer state
-        const activeState = typeof window.getActiveState === 'function' ? 
-          window.getActiveState() : state;
-          
         if (type === 'duration') {
-          activeState.setDurationModulo(i);
+          handleRadioButtonChange('setDurationModulo', i);
         } else if (type === 'velocity') {
-          activeState.setVelocityModulo(i);
+          handleRadioButtonChange('setVelocityModulo', i);
         } else {
-          activeState.setModulusValue(i);
-          
           // Auto-enable modulus if value is not 1 (default)
           const isDefault = i === 1;
-          activeState.setUseModulus(!isDefault);
+          const additionalSetters = [
+            { setterName: 'setUseModulus', value: !isDefault }
+          ];
+          handleRadioButtonChange('setModulusValue', i, additionalSetters);
         }
       }
     });
@@ -247,16 +326,12 @@ function setupTimeSubdivisionRadioButtons(container, state) {
     // Add event listener
     radioInput.addEventListener('change', () => {
       if (radioInput.checked) {
-        // Get the current active layer state
-        const activeState = typeof window.getActiveState === 'function' ? 
-          window.getActiveState() : state;
-        
-        // Set time subdivision value on the active layer
-        activeState.setTimeSubdivisionValue(parseFloat(value));
-        
         // Auto-enable time subdivision if value is not 1 (default)
         const isDefault = Math.abs(parseFloat(value) - 1.0) < 0.001;
-        activeState.setUseTimeSubdivision(!isDefault);
+        const additionalSetters = [
+          { setterName: 'setUseTimeSubdivision', value: !isDefault }
+        ];
+        handleRadioButtonChange('setTimeSubdivisionValue', parseFloat(value), additionalSetters);
         
         if (DEBUG_LOGGING) {
           
@@ -302,7 +377,7 @@ function setupQuantizationRadioButtons(container, state) {
     // Add event listener
     radioInput.addEventListener('change', () => {
       if (radioInput.checked) {
-        state.setQuantizationValue(value);
+        handleRadioButtonChange('setQuantizationValue', value);
       }
     });
     
@@ -350,10 +425,7 @@ function setupStarSkipRadioButtons(container, state) {
     // Add event listener
     radioInput.addEventListener('change', () => {
       if (radioInput.checked) {
-        // Get the current active layer state at the time of the event
-        const currentActiveState = typeof window.getActiveState === 'function' ? 
-          window.getActiveState() : state;
-        currentActiveState.setStarSkip(skipValue);
+        handleRadioButtonChange('setStarSkip', skipValue);
       }
     });
     
@@ -486,6 +558,8 @@ export function setupUI(state) {
     
     // Continue with other elements that are available
   }
+
+
   
   // Initialize checkbox states from app state with null checks
   if (showAxisFreqLabelsCheckbox) {
@@ -548,17 +622,13 @@ export function setupUI(state) {
   // Setup event listeners for new checkboxes with null checks
   if (showAxisFreqLabelsCheckbox) {
     showAxisFreqLabelsCheckbox.addEventListener('change', e => {
-      // Get the current active layer state
-      const activeState = typeof window.getActiveState === 'function' ? 
-        window.getActiveState() : state;
-      
-      activeState.setShowAxisFreqLabels(e.target.checked);
+      handleCheckboxChange('setShowAxisFreqLabels', e.target.checked);
     });
   }
 
   if (showPointsFreqLabelsCheckbox) {
     showPointsFreqLabelsCheckbox.addEventListener('change', e => {
-      state.setShowPointsFreqLabels(e.target.checked);
+      handleCheckboxChange('setShowPointsFreqLabels', e.target.checked);
     });
   }
   
@@ -594,11 +664,7 @@ export function setupUI(state) {
   if (useQuantizationCheckbox) {
     useQuantizationCheckbox.checked = state.useQuantization;
     useQuantizationCheckbox.addEventListener('change', e => {
-      // Get the current active layer state
-      const activeState = typeof window.getActiveState === 'function' ? 
-        window.getActiveState() : state;
-        
-      activeState.setUseQuantization(e.target.checked);
+      handleCheckboxChange('setUseQuantization', e.target.checked);
     });
   }
   
@@ -606,11 +672,7 @@ export function setupUI(state) {
   if (useAltScaleCheckbox) {
     useAltScaleCheckbox.checked = state.useAltScale;
     useAltScaleCheckbox.addEventListener('change', e => {
-      // Get the current active layer state
-      const activeState = typeof window.getActiveState === 'function' ? 
-        window.getActiveState() : state;
-        
-      activeState.setUseAltScale(e.target.checked);
+      handleCheckboxChange('setUseAltScale', e.target.checked);
     });
   }
   
@@ -620,11 +682,7 @@ export function setupUI(state) {
   if (useFractalCheckbox) {
     useFractalCheckbox.checked = state.useFractal;
     useFractalCheckbox.addEventListener('change', e => {
-      // Get the current active layer state
-      const activeState = typeof window.getActiveState === 'function' ? 
-        window.getActiveState() : state;
-        
-      activeState.setUseFractal(e.target.checked);
+      handleCheckboxChange('setUseFractal', e.target.checked);
     });
   }
   
@@ -632,11 +690,7 @@ export function setupUI(state) {
   if (useStarsCheckbox) {
     useStarsCheckbox.checked = state.useStars;
     useStarsCheckbox.addEventListener('change', e => {
-      // Get the current active layer state
-      const activeState = typeof window.getActiveState === 'function' ? 
-        window.getActiveState() : state;
-        
-      activeState.setUseStars(e.target.checked);
+      handleCheckboxChange('setUseStars', e.target.checked);
     });
   }
   
@@ -644,20 +698,14 @@ export function setupUI(state) {
   if (useCutsCheckbox) {
     useCutsCheckbox.checked = state.useCuts;
     useCutsCheckbox.addEventListener('change', e => {
-      // Get the current active layer state
-      const activeState = typeof window.getActiveState === 'function' ? 
-        window.getActiveState() : state;
-        
-      activeState.setUseCuts(e.target.checked);
+      handleCheckboxChange('setUseCuts', e.target.checked);
     });
   }
   
   // Setup plain intersections checkbox
   if (useIntersectionsCheckbox) {
     useIntersectionsCheckbox.addEventListener('change', e => {
-      const activeState = typeof window.getActiveState === 'function' ? 
-        window.getActiveState() : state;
-      activeState.setUsePlainIntersections(e.target.checked);
+      handleCheckboxChange('setUsePlainIntersections', e.target.checked);
     });
   }
 
@@ -672,11 +720,7 @@ export function setupUI(state) {
       // Add event listener
       radio.addEventListener('change', e => {
         if (e.target.checked) {
-          // Get the current active layer state
-          const activeState = typeof window.getActiveState === 'function' ? 
-            window.getActiveState() : state;
-            
-          activeState.setDurationMode(e.target.value);
+          handleRadioButtonChange('setDurationMode', e.target.value);
         }
       });
     });
@@ -693,11 +737,7 @@ export function setupUI(state) {
       // Add event listener
       radio.addEventListener('change', e => {
         if (e.target.checked) {
-          // Get the current active layer state
-          const activeState = typeof window.getActiveState === 'function' ? 
-            window.getActiveState() : state;
-            
-          activeState.setVelocityMode(e.target.value);
+          handleRadioButtonChange('setVelocityMode', e.target.value);
         }
       });
     });
@@ -753,12 +793,17 @@ export function setupUI(state) {
             
           }
         } else {
-          // Call the setter on the layer state
-          if (typeof setter === 'function') {
-            setter.call(targetState, v);
-            
-          } else {
-            
+          // Check if UNISON mode is enabled and apply to all layers
+          const unisonApplied = getUnisonMode() && applyUnisonParameterChange(setterName, v, window._layers);
+          
+          if (!unisonApplied) {
+            // Call the setter on the layer state (normal mode)
+            if (typeof setter === 'function') {
+              setter.call(targetState, v);
+              
+            } else {
+              
+            }
           }
         }
       } catch (error) {
@@ -812,12 +857,17 @@ export function setupUI(state) {
             
           }
         } else {
-          // Call the setter on the layer state
-          if (typeof setter === 'function') {
-            setter.call(targetState, v);
-            
-          } else {
-            
+          // Check if UNISON mode is enabled and apply to all layers
+          const unisonApplied = getUnisonMode() && applyUnisonParameterChange(setterName, v, window._layers);
+          
+          if (!unisonApplied) {
+            // Call the setter on the layer state (normal mode)
+            if (typeof setter === 'function') {
+              setter.call(targetState, v);
+              
+            } else {
+              
+            }
           }
         }
       } catch (error) {
@@ -828,53 +878,11 @@ export function setupUI(state) {
       rangeEl.value = v;
     });
   };
-  
+
   // Setup checkbox event listener for lerp toggle with null check
   if (useLerpCheckbox) {
     useLerpCheckbox.addEventListener('change', e => {
-      // FIXED: Use the same robust state routing approach as other UI elements
-      try {
-        // Get target state using the same approach as other UI controls
-        const { state: targetState, id, valid } = getTargetState('setUseLerp');
-        
-        if (!targetState) {
-          console.error('[UI] No target state found for setUseLerp, skipping update');
-          return;
-        }
-        
-        // Log state routing for debugging (only if not valid to avoid spam)
-        if (!valid) {
-          
-        }
-        
-        if (typeof targetState.setUseLerp === 'function') {
-          targetState.setUseLerp(e.target.checked);
-          
-        } else {
-          
-          
-          // Fallback to the original approach if the method doesn't exist
-          if (typeof window.getActiveState === 'function') {
-            const activeState = window.getActiveState();
-            if (activeState && typeof activeState.setUseLerp === 'function') {
-              activeState.setUseLerp(e.target.checked);
-              
-            }
-          } else {
-            // Last resort fallback to the original state
-            if (typeof state.setUseLerp === 'function') {
-              state.setUseLerp(e.target.checked);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('[UI] Error setting useLerp:', error);
-        
-        // Ultimate fallback to prevent UI from breaking
-        if (typeof state.setUseLerp === 'function') {
-          state.setUseLerp(e.target.checked);
-        }
-      }
+      handleCheckboxChange('setUseLerp', e.target.checked);
     });
   }
 
@@ -1158,7 +1166,7 @@ export function setupUI(state) {
   if (useEuclidCheckbox) {
     useEuclidCheckbox.checked = state.useEuclid;
     useEuclidCheckbox.addEventListener('change', e => {
-      state.setUseEuclid(e.target.checked);
+      handleCheckboxChange('setUseEuclid', e.target.checked);
     });
   }
   
