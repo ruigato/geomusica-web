@@ -567,26 +567,23 @@ export function createPolygonGeometry(radius, segments, state = null) {
   }
 
   // Step 4: Apply fractal subdivision to the line segments
-  let finalIndices = null;
-  
   if ((state?.useFractal && state?.fractalValue > 1) || shapeType === 'fractal') {
     const fractalValue = shapeType === 'fractal' ? (state?.fractalValue || 2) : state.fractalValue;
     const result = applyFractalSubdivisionToLineSegmentsWithSegments(lineSegments, fractalValue);
     points = result.points;
-    finalIndices = result.segments; // This is already in index format
-  } else {
-    // Convert line segments to indices for non-fractal cases
-    finalIndices = convertLineSegmentsToIndices(points, lineSegments);
+    lineSegments = result.segments.map(seg => [points[seg[0]], points[seg[1]]]); // Convert back to point pairs
   }
 
   // Step 5: Copies - This step is handled in updateGroup, not here
   // The base geometry created here will be copied with transformations
 
-  // Step 6: Intersections - This should be handled in updateGroup after copies are created
-  // Intersections need to be calculated between transformed copies, not base geometry
-  // So we skip this step here and handle it in updateGroup
+  // Step 6: Intersections - This is handled in updateGroup after copies are created
+  // Intersections are calculated between transformed copies, not in the base geometry
 
   // Step 7: Delete - This is handled in updateGroup during rendering
+
+  // Convert final line segments to indices for geometry creation
+  let finalIndices = convertLineSegmentsToIndices(points, lineSegments);
 
   // Create geometry from final points and line segment indices
   const geometry = createGeometryFromPoints(points, state, finalIndices);
@@ -1434,7 +1431,14 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
     
     // Process intersections between copies after all copies are created
     if (state && state.usePlainIntersections && state.copies > 1) {
-      processIntersectionsBetweenCopies(group, baseGeo, state, materialsToDispose, geometriesToDispose, mat);
+      // Calculate intersection points using the existing plainIntersection.js logic
+      const intersectionPoints = calculateCopyIntersections(baseGeo, state);
+      
+      if (intersectionPoints.length > 0) {
+        // Add intersection points as vertex circles directly to the main group
+        // These are purely for audio triggers and don't affect the visual geometry
+        addIntersectionVertexCircles(group, intersectionPoints, -1, state, materialsToDispose, mat);
+      }
     }
     
     // Clear any old intersection group references from userData
@@ -1817,59 +1821,18 @@ function createSeededRandom(seed) {
   };
 }
 
-/**
- * Calculate intersections between polygon copies and update line segments
- * This is step 6 of the geometry pipeline - intersections should modify line segments
- * @param {Array<THREE.Vector2>} points Current points array
- * @param {Array<Array<THREE.Vector2>>} lineSegments Current line segments
- * @param {Object} state Application state
- * @returns {Object} Object with updated points and lineSegments
- */
-function calculateAndApplyIntersections(points, lineSegments, state) {
-  if (!state || !state.usePlainIntersections || state.copies <= 1) {
-    return { points, lineSegments };
-  }
-  
-  // Create a temporary geometry to use with the existing intersection calculation
-  const tempGeometry = new THREE.BufferGeometry();
-  const vertices = [];
-  for (const point of points) {
-    vertices.push(point.x, point.y, 0);
-  }
-  tempGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  
-  // Calculate intersection points using existing logic
-  const intersectionPoints = calculateCopyIntersections(tempGeometry, state);
-  
-  if (intersectionPoints.length === 0) {
-    return { points, lineSegments };
-  }
-  
-  // Add intersection points to the points array
-  const allPoints = [...points, ...intersectionPoints];
-  
-  // For intersections, we should NOT add extra connecting lines
-  // The intersection points are just additional vertices for audio triggers
-  // The original line segments should remain unchanged for proper geometry display
-  const allLineSegments = [...lineSegments];
-  
-  // Do NOT add connecting lines to intersection points - this creates the "ghost copy" effect
-  // Intersection points are purely for audio triggers and should not affect the visual geometry
-  
-  return { points: allPoints, lineSegments: allLineSegments };
-}
+// REMOVED: Old intersection calculation functions
+// Intersections are now handled properly in updateGroup using plainIntersection.js logic
 
-/**
- * Process intersections between copies after they have been created with transformations
- * This modifies each copy's geometry to include intersection points and split line segments
- * @param {THREE.Group} group - Group containing all copy groups
- * @param {THREE.BufferGeometry} baseGeo - Base geometry
- * @param {Object} state - Application state
- * @param {Array} materialsToDispose - Array to track materials for disposal
- * @param {Array} geometriesToDispose - Array to track geometries for disposal
- * @param {THREE.Material} mat - Material for color consistency
- */
-function processIntersectionsBetweenCopies(group, baseGeo, state, materialsToDispose, geometriesToDispose, mat) {
+// All old intersection calculation functions removed - using plainIntersection.js instead
+
+// REMOVED: Old intersection processing functions
+// Intersections are now handled in the geometry pipeline (step 6) in createPolygonGeometry
+// The old approach of modifying individual copy geometries has been replaced with
+// updating the base geometry's line segments to include intersection points
+
+// DEPRECATED: processIntersectionsBetweenCopies function
+function processIntersectionsBetweenCopies_DEPRECATED(group, baseGeo, state, materialsToDispose, geometriesToDispose, mat) {
   // Calculate intersections between the transformed copies
   const intersectionPoints = calculateCopyIntersections(baseGeo, state);
   
