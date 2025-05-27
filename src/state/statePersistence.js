@@ -163,6 +163,10 @@ function extractSerializableState(state) {
     minVelocity: state.minVelocity,
     maxVelocity: state.maxVelocity,
     velocityPhase: state.velocityPhase,
+
+    // Additional global state properties
+    lastAngle: state.lastAngle,
+    startingAngle: state.startingAngle,
   };
 }
 
@@ -268,6 +272,7 @@ export function applyPropertiesToState(targetState, sourceState) {
     { name: 'stepScale', setter: 'setStepScale' },
     { name: 'angle', setter: 'setAngle' },
     { name: 'shapeType', setter: 'setShapeType' },
+    { name: 'startingAngle', setter: 'setStartingAngle' },
     
     // Modulus parameters
     { name: 'modulusValue', setter: 'setModulusValue' },
@@ -337,7 +342,8 @@ export function applyPropertiesToState(targetState, sourceState) {
     { name: 'velocityPhase', setter: 'setVelocityPhase' },
     
     // Additional global state properties
-    { name: 'lastAngle', setter: 'setLastAngle' }
+    { name: 'lastAngle', setter: 'setLastAngle' },
+    { name: 'startingAngle', setter: 'setStartingAngle' }
   ];
   
   // Apply each property
@@ -680,6 +686,13 @@ export function updateUIFromState(state, uiElements) {
       uiElements.angleRange.value = state.angle;
       if (uiElements.angleNumber) uiElements.angleNumber.value = state.angle;
       if (uiElements.angleValue) uiElements.angleValue.textContent = state.angle;
+    }
+    
+    // Update Starting Angle controls
+    if (uiElements.startingAngleRange && state.startingAngle !== undefined) {
+      uiElements.startingAngleRange.value = state.startingAngle;
+      if (uiElements.startingAngleNumber) uiElements.startingAngleNumber.value = state.startingAngle;
+      if (uiElements.startingAngleValue) uiElements.startingAngleValue.textContent = state.startingAngle;
     }
     
     // Update Scale Mod controls

@@ -35,6 +35,7 @@ export function createAppState() {
       segments: false,
       modulus: false,
       angle: false,
+      startingAngle: false,
       stepScale: false,
       radius: false,
       useModulus: false,
@@ -88,6 +89,7 @@ export function createAppState() {
     segments: DEFAULT_VALUES.SEGMENTS,
     stepScale: DEFAULT_VALUES.STEP_SCALE,
     angle: DEFAULT_VALUES.ANGLE,
+    startingAngle: DEFAULT_VALUES.STARTING_ANGLE,
     
     // SYNTH parameters
     attack: 0.01,
@@ -153,6 +155,7 @@ export function createAppState() {
     targetRadius: DEFAULT_VALUES.RADIUS,
     targetStepScale: DEFAULT_VALUES.STEP_SCALE,
     targetAngle: DEFAULT_VALUES.ANGLE,
+    targetStartingAngle: DEFAULT_VALUES.STARTING_ANGLE,
     targetAltScale: DEFAULT_VALUES.ALT_SCALE,
     
     // Frequency label settings
@@ -246,7 +249,8 @@ export function createAppState() {
       
       return Math.abs(this.radius - this.targetRadius) > 0.1 ||
              Math.abs(this.stepScale - this.targetStepScale) > 0.001 ||
-             Math.abs(this.angle - this.targetAngle) > 0.1;
+             Math.abs(this.angle - this.targetAngle) > 0.1 ||
+             Math.abs(this.startingAngle - this.targetStartingAngle) > 0.1;
     },
     
     /**
@@ -348,6 +352,21 @@ export function createAppState() {
           this.angle = this.targetAngle;
         }
         // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
+      }
+    },
+    
+    /**
+     * Set starting angle value (affected by lerping if enabled)
+     * @param {number} value New starting angle value
+     */
+    setStartingAngle(value) {
+      const newValue = Number(value);
+      if (this.targetStartingAngle !== newValue) {
+        this.targetStartingAngle = newValue;
+        this.parameterChanges.startingAngle = true;
+        if (!this.useLerp) {
+          this.startingAngle = this.targetStartingAngle;
+        }
       }
     },
     
@@ -573,6 +592,7 @@ export function createAppState() {
         this.targetRadius = this.radius;
         this.targetStepScale = this.stepScale;
         this.targetAngle = this.angle;
+        this.targetStartingAngle = this.startingAngle;
         this.targetAltScale = this.altScale;
         // Don't set targetCopies here since copies are always updated immediately
         
@@ -592,6 +612,7 @@ export function createAppState() {
         this.radius = this.targetRadius;
         this.stepScale = this.targetStepScale;
         this.angle = this.targetAngle;
+        this.startingAngle = this.targetStartingAngle;
         this.altScale = this.targetAltScale;
         // Copies already set directly, no need to update here
         // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
@@ -882,6 +903,7 @@ export function createAppState() {
       const oldRadius = this.radius;
       const oldStepScale = this.stepScale;
       const oldAngle = this.angle;
+      const oldStartingAngle = this.startingAngle;
       const oldAltScale = this.altScale;
       
       const lerpFactor = Math.min(dt / this.lerpTime, 1.0);
@@ -890,6 +912,7 @@ export function createAppState() {
       this.radius = this.lerp(this.radius, this.targetRadius, lerpFactor);
       this.stepScale = this.lerp(this.stepScale, this.targetStepScale, lerpFactor);
       this.angle = this.lerp(this.angle, this.targetAngle, lerpFactor);
+      this.startingAngle = this.lerp(this.startingAngle, this.targetStartingAngle, lerpFactor);
       this.altScale = this.lerp(this.altScale, this.targetAltScale, lerpFactor);
       
       // Note: Copies parameter is now set directly and not affected by lerping
@@ -908,6 +931,10 @@ export function createAppState() {
       if (Math.abs(oldAngle - this.angle) > 0.1) {
         // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         this.parameterChanges.angle = true;
+      }
+      
+      if (Math.abs(oldStartingAngle - this.startingAngle) > 0.1) {
+        this.parameterChanges.startingAngle = true;
       }
       
       // Check for significant alt scale changes and mark parameter as changed

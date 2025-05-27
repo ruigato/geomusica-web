@@ -675,10 +675,9 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         finalScale = stepScaleFactor * state.altScale;
       }
       
-
-      
-      // Each copy gets a cumulative angle (i * angle) in degrees
-      const cumulativeAngleDegrees = i * angle;
+      // Each copy gets a cumulative angle (i * angle) in degrees, plus the starting angle
+      const startingAngle = state?.startingAngle || 0;
+      const cumulativeAngleDegrees = startingAngle + (i * angle);
       
       // Convert to radians only when setting the actual Three.js rotation
       const cumulativeAngleRadians = (cumulativeAngleDegrees * Math.PI) / 180;

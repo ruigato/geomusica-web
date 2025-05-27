@@ -461,6 +461,10 @@ export function setupUI(state) {
   const angleNumber = document.getElementById('angleNumber');
   const angleValue = document.getElementById('angleValue');
 
+  const startingAngleRange = document.getElementById('startingAngleRange');
+  const startingAngleNumber = document.getElementById('startingAngleNumber');
+  const startingAngleValue = document.getElementById('startingAngleValue');
+
   const numberRange = document.getElementById('numberRange');
   const numberNumber = document.getElementById('numberNumber');
   const numberValue = document.getElementById('numberValue');
@@ -946,6 +950,18 @@ export function setupUI(state) {
       Number);
   }
   
+  if (startingAngleRange && startingAngleNumber && startingAngleValue) {
+    syncPair(startingAngleRange, startingAngleNumber, startingAngleValue, 
+      function setStartingAngle(value) {
+        // Use getActiveState dynamically at call time, not during setup
+        const targetState = typeof window.getActiveState === 'function' ? 
+          window.getActiveState() : state;
+        targetState.setStartingAngle(Number(value));
+      }, 
+      UI_RANGES.STARTING_ANGLE[0], UI_RANGES.STARTING_ANGLE[1], 
+      Number);
+  }
+  
   if (numberRange && numberNumber && numberValue) {
     syncPair(numberRange, numberNumber, numberValue, 
       function setSegments(value) {
@@ -1221,6 +1237,7 @@ export function setupUI(state) {
       copiesRange, copiesNumber, copiesValue,
       stepScaleRange, stepScaleNumber, stepScaleValue,
       angleRange, angleNumber, angleValue,
+      startingAngleRange, startingAngleNumber, startingAngleValue,
       numberRange, numberNumber, numberValue,
       useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
       /* Modulus checkbox removed */ modulusRadioGroup,
@@ -1258,6 +1275,7 @@ export function setupUI(state) {
       copiesRange, copiesNumber, copiesValue,
       stepScaleRange, stepScaleNumber, stepScaleValue,
       angleRange, angleNumber, angleValue,
+      startingAngleRange, startingAngleNumber, startingAngleValue,
       numberRange, numberNumber, numberValue,
       useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
       /* Modulus checkbox removed */ modulusRadioGroup,
@@ -1291,6 +1309,7 @@ export function setupUI(state) {
     copiesRange, copiesNumber, copiesValue,
     stepScaleRange, stepScaleNumber, stepScaleValue,
     angleRange, angleNumber, angleValue,
+    startingAngleRange, startingAngleNumber, startingAngleValue,
     numberRange, numberNumber, numberValue,
     useLerpCheckbox, lerpTimeRange, lerpTimeNumber, lerpTimeValue,
     /* Modulus checkbox removed */ modulusRadioGroup,

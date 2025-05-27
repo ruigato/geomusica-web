@@ -250,7 +250,8 @@ export function calculateCopyIntersections(baseGeo, state) {
     }
     
     // Calculate rotation angle (same logic as in updateGroup)
-    const cumulativeAngleDegrees = i * state.angle;
+    const startingAngle = state?.startingAngle || 0;
+    const cumulativeAngleDegrees = startingAngle + (i * state.angle);
     const cumulativeAngleRadians = (cumulativeAngleDegrees * Math.PI) / 180;
     
     // Get transformed vertex positions for this copy

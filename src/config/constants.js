@@ -47,6 +47,7 @@ export const DEFAULT_VALUES = {
   SEGMENTS: 4,
   STEP_SCALE: 1,
   ANGLE: 15,
+  STARTING_ANGLE: 0,
   LERP_TIME: 1.0,
   
   // Audio engine parameters
@@ -99,6 +100,7 @@ export const UI_RANGES = {
   SEGMENTS: [2, 32],
   STEP_SCALE: [0.01, 10],
   ANGLE: [-180, 180],
+  STARTING_ANGLE: [0, 360],
   MODULUS_VALUE: [2, 16],
   ALT_SCALE: [0.1, 10],
   ALT_STEP_N: [1, 32],
@@ -129,6 +131,7 @@ export const PARAMETER_RANGES = {
   SEGMENTS: { MIN: 2, MAX: 32, STEP: 1 },
   STEP_SCALE: { MIN: 0.01, MAX: 10, STEP: 0.01 },
   ANGLE: { MIN: -180, MAX: 180, STEP: 0.1 },
+  STARTING_ANGLE: { MIN: 0, MAX: 360, STEP: 0.1 },
   
   // Audio parameter ranges
   ATTACK: { MIN: 0.001, MAX: 2.0, STEP: 0.001 },
