@@ -854,7 +854,6 @@ export function calculateBoundingSphere(group, state) {
     // Use the tesselated radius as the base for further scaling calculations
     maxDistance = tesselatedRadius;
     
-    console.log(`[TESSELATION BOUNDS] Original radius: ${originalRadius}, Tesselated radius: ${tesselatedRadius}`);
   }
   
   // Consider copies and scale factor
@@ -1237,7 +1236,6 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       for (let centerIndex = 0; centerIndex < originalPoints.length; centerIndex++) {
         const centerPoint = originalPoints[centerIndex];
         
-        console.log(`[TESSELATION] Copy ${centerIndex} centered at: (${centerPoint.x.toFixed(2)}, ${centerPoint.y.toFixed(2)})`);
         
         // For each vertex in the original geometry, create a translated copy
         for (let vertexIndex = 0; vertexIndex < originalPoints.length; vertexIndex++) {
@@ -1249,7 +1247,6 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
           );
           tesselatedPoints.push(tesselatedVertex);
           
-          console.log(`  Vertex ${tesselatedPoints.length - 1}: (${tesselatedVertex.x.toFixed(2)}, ${tesselatedVertex.y.toFixed(2)}) [copy=${centerIndex}, vert=${vertexIndex}]`);
         }
       }
       
@@ -1286,7 +1283,6 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
         tesselatedGeometry.userData = { ...baseGeo.userData };
         tesselatedGeometry.userData.isTesselated = true;
         tesselatedGeometry.userData.originalVertexCount = originalCount;
-        tesselatedGeometry.userData.tesselatedVertexCount = tesselatedPoints.length;
       }
       
       // Cache the tesselated geometry on the base geometry

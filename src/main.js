@@ -569,7 +569,6 @@ async function initializeApplication() {
   // Create camera
   const camera = new THREE.PerspectiveCamera(60, containerWidth / containerHeight, 0.1, 50000);
   camera.position.z = 2000;
-  console.log('[CAMERA DEBUG] Camera position:', camera.position.z);
   
   // Store camera and renderer references in scene userData for layer manager to access
   scene.userData.camera = camera;

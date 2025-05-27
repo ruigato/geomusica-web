@@ -879,7 +879,6 @@ function recordLayerVertexPositions(layer, audioTime) {
   
   // DEBUG: Log when rotation starts for tesselated layers
   if (state && state.useTesselation && !layer._rotationStartLogged && angle !== 0) {
-    console.log(`[TESSELATION ROTATION DEBUG] Rotation started! Angle: ${angle} radians (${(angle * 180 / Math.PI).toFixed(1)} degrees)`);
     layer._rotationStartLogged = true;
   }
   
@@ -895,7 +894,6 @@ function recordLayerVertexPositions(layer, audioTime) {
   
   // DEBUG: Log position recording for tesselated layers
   if (state && state.useTesselation && triggerableObjects.length > 0) {
-    console.log(`[TESSELATION POSITION DEBUG] Recording positions for ${triggerableObjects.length} objects at angle ${(angle * 180 / Math.PI).toFixed(1)}°`);
   }
   
   // Record positions for all triggerable objects
@@ -1004,7 +1002,6 @@ function recordLayerVertexPositions(layer, audioTime) {
       if (state && state.useTesselation && triggerableObj.type === 'vertex') {
         if (!layer._simpleDebugCount) layer._simpleDebugCount = 0;
         if (layer._simpleDebugCount < 3) {
-          console.log(`[TESSELATION SIMPLE DEBUG] ${triggerableObj.id}: (${position.x.toFixed(1)}, ${position.y.toFixed(1)}) → (${rotatedPos.x.toFixed(1)}, ${rotatedPos.y.toFixed(1)}) Y=${rotatedPos.y > 0 ? 'POS' : rotatedPos.y < 0 ? 'NEG' : 'ZERO'}`);
           layer._simpleDebugCount++;
         }
       }
@@ -1085,14 +1082,11 @@ function findAllTriggerableObjects(group, layer) {
       if (state && state.useTesselation && mesh.geometry.userData && mesh.geometry.userData.isTesselated && !tesselationLogged) {
         // Only log once per layer session
         if (!layer._tesselationDebugLogged) {
-          console.log(`[TESSELATION DEBUG] Found tesselated geometry with ${vertexCount} vertices, originalVertexCount: ${mesh.geometry.userData.originalVertexCount}`);
-          console.log(`[TESSELATION DEBUG] Expected tesselated copies: ${mesh.geometry.userData.originalVertexCount}, Total vertices: ${vertexCount}`);
           layer._tesselationDebugLogged = true;
           tesselationLogged = true;
         }
       } else if (state && state.useTesselation && !layer._tesselationDebugLogged) {
         // Debug: Check why tesselation isn't being detected (only once)
-        console.log(`[TESSELATION DEBUG] Tesselation enabled but not detected - mesh.geometry.userData.isTesselated: ${mesh.geometry.userData?.isTesselated}, tesselationLogged: ${tesselationLogged}`);
         layer._tesselationDebugLogged = true;
       }
       
@@ -1166,16 +1160,13 @@ function findAllTriggerableObjects(group, layer) {
   
   // DEBUG: Log total triggerable objects found only when tesselation is first detected
   if (state && state.useTesselation && tesselationLogged) {
-    console.log(`[TESSELATION DEBUG] Total triggerable objects found: ${triggerableObjects.length}`);
     
     // Count by type
     const vertexCount = triggerableObjects.filter(obj => obj.type === 'vertex').length;
     const intersectionCount = triggerableObjects.filter(obj => obj.type === 'intersection').length;
-    console.log(`[TESSELATION DEBUG] Vertices: ${vertexCount}, Intersections: ${intersectionCount}`);
     
     // Log a sample of the triggerable IDs to understand the pattern
     const sampleIds = triggerableObjects.slice(0, 10).map(obj => obj.id);
-    console.log(`[TESSELATION DEBUG] Sample triggerable IDs:`, sampleIds);
     
     // Log the actual positions of all tesselated vertices
     const tesselatedVertices = triggerableObjects.filter(obj => obj.type === 'vertex');
@@ -1193,11 +1184,9 @@ function findAllTriggerableObjects(group, layer) {
       };
     });
     
-    console.log(`[TESSELATION DEBUG] All tesselated vertex positions:`, vertexPositions);
     
     // Log each vertex position individually for better readability
     vertexPositions.forEach((vertex, index) => {
-      console.log(`[TESSELATION DEBUG] Vertex ${index}: ${vertex.position} - ID: ${vertex.id}`);
     });
   }
   
@@ -1311,7 +1300,6 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
   
   // DEBUG: Check subframe engine tracking for tesselation
   if (state && state.useTesselation && !layer._subframeDebugLogged) {
-    console.log(`[TESSELATION SUBFRAME DEBUG] Triggerable objects: ${triggerableObjects.length}, Starting crossing detection...`);
     layer._subframeDebugLogged = true;
   }
   
@@ -1334,7 +1322,6 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
       
       // DEBUG: Log crossings for tesselated vertices
       if (state && state.useTesselation && crossingResult.hasCrossed && triggerableObj.type === 'vertex') {
-        console.log(`[TESSELATION CROSSING DEBUG] ${triggerableObj.id} crossed Y-axis at (${crossingResult.position.x.toFixed(1)}, ${crossingResult.position.y.toFixed(1)})`);
       }
       
       // Process if crossing detected
@@ -1360,7 +1347,6 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
         
         // DEBUG: Log note creation attempt for tesselated vertices
         if (state && state.useTesselation && triggerableObj.type === 'vertex') {
-          console.log(`[TESSELATION NOTE DEBUG] Attempting to create note for ${triggerableObj.id} at position (${crossingResult.position.x.toFixed(1)}, ${crossingResult.position.y.toFixed(1)})`);
         }
         
         try {
@@ -1370,7 +1356,6 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
             if (!layer.baseGeo || !layer.baseGeo.getAttribute('position') || !layer.baseGeo.getAttribute('position').array) {
               // DEBUG: Log geometry issues for tesselated vertices
               if (state && state.useTesselation) {
-                console.log(`[TESSELATION NOTE DEBUG] FAILED - No base geometry for ${triggerableObj.id}`);
               }
               continue;
             }
@@ -1385,7 +1370,6 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
               
               // DEBUG: Log vertex index calculation for tesselated vertices
               if (state.useTesselation) {
-                console.log(`[TESSELATION NOTE DEBUG] Vertex ${triggerableObj.id}: raw index ${triggerableObj.vertexIndex} → base index ${baseVertexIndex} (originalVertexCount: ${originalVertexCount})`);
               }
             } else {
               baseVertexIndex = state.useFractal ? (triggerableObj.vertexIndex % state.segments) : triggerableObj.vertexIndex;
@@ -1397,7 +1381,6 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
             if (baseVertexIndex * 3 + 1 >= basePositions.length) {
               // DEBUG: Log bounds issues for tesselated vertices
               if (state && state.useTesselation) {
-                console.log(`[TESSELATION NOTE DEBUG] FAILED - Base vertex index ${baseVertexIndex} out of bounds for ${triggerableObj.id}`);
               }
               continue;
             }
@@ -1412,7 +1395,6 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
               if (expectedBaseVertexCount !== state.segments) {
                 // DEBUG: Log fractal issues for tesselated vertices
                 if (state && state.useTesselation) {
-                  console.log(`[TESSELATION NOTE DEBUG] FAILED - Fractal geometry mismatch for ${triggerableObj.id}`);
                 }
                 continue;
               }
@@ -1421,7 +1403,6 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
               if (baseVertexIndex >= state.segments) {
                 // DEBUG: Log fractal index issues for tesselated vertices
                 if (state && state.useTesselation) {
-                  console.log(`[TESSELATION NOTE DEBUG] FAILED - Base vertex index ${baseVertexIndex} >= segments ${state.segments} for ${triggerableObj.id}`);
                 }
                 continue;
               }
@@ -1439,7 +1420,6 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
             
             // DEBUG: Log successful note creation for tesselated vertices
             if (state && state.useTesselation) {
-              console.log(`[TESSELATION NOTE DEBUG] SUCCESS - Created note for ${triggerableObj.id} with frequency ${note.frequency.toFixed(1)}Hz`);
             }
             
           } else if (triggerableObj.type === 'intersection') {
@@ -1563,7 +1543,6 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
             
             // DEBUG: Log audio callback for tesselated vertices
             if (state && state.useTesselation && triggerableObj.type === 'vertex') {
-              console.log(`[TESSELATION AUDIO DEBUG] Calling audioCallback for ${triggerableObj.id} with frequency ${note.frequency.toFixed(1)}Hz`);
             }
             
             audioCallback(note);
