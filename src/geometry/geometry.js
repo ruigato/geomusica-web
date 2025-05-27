@@ -366,7 +366,22 @@ function generateActualStarCutLineSegments(allPoints, starSkip, originalVertexCo
   const originalVertices = allPoints.slice(0, originalVertexCount);
   const intersectionPoints = allPoints.slice(originalVertexCount);
   
-  // For each original star line, trace the path through intersection points
+  if (intersectionPoints.length === 0) {
+    // No intersections, return original star line segments
+    for (let i = 0; i < originalVertexCount; i++) {
+      const startVertex = originalVertices[i];
+      const endVertex = originalVertices[(i + starSkip) % originalVertexCount];
+      segments.push([startVertex, endVertex]);
+    }
+    return segments;
+  }
+  
+  // For star cuts, we create line segments that represent the actual visible geometry
+  // after the star lines intersect. This means:
+  // 1. Each original star line is broken into segments at intersection points
+  // 2. We create the internal structure formed by the intersections
+  
+  // Step 1: Break each original star line at intersection points
   for (let i = 0; i < originalVertexCount; i++) {
     const startVertex = originalVertices[i];
     const endVertex = originalVertices[(i + starSkip) % originalVertexCount];
@@ -375,7 +390,6 @@ function generateActualStarCutLineSegments(allPoints, starSkip, originalVertexCo
     const lineIntersections = [];
     
     for (const intersection of intersectionPoints) {
-      // Check if this intersection point lies on the line between startVertex and endVertex
       if (isPointOnLineSegment(intersection, startVertex, endVertex)) {
         lineIntersections.push(intersection);
       }
@@ -388,16 +402,60 @@ function generateActualStarCutLineSegments(allPoints, starSkip, originalVertexCo
       return distA - distB;
     });
     
-    // Create line segments: start -> first intersection -> second intersection -> ... -> end
+    // Create segments between consecutive points along this star line
     const pathPoints = [startVertex, ...lineIntersections, endVertex];
-    
     for (let j = 0; j < pathPoints.length - 1; j++) {
       segments.push([pathPoints[j], pathPoints[j + 1]]);
     }
   }
   
+  // Step 2: Create the internal structure of the star cuts
+  // For a proper star cut pattern, we need to connect intersection points
+  // that form the internal polygonal structure
+  
+  if (intersectionPoints.length >= 3) {
+    // Create a polygon from the intersection points
+    // Sort intersection points by angle from center to create a proper polygon
+    const center = calculateCentroid(intersectionPoints);
+    const sortedIntersections = [...intersectionPoints].sort((a, b) => {
+      const angleA = Math.atan2(a.y - center.y, a.x - center.x);
+      const angleB = Math.atan2(b.y - center.y, b.x - center.x);
+      return angleA - angleB;
+    });
+    
+    // Connect consecutive intersection points to form the internal polygon
+    for (let i = 0; i < sortedIntersections.length; i++) {
+      const current = sortedIntersections[i];
+      const next = sortedIntersections[(i + 1) % sortedIntersections.length];
+      segments.push([current, next]);
+    }
+  }
+  
   return segments;
 }
+
+/**
+ * Calculate the centroid of a set of points
+ * @param {Array<THREE.Vector2>} points Array of points
+ * @returns {THREE.Vector2} Centroid point
+ */
+function calculateCentroid(points) {
+  if (points.length === 0) {
+    return new THREE.Vector2(0, 0);
+  }
+  
+  let sumX = 0;
+  let sumY = 0;
+  
+  for (const point of points) {
+    sumX += point.x;
+    sumY += point.y;
+  }
+  
+  return new THREE.Vector2(sumX / points.length, sumY / points.length);
+}
+
+
 
 /**
  * Check if a point lies on a line segment (with tolerance)
