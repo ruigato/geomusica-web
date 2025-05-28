@@ -359,10 +359,12 @@ export function setupLayersUI(layerManager) {
       const fromSelect = document.getElementById('layerLinkFrom');
       const toSelect = document.getElementById('layerLinkTo');
       const traceCheckbox = document.getElementById('layerLinkTrace');
+      const trailLengthSlider = document.getElementById('layerLinkTrailLength');
       
       if (fromSelect) fromSelect.disabled = !e.target.checked;
       if (toSelect) toSelect.disabled = !e.target.checked;
       if (traceCheckbox) traceCheckbox.disabled = !e.target.checked;
+      if (trailLengthSlider) trailLengthSlider.disabled = !e.target.checked;
     });
   });
   
@@ -472,6 +474,48 @@ export function setupLayersUI(layerManager) {
   
   layerLinkContainer.appendChild(layerLinkTraceContainer);
   
+  // Trail Length slider
+  const layerLinkTrailLengthContainer = document.createElement('div');
+  layerLinkTrailLengthContainer.className = 'control';
+  
+  const layerLinkTrailLengthLabel = document.createElement('label');
+  layerLinkTrailLengthLabel.textContent = 'Trail Length:';
+  layerLinkTrailLengthLabel.setAttribute('for', 'layerLinkTrailLength');
+  layerLinkTrailLengthContainer.appendChild(layerLinkTrailLengthLabel);
+  
+  const layerLinkTrailLengthSlider = document.createElement('input');
+  layerLinkTrailLengthSlider.type = 'range';
+  layerLinkTrailLengthSlider.id = 'layerLinkTrailLength';
+  layerLinkTrailLengthSlider.min = '100';
+  layerLinkTrailLengthSlider.max = '10000';
+  layerLinkTrailLengthSlider.value = '1000';
+  layerLinkTrailLengthSlider.step = '100';
+  layerLinkTrailLengthSlider.disabled = true;
+  
+  const layerLinkTrailLengthValue = document.createElement('span');
+  layerLinkTrailLengthValue.textContent = '1000';
+  layerLinkTrailLengthValue.style.marginLeft = '10px';
+  layerLinkTrailLengthValue.style.fontWeight = 'bold';
+  
+  layerLinkTrailLengthSlider.addEventListener('input', (e) => {
+    const value = parseInt(e.target.value);
+    layerLinkTrailLengthValue.textContent = value;
+    
+    import('../geometry/layerLink.js').then(module => {
+      module.layerLinkManager.setTrailLength(value);
+    });
+  });
+  
+  layerLinkTrailLengthContainer.appendChild(layerLinkTrailLengthSlider);
+  layerLinkTrailLengthContainer.appendChild(layerLinkTrailLengthValue);
+  
+  const layerLinkTrailLengthHelp = document.createElement('div');
+  layerLinkTrailLengthHelp.className = 'help-text';
+  layerLinkTrailLengthHelp.textContent = 'Length of pixel-perfect trail lines (100-10000)';
+  layerLinkTrailLengthContainer.appendChild(layerLinkTrailLengthHelp);
+  
+  layerLinkContainer.appendChild(layerLinkTrailLengthContainer);
+  
   layerTab.appendChild(layerLinkContainer);
   
   // Initial UI update
@@ -490,7 +534,8 @@ export function setupLayersUI(layerManager) {
     layerLinkEnableCheckbox,
     layerLinkFromSelect,
     layerLinkToSelect,
-    layerLinkTraceCheckbox
+    layerLinkTraceCheckbox,
+    layerLinkTrailLengthSlider
   };
 }
 

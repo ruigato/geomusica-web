@@ -24,6 +24,7 @@ export class LayerLinkManager {
     this.gpuTraceInitializing = false;
     this.renderer = null;
     this.traceDisplayMesh = null;
+    this.pendingTrailLength = 1000; // Default trail length
     
     // Materials for visualization
     this.linkLineMaterial = new THREE.LineBasicMaterial({
@@ -66,8 +67,14 @@ export class LayerLinkManager {
         trailIntensity: 1.0,
         pointSize: 1.0, // 1 pixel for pixel-perfect trails
         useLines: true, // Enable line-based rendering for smooth trails
-        trailLength: 500 // Long trails for pixel-perfect line rendering (equivalent to 0.999 fade)
+        trailLength: this.pendingTrailLength || 1000 // Default to 1000, use pending value if set
       });
+      
+      // Apply pending trail length if it was set before initialization
+      if (this.pendingTrailLength) {
+        this.gpuTraceSystem.setTrailLength(this.pendingTrailLength);
+        delete this.pendingTrailLength; // Clear pending value
+      }
       
       if (DEBUG_LAYER_LINK) {
         console.log('[LAYER LINK] GPU trace system initialized with pixel-perfect line trails (default mode)');
@@ -228,6 +235,28 @@ export class LayerLinkManager {
     if (DEBUG_LAYER_LINK) {
       console.log(`Layer Link trace ${enabled ? 'enabled' : 'disabled'}`);
     }
+  }
+  
+  /**
+   * Set the trail length for pixel-perfect line trails
+   * @param {number} length - Trail length (100-10000)
+   */
+  setTrailLength(length) {
+    // Validate input
+    const trailLength = Math.max(100, Math.min(10000, parseInt(length) || 1000));
+    
+    if (this.gpuTraceSystem) {
+      this.gpuTraceSystem.setTrailLength(trailLength);
+      
+      if (DEBUG_LAYER_LINK) {
+        console.log(`[LAYER LINK] Trail length set to ${trailLength}`);
+      }
+    } else if (DEBUG_LAYER_LINK) {
+      console.log(`[LAYER LINK] Trail length will be set to ${trailLength} when GPU trace system is initialized`);
+    }
+    
+    // Store the value for when GPU trace system is initialized
+    this.pendingTrailLength = trailLength;
   }
   
   /**
