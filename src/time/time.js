@@ -1,360 +1,107 @@
-// src/time/time.js - Rock-solid AudioContext-only timing system
+// src/time/time.js - Simplified timing system using RockSolidTiming
 import { TICKS_PER_BEAT, TICKS_PER_MEASURE } from '../config/constants.js';
+import { 
+  getCurrentTime as getRockSolidTime, 
+  resetTime as resetRockSolidTime,
+  getTimingStatus as getRockSolidStatus,
+  isTimingReady as isRockSolidReady,
+  setTimingMode as setRockSolidTimingMode
+} from './RockSolidTiming.js';
 
-// Timing system configuration
-const TIMING_SOURCES = {
-  AUDIO_CONTEXT: 'audioContext',
-  PERFORMANCE_NOW: 'performanceNow'
+// Simple timing source constant for compatibility
+export const TIMING_SOURCES = {
+  ROCK_SOLID: 'rockSolid'
 };
 
-// Single source of truth: AudioContext timing
-let sharedAudioContext = null;
-let audioStartTime = 0;
-let timingInitialized = false;
-
-// Performance timing variables
-let performanceStartTime = performance.now() / 1000; // Initialize early for fallback
-
-// Active timing configuration
-let activeTimingSource = TIMING_SOURCES.AUDIO_CONTEXT;
-
-// Time caching system
-let cachedAudioTime = 0;
-let cacheTimestamp = 0;
-let cacheDuration = 2; // Default cache duration in milliseconds (1-5ms range)
-let cacheEnabled = true;
-let cacheHits = 0;
-let cacheMisses = 0;
-let lastActualTime = 0;
-let debugMode = false;
-
-// Error handling
-class TimingError extends Error {
-  constructor(message) {
-    super(`[AUDIO TIMING] ${message}`);
-    this.name = 'TimingError';
-  }
-}
-
-// User interaction handler for AudioContext resume
-let userInteractionHandlerSetup = false;
+// Single timing source - no switching, no complexity
+let activeTimingSource = TIMING_SOURCES.ROCK_SOLID;
+let timingInitialized = true; // Always ready with RockSolidTiming
 
 /**
- * Set up user interaction handler to resume AudioContext
- * @param {AudioContext} audioContext - The AudioContext to resume
+ * Initialize the timing system - simplified to just return true
+ * @returns {Promise<boolean>} Always resolves to true
  */
-function setupUserInteractionHandler(audioContext) {
-  if (userInteractionHandlerSetup) return;
-  
-  const handleUserInteraction = async () => {
-    try {
-      if (audioContext.state === 'suspended') {
-        console.log('[AUDIO TIMING] User interaction detected, attempting to resume AudioContext...');
-        await audioContext.resume();
-        
-                 if (audioContext.state === 'running') {
-           console.log('[AUDIO TIMING] AudioContext resumed successfully after user interaction');
-           
-           // CRITICAL: Switch to AudioContext timing seamlessly
-           const currentPerformanceTime = performance.now() / 1000 - performanceStartTime;
-           audioStartTime = audioContext.currentTime - currentPerformanceTime;
-           activeTimingSource = TIMING_SOURCES.AUDIO_CONTEXT;
-           
-           // Update cache
-           cachedAudioTime = audioContext.currentTime;
-           cacheTimestamp = performance.now();
-           
-           console.log('[AUDIO TIMING] Switched to AudioContext timing seamlessly');
-           console.log(`[AUDIO TIMING] Current time continuity: ${currentPerformanceTime.toFixed(3)}s`);
-           
-           // Remove event listeners since we're now running
-           document.removeEventListener('click', handleUserInteraction);
-           document.removeEventListener('keydown', handleUserInteraction);
-           document.removeEventListener('touchstart', handleUserInteraction);
-           
-           console.log('[AUDIO TIMING] User interaction handlers removed, timing system fully active');
-         }
-      }
-    } catch (error) {
-      console.warn('[AUDIO TIMING] Failed to resume AudioContext on user interaction:', error);
-    }
-  };
-  
-  // Add event listeners for various user interactions
-  document.addEventListener('click', handleUserInteraction, { once: false });
-  document.addEventListener('keydown', handleUserInteraction, { once: false });
-  document.addEventListener('touchstart', handleUserInteraction, { once: false });
-  
-  userInteractionHandlerSetup = true;
-  console.log('[AUDIO TIMING] User interaction handlers set up for AudioContext resume');
-}
-
-/**
- * Initialize the timing system with AudioContext
- * This MUST be called with a valid AudioContext before any other timing functions
- * @param {AudioContext} audioContext - The shared AudioContext instance
- * @returns {Promise<boolean>} Promise that resolves to true if initialization successful
- */
-export async function initializeTime(audioContext) {
-  if (!audioContext) {
-    throw new TimingError('AudioContext is required for timing initialization');
-  }
-  
-  if (!(audioContext instanceof AudioContext) && !(audioContext instanceof webkitAudioContext)) {
-    throw new TimingError('Invalid AudioContext provided');
-  }
-  
-  // Wait for AudioContext to be running before proceeding with retry mechanism
-  let retryCount = 0;
-  const maxRetries = 3;
-  
-  while (audioContext.state === 'suspended' && retryCount < maxRetries) {
-    try {
-      console.log(`[AUDIO TIMING] AudioContext is suspended, attempting to resume (attempt ${retryCount + 1}/${maxRetries})...`);
-      await audioContext.resume();
-      
-      // Wait a short moment for the state change to take effect
-      await new Promise(resolve => setTimeout(resolve, 50));
-      
-      if (audioContext.state === 'running') {
-        console.log('[AUDIO TIMING] AudioContext resumed successfully');
-        break;
-      } else {
-        console.warn(`[AUDIO TIMING] AudioContext state after resume attempt: ${audioContext.state}`);
-      }
-    } catch (error) {
-      console.warn(`[AUDIO TIMING] Failed to resume AudioContext (attempt ${retryCount + 1}): ${error.message}`);
-    }
-    
-    retryCount++;
-    
-    // Wait before retrying
-    if (retryCount < maxRetries) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-  }
-  
-  // Final verification of AudioContext state
-  if (audioContext.state === 'suspended') {
-    console.warn('[AUDIO TIMING] AudioContext is still suspended after all resume attempts');
-    console.warn('[AUDIO TIMING] Animation may not start immediately until user interaction');
-    console.warn('[AUDIO TIMING] This is normal on some browsers that require user gesture for audio');
-  } else {
-    console.log(`[AUDIO TIMING] AudioContext state: ${audioContext.state}`);
-  }
-  
-  // Only proceed with timing initialization after AudioContext state is handled
-  sharedAudioContext = audioContext;
-  
-  // CRITICAL FIX: Handle timing initialization based on AudioContext state
-  if (audioContext.state === 'running') {
-    // AudioContext is running - use audio time
-    audioStartTime = audioContext.currentTime;
-    performanceStartTime = performance.now() / 1000;
-    activeTimingSource = TIMING_SOURCES.AUDIO_CONTEXT;
-    console.log('[AUDIO TIMING] Using AudioContext timing (running state)');
-  } else {
-    // AudioContext is suspended - use performance timing until it resumes
-    audioStartTime = 0; // Will be set when AudioContext resumes
-    performanceStartTime = performance.now() / 1000;
-    activeTimingSource = TIMING_SOURCES.PERFORMANCE_NOW;
-    console.log('[AUDIO TIMING] Using performance.now() timing (suspended AudioContext)');
-  }
-  
-  timingInitialized = true;
-  
-  // Initialize cache based on current timing source
-  if (activeTimingSource === TIMING_SOURCES.AUDIO_CONTEXT) {
-    cachedAudioTime = audioContext.currentTime;
-  } else {
-    cachedAudioTime = 0; // Will be set when AudioContext becomes available
-  }
-  cacheTimestamp = performance.now();
-  
-  console.log('[AUDIO TIMING] Initialized with sample-accurate timing');
-  console.log(`[AUDIO TIMING] Audio context sample rate: ${audioContext.sampleRate}Hz`);
-  console.log(`[AUDIO TIMING] Audio context state: ${audioContext.state}`);
-  console.log(`[AUDIO TIMING] Start time: ${audioStartTime}`);
-  console.log(`[AUDIO TIMING] Time caching enabled with ${cacheDuration}ms buffer`);
-  
-  // Set up user interaction handler for suspended AudioContext
-  if (audioContext.state === 'suspended') {
-    setupUserInteractionHandler(audioContext);
-  }
-  
+export async function initializeTime() {
+  console.log('[TIMING] Using RockSolidTiming - no initialization needed');
   return true;
 }
 
 /**
  * Check if timing system is initialized
- * @returns {boolean} True if timing system is initialized
+ * @returns {boolean} Always true with RockSolidTiming
  */
 export function isTimingInitialized() {
-  return timingInitialized && sharedAudioContext !== null;
+  return isRockSolidReady();
 }
 
 /**
- * Switch between timing sources
- * @param {string} source - The timing source to use (AUDIO_CONTEXT or PERFORMANCE_NOW)
- * @returns {boolean} True if switch successful
- */
-export function switchTimingSource(source) {
-  if (!Object.values(TIMING_SOURCES).includes(source)) {
-    console.warn(`[AUDIO TIMING] Invalid timing source: ${source}`);
-    return false;
-  }
-  
-  // Allow switching even if not fully initialized
-  // Store current time before switching
-  const currentTime = getCurrentTime();
-  
-  // Switch to new source
-  activeTimingSource = source;
-  
-  // Reset start times to ensure seamless transition
-  if (source === TIMING_SOURCES.AUDIO_CONTEXT && sharedAudioContext) {
-    audioStartTime = sharedAudioContext.currentTime - currentTime;
-    console.log('[TIMING] Switched to AudioContext timing');
-  } else {
-    performanceStartTime = performance.now() / 1000 - currentTime;
-    console.log('[TIMING] Switched to performance.now() timing');
-  }
-  
-  return true;
-}
-
-/**
- * Get current time in seconds with sample-accurate precision
- * This is the master clock for the entire application
- * Falls back to performance.now() if AudioContext is not initialized
- * 
- * PERFORMANCE-CRITICAL PATH: This function is intentionally minimal
- * with no error handling, state checks, or defensive programming.
- * This optimizes for raw speed over safety, as this function is called
- * thousands of times per second in the rendering pipeline.
- * 
- * @returns {number} Current time in seconds since timing initialization
+ * Get current time in seconds - always from RockSolidTiming
+ * @returns {number} Current time in seconds
  */
 export function getCurrentTime() {
-  // Fast path for performance timing
-  if (activeTimingSource === TIMING_SOURCES.PERFORMANCE_NOW) {
-    return performance.now() / 1000 - performanceStartTime;
-  }
-  
-  // Fast fallback if timing not initialized
-  if (!timingInitialized || !sharedAudioContext) {
-    return performance.now() / 1000 - performanceStartTime;
-  }
-  
-  // Super-optimized AudioContext timing path
-  // No state checks, no error handling - pure speed
-  
-  // Use cached time if cache is still valid (minimal check for speed)
-  if (cacheEnabled) {
-    const now = performance.now();
-    if (now - cacheTimestamp < cacheDuration) {
-      cacheHits++; // Only operation besides the actual timing
-      return cachedAudioTime - audioStartTime;
-    }
-    
-    // Cache miss - get fresh time and update cache with minimal operations
-    cacheTimestamp = now;
-    cachedAudioTime = sharedAudioContext.currentTime;
-    cacheMisses++;
-    
-    // Debug mode handled outside the critical path for performance
-    if (debugMode && lastActualTime > 0) {
-      setTimeout(() => {
-        const timeDiff = cachedAudioTime - lastActualTime;
-        console.debug(`[AUDIO TIMING] Cache miss, diff: ${(timeDiff * 1000).toFixed(3)}ms`);
-        lastActualTime = cachedAudioTime;
-      }, 0);
-    } else if (debugMode) {
-      lastActualTime = cachedAudioTime;
-    }
-  }
-  
-  // Razor thin timing code - absolute minimum overhead
-  return cacheEnabled 
-    ? cachedAudioTime - audioStartTime 
-    : sharedAudioContext.currentTime - audioStartTime;
+  return getRockSolidTime();
 }
 
 /**
  * Reset the timing system to zero
- * Resets the reference point but keeps using the same timing source
  */
 export function resetTime() {
-  if (!timingInitialized && sharedAudioContext === null) {
-    // If not initialized, just reset performance time
-    performanceStartTime = performance.now() / 1000;
-    console.log('[AUDIO TIMING] Time reset to zero (using performance timing)');
-    return;
-  }
-  
-  if (activeTimingSource === TIMING_SOURCES.AUDIO_CONTEXT) {
-    audioStartTime = sharedAudioContext.currentTime;
-    // Reset cache
-    cachedAudioTime = audioStartTime;
-    cacheTimestamp = performance.now();
-  } else {
-    performanceStartTime = performance.now() / 1000;
-  }
-  
-  // Reset cache statistics
-  cacheHits = 0;
-  cacheMisses = 0;
-  
-  console.log('[AUDIO TIMING] Time reset to zero');
+  resetRockSolidTime();
 }
 
 /**
- * Get the AudioContext sample rate for precise timing calculations
- * @returns {number} Sample rate in Hz
- */
-export function getSampleRate() {
-  if (!sharedAudioContext) {
-    console.warn('[AUDIO TIMING] AudioContext not available, returning default sample rate');
-    return 44100; // Standard default
-  }
-  return sharedAudioContext.sampleRate;
-}
-
-/**
- * Get timing system status for debugging
+ * Get timing system status
  * @returns {Object} Status information
  */
 export function getTimingStatus() {
+  const status = getRockSolidStatus();
   return {
-    initialized: timingInitialized,
+    ...status,
     activeSource: activeTimingSource,
-    audioContextState: sharedAudioContext?.state || 'not available',
-    sampleRate: sharedAudioContext?.sampleRate || 0,
-    currentTime: getCurrentTime(),
-    audioStartTime: audioStartTime,
-    performanceStartTime: performanceStartTime,
-    cacheEnabled: cacheEnabled,
-    cacheDuration: cacheDuration,
-    cacheHits: cacheHits,
-    cacheMisses: cacheMisses,
-    cacheHitRate: cacheHits + cacheMisses > 0 ? (cacheHits / (cacheHits + cacheMisses) * 100).toFixed(2) + '%' : '0%',
-    lastCacheAge: performance.now() - cacheTimestamp
+    initialized: timingInitialized
   };
 }
 
 /**
  * Get the currently active timing source
- * @returns {string} The active timing source
+ * @returns {string} Always returns 'rockSolid'
  */
 export function getActiveTimingSource() {
   return activeTimingSource;
 }
 
-// Export timing sources for external use
-export { TIMING_SOURCES };
+/**
+ * Switch timing source - simplified to no-op since we only have one source
+ * @param {string} source - Ignored, always uses RockSolidTiming
+ * @returns {boolean} Always returns true
+ */
+export function switchTimingSource(source) {
+  console.log('[TIMING] Using RockSolidTiming - no source switching needed');
+  return true;
+}
+
+/**
+ * Configure timing cache - stub function for compatibility
+ * @param {Object} config - Cache configuration (ignored in simplified system)
+ * @returns {boolean} Always returns true
+ */
+export function configureTimingCache(config) {
+  console.log('[TIMING] RockSolidTiming doesn\'t use caching - configuration ignored');
+  return true;
+}
+
+/**
+ * Set timing mode for comparison purposes
+ * @param {string} mode - 'webworker' or 'performance'
+ */
+export function setTimingMode(mode) {
+  const usePerformance = mode === 'performance';
+  setRockSolidTimingMode(usePerformance);
+  console.log(`[TIMING] Switched to ${mode} mode`);
+}
 
 // ============================================================================
-// Musical Timing Utilities (all based on AudioContext timing)
+// Musical Timing Utilities (all based on RockSolidTiming)
 // ============================================================================
 
 /**
@@ -365,11 +112,10 @@ export { TIMING_SOURCES };
  */
 export function secondsToTicks(seconds, bpm) {
   if (bpm <= 0) {
-    console.warn('[AUDIO TIMING] BPM must be greater than 0, using default of 120');
+    console.warn('[TIMING] BPM must be greater than 0, using default of 120');
     bpm = 120;
   }
   
-  // At any BPM: ticks per second = (TICKS_PER_BEAT * BPM) / 60
   const ticksPerSecond = (TICKS_PER_BEAT * bpm) / 60;
   return seconds * ticksPerSecond;
 }
@@ -381,7 +127,7 @@ export function secondsToTicks(seconds, bpm) {
  * @returns {number} Time in seconds
  */
 export function ticksToSeconds(ticks, bpm) {
-  if (bpm <= 0) throw new TimingError('BPM must be greater than 0');
+  if (bpm <= 0) throw new Error('BPM must be greater than 0');
   
   const secondsPerTick = 60 / (TICKS_PER_BEAT * bpm);
   return ticks * secondsPerTick;
@@ -424,7 +170,7 @@ export function measuresToTicks(measures) {
 }
 
 /**
- * Get current tick count based on audio time and BPM
+ * Get current tick count based on time and BPM
  * @param {number} bpm - Beats per minute
  * @returns {number} Current tick count
  */
@@ -434,7 +180,7 @@ export function getCurrentTicks(bpm) {
 }
 
 /**
- * Get current measure count based on audio time and BPM
+ * Get current measure count based on time and BPM
  * @param {number} bpm - Beats per minute
  * @returns {number} Current measure count
  */
@@ -464,8 +210,6 @@ export function applyTimeSubdivision(measureCount, subdivisionValue, useSubdivis
     return measureCount % 1;
   }
   
-  // NEW APPROACH: Apply subdivision to the transport time directly
-  // This ensures sync when subdivision changes (with jumps)
   const subdivisionMeasures = measureCount * subdivisionValue;
   return subdivisionMeasures % 1;
 }
@@ -480,7 +224,7 @@ export function timeToRotation(normalizedTime) {
 }
 
 /**
- * Calculate rotation based on current audio time, BPM and subdivision
+ * Calculate rotation based on current time, BPM and subdivision
  * @param {number} bpm - Beats per minute
  * @param {number} subdivisionValue - Time subdivision value
  * @param {boolean} useSubdivision - Whether to use time subdivision
@@ -489,15 +233,11 @@ export function timeToRotation(normalizedTime) {
 export function calculateRotation(bpm, subdivisionValue, useSubdivision) {
   const currentTime = getCurrentTime();
   
-  // NEW APPROACH: Calculate rotation directly from transport time and subdivision
-  // This ensures layers stay in sync when subdivision changes (with jumps)
-  
   // Calculate rotations per second based on BPM
-  // 120 BPM = 0.5 rotations per second (1 full revolution per 2 seconds)
   const rotationsPerSecond = bpm / 240;
   const totalRotations = currentTime * rotationsPerSecond;
   
-  // Apply time subdivision to the transport position
+  // Apply time subdivision
   let subdivisionRotations = totalRotations;
   if (useSubdivision && subdivisionValue) {
     subdivisionRotations = totalRotations * subdivisionValue;
@@ -509,218 +249,10 @@ export function calculateRotation(bpm, subdivisionValue, useSubdivision) {
   return timeToRotation(normalizedTime);
 }
 
-/**
- * Parse a quantization value and convert to ticks
- * @param {string} quantValue - Quantization value (e.g., "1/4", "1/8T")
- * @param {number} measureTicks - Ticks per measure (default: TICKS_PER_MEASURE)
- * @returns {number} Ticks per quantization unit
- */
-export function parseQuantizationValue(quantValue, measureTicks = TICKS_PER_MEASURE) {
-  if (!quantValue) return TICKS_PER_BEAT;
-  
-  const isTriplet = quantValue.endsWith('T');
-  const denominator = parseInt(quantValue.replace('1/', '').replace('T', ''));
-  
-  if (isNaN(denominator) || denominator <= 0) {
-    return TICKS_PER_BEAT;
-  }
-  
-  let ticksPerUnit = measureTicks / denominator;
-  
-  if (isTriplet) {
-    ticksPerUnit = ticksPerUnit * 2 / 3;
-  }
-  
-  return ticksPerUnit;
-}
-
-/**
- * Quantize a time value in ticks to the nearest grid position
- * @param {number} timeTicks - Time in ticks
- * @param {number} gridTicks - Grid size in ticks
- * @returns {number} Quantized time in ticks
- */
-export function quantizeToGrid(timeTicks, gridTicks) {
-  if (gridTicks <= 0) return timeTicks;
-  
-  const remainder = timeTicks % gridTicks;
-  const nearestGrid = remainder < gridTicks / 2 
-    ? timeTicks - remainder 
-    : timeTicks + (gridTicks - remainder);
-  
-  return nearestGrid;
-}
-
-/**
- * Get quantized position within measure (0-1)
- * @param {number} ticks - Current tick count
- * @param {number} quantizationTicks - Quantization grid size in ticks
- * @returns {number} Quantized position within measure (0-1)
- */
-export function getQuantizedMeasurePosition(ticks, quantizationTicks) {
-  if (quantizationTicks <= 0) return getMeasurePosition(ticks);
-  
-  const ticksInMeasure = ticks % TICKS_PER_MEASURE;
-  const quantizedTicksInMeasure = quantizeToGrid(ticksInMeasure, quantizationTicks);
-  
-  return quantizedTicksInMeasure / TICKS_PER_MEASURE;
-}
-
-/**
- * Calculate quantized rotation based on current audio time, BPM and quantization
- * @param {number} bpm - Beats per minute
- * @param {string} quantizationValue - Quantization value (e.g., "1/4", "1/8T")
- * @param {boolean} useQuantization - Whether to use quantization
- * @returns {number} Rotation angle in radians
- */
-export function calculateQuantizedRotation(bpm, quantizationValue, useQuantization) {
-  if (!useQuantization) {
-    return calculateRotation(bpm, 1, false);
-  }
-  
-  const currentTicks = getCurrentTicks(bpm);
-  const quantizationTicks = parseQuantizationValue(quantizationValue);
-  const normalizedTime = getQuantizedMeasurePosition(currentTicks, quantizationTicks);
-  
-  return timeToRotation(normalizedTime);
-}
-
-/**
- * Schedule a callback to run at a specific audio time
- * This provides sample-accurate scheduling like professional audio software
- * @param {Function} callback - Function to call
- * @param {number} audioTime - Absolute audio time to schedule (in AudioContext time)
- * @returns {number} Timeout ID for cancellation
- */
-export function scheduleAtAudioTime(callback, audioTime) {
-  if (!sharedAudioContext) {
-    throw new TimingError('Cannot schedule - AudioContext not available');
-  }
-  
-  const currentAudioTime = sharedAudioContext.currentTime;
-  const delaySeconds = audioTime - currentAudioTime;
-  const delayMs = Math.max(0, delaySeconds * 1000);
-  
-  return setTimeout(callback, delayMs);
-}
-
-/**
- * Get absolute audio time (AudioContext.currentTime)
- * This is useful for scheduling audio events
- * @returns {number} Absolute audio time in seconds
- */
-export function getAbsoluteAudioTime() {
-  if (!sharedAudioContext) {
-    throw new TimingError('AudioContext not available');
-  }
-  return sharedAudioContext.currentTime;
-}
-
-// Export for compatibility with existing code that might call these
-export function updateCsoundInstance() {
-  // No-op - we don't use Csound timing anymore
-}
-
-export async function enableCsoundTiming() {
-  // No-op - we use pure AudioContext timing
-  return true;
-}
-
-export async function diagnoseCsoundTiming() {
-  return getTimingStatus();
-}
-
-export async function startCsoundTimer() {
-  // No-op - AudioContext timing is always running
-  return true;
-}
-
-/**
- * Configure the timing cache system
- * @param {Object} options - Configuration options
- * @param {boolean} options.enabled - Enable/disable cache
- * @param {number} options.duration - Cache duration in milliseconds (1-5ms recommended)
- * @param {boolean} options.debug - Enable/disable debug mode
- * @returns {Object} Updated cache configuration
- */
-export function configureTimingCache(options = {}) {
-  if (typeof options.enabled === 'boolean') {
-    cacheEnabled = options.enabled;
-  }
-  
-  if (typeof options.duration === 'number' && options.duration >= 0) {
-    // Limit to reasonable range (0-10ms)
-    cacheDuration = Math.min(Math.max(options.duration, 0), 10);
-  }
-  
-  if (typeof options.debug === 'boolean') {
-    debugMode = options.debug;
-  }
-  
-  // Reset cache statistics when configuration changes
-  cacheHits = 0;
-  cacheMisses = 0;
-  
-  // Force a cache refresh
-  if (sharedAudioContext) {
-    cachedAudioTime = sharedAudioContext.currentTime;
-  }
-  cacheTimestamp = performance.now();
-  
-  console.log(`[AUDIO TIMING] Cache ${cacheEnabled ? 'enabled' : 'disabled'} with ${cacheDuration}ms buffer${debugMode ? ', debug mode on' : ''}`);
-  
-  return {
-    enabled: cacheEnabled,
-    duration: cacheDuration,
-    debug: debugMode
-  };
-}
-
-/**
- * Clear the timing cache and reset statistics
- */
-export function clearTimingCache() {
-  if (sharedAudioContext) {
-    cachedAudioTime = sharedAudioContext.currentTime;
-  }
-  cacheTimestamp = performance.now();
-  cacheHits = 0;
-  cacheMisses = 0;
-  console.log('[AUDIO TIMING] Cache cleared and statistics reset');
-}
-
-/**
- * Debug function to log detailed timing information
- */
-export function debugTiming() {
-  const status = getTimingStatus();
-  console.group('[AUDIO TIMING DEBUG]');
-  console.log('Timing Status:', status);
-  console.log('Current Time:', getCurrentTime());
-  console.log('AudioContext State:', sharedAudioContext?.state || 'not available');
-  console.log('Active Timing Source:', activeTimingSource);
-  console.log('Audio Start Time:', audioStartTime);
-  console.log('Performance Start Time:', performanceStartTime);
-  console.log('Cache Enabled:', cacheEnabled);
-  console.log('Cache Hit Rate:', status.cacheHitRate);
-  
-  // Test timing continuity
-  const time1 = getCurrentTime();
-  setTimeout(() => {
-    const time2 = getCurrentTime();
-    const diff = time2 - time1;
-    console.log(`Timing continuity test: ${diff.toFixed(3)}s (should be ~0.010s)`);
-    console.groupEnd();
-  }, 10);
-}
-
 // Make diagnostic functions available globally for debugging
 if (typeof window !== 'undefined') {
   window.getTimingStatus = getTimingStatus;
   window.resetTime = resetTime;
   window.getCurrentTime = getCurrentTime;
-  window.configureTimingCache = configureTimingCache;
-  window.clearTimingCache = clearTimingCache;
   window.isTimingInitialized = isTimingInitialized;
-  window.debugTiming = debugTiming;
 }

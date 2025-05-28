@@ -112,21 +112,34 @@ export class GlobalStateManager {
   }
   
   /**
-   * FIXED: Get layer angle data using AudioContext timing for precise synchronization
-   * @param {string} layerId Layer ID
-   * @param {number} timeSubdivisionValue Time subdivision multiplier for this layer
-   * @param {number} currentTime Current audio time in seconds
+   * Get layer angle data for a specific layer with time subdivision
+   * @param {string} layerId - Layer identifier
+   * @param {number} timeSubdivisionValue - Time subdivision multiplier
    * @returns {Object} Angle data for the layer
    */
   getLayerAngleData(layerId, timeSubdivisionValue) {
     // Get current time from audio system
     let currentTime;
+    let usingFallback = false;
+    
     try {
       currentTime = getCurrentTime();
+      
+      // Validate the returned time value
+      if (currentTime === undefined || currentTime === null || isNaN(currentTime)) {
+        throw new Error('Invalid time value returned');
+      }
+      
     } catch (e) {
-      // Fallback to performance timing if audio timing not ready
+      // Fallback to performance timing only when necessary
       currentTime = performance.now() / 1000;
-      console.warn('[STATE] Audio timing not ready, using performance timing');
+      usingFallback = true;
+      
+      // Only log warnings occasionally to avoid console spam
+      if (!this._lastFallbackWarning || (Date.now() - this._lastFallbackWarning) > 5000) {
+        console.warn('[STATE] Audio timing not ready, using performance timing:', e.message);
+        this._lastFallbackWarning = Date.now();
+      }
     }
     
     if (!this._layerTimingSystem) {

@@ -37,9 +37,8 @@ import {
   updateAudioEngineFromState,
   applyPropertiesToState
 } from './state/statePersistence.js';
-import { initializeTime, resetTime } from './time/time.js';
+import { initializeTime, resetTime, getCurrentTime, setTimingMode } from './time/time.js';
 import { setupHeaderTabs } from './ui/headerTabs.js';
-// Import the new layer modules
 import { LayerManager } from './state/LayerManager.js';
 import { setupLayersUI, updateLayersUI } from './ui/layersUI.js';
 // Import the global state manager
@@ -509,14 +508,14 @@ async function initializeApplication() {
   console.log('[AUDIO] AudioContext created with sample rate:', audioContext.sampleRate);
   console.log('[AUDIO] AudioContext initial state:', audioContext.state);
   
-  // Wait for timing system to be fully initialized
+  // Initialize timing system with RockSolidTiming
+  console.log('[MAIN] Initializing RockSolidTiming system...');
   try {
-    await initializeTime(audioContext);
-    console.log('[TIMING] Timing system initialized with AudioContext');
+    await initializeTime();
+    console.log('[MAIN] RockSolidTiming initialized successfully');
   } catch (error) {
-    console.error('[TIMING] Failed to initialize timing system:', error);
-    // Continue with fallback timing
-    console.warn('[TIMING] Continuing with performance.now() fallback timing');
+    console.error('[MAIN] Failed to initialize timing system:', error);
+    // Continue anyway - RockSolidTiming should work without explicit initialization
   }
   
   // Create application state AFTER timing is initialized
@@ -825,7 +824,7 @@ async function initializeApplication() {
           
           if (!isTimingInitialized()) {
             console.warn('[TIMING] Timing system not initialized, re-initializing...');
-            await initializeTime(audioContext);
+            await initializeTime();
           }
         } catch (error) {
           console.error('[TIMING] Failed to verify timing initialization:', error);
@@ -897,6 +896,9 @@ async function initializeApplication() {
         
         // Setup UI controls and bind events
         uiReferences = setupUI(state, syncStateAcrossSystems, silentAudioTrigger);
+        
+        // Setup timing source controls for comparison
+        setupTimingSourceControls();
         
         // Explicitly update UI with the active state to ensure saved values are reflected
         try {
@@ -1015,7 +1017,7 @@ async function initializeApplication() {
           
           if (!isTimingInitialized()) {
             console.warn('[TIMING] Timing system not initialized (audio failed), re-initializing...');
-            await initializeTime(audioContext);
+            await initializeTime();
           }
         } catch (timingError) {
           console.error('[TIMING] Failed to verify timing initialization (audio failed):', timingError);
@@ -1045,6 +1047,9 @@ async function initializeApplication() {
         
         // Setup UI
         uiReferences = setupUI(state, syncStateAcrossSystems, () => {});
+        
+        // Setup timing source controls for comparison
+        setupTimingSourceControls();
         
         // Process any pending UI updates now that UI references are initialized
         if (window._pendingUIUpdates && window._pendingUIUpdates.length > 0) {
@@ -1304,10 +1309,6 @@ function setupGlobalUI(globalState) {
   const bpmNumber = document.getElementById('bpmNumber');
   const bpmValue = document.getElementById('bpmValue');
   
-  // Get timing source radio buttons
-  const audioContextRadio = document.getElementById('timingSource-audioContext');
-  const performanceNowRadio = document.getElementById('timingSource-performanceNow');
-  
   // Get equal temperament controls
   const useEqualTemperamentCheckbox = document.getElementById('useEqualTemperamentCheckbox');
   const referenceFreqRange = document.getElementById('referenceFreqRange');
@@ -1319,7 +1320,6 @@ function setupGlobalUI(globalState) {
     // Create a references object with global UI elements
     const globalUIReferences = {
       bpmRange, bpmNumber, bpmValue,
-      audioContextRadio, performanceNowRadio,
       useEqualTemperamentCheckbox,
       referenceFreqRange, referenceFreqNumber, referenceFreqValue
     };
@@ -1348,41 +1348,6 @@ function setupGlobalUI(globalState) {
       globalState.setBpm(value);
       if (bpmRange) bpmRange.value = value;
       if (bpmValue) bpmValue.textContent = value;
-    });
-  }
-  
-  // Add event listeners for timing source radio buttons
-  if (audioContextRadio) {
-    audioContextRadio.addEventListener('change', e => {
-      if (e.target.checked) {
-        try {
-          // Import dynamically to avoid circular dependencies
-          import('./time/time.js').then(module => {
-            // Update the global state
-            globalState.setTimingSource(module.TIMING_SOURCES.AUDIO_CONTEXT);
-            console.log('[TIMING] Switched to AudioContext timing');
-          });
-        } catch (error) {
-          console.error('[TIMING] Error switching timing source:', error);
-        }
-      }
-    });
-  }
-  
-  if (performanceNowRadio) {
-    performanceNowRadio.addEventListener('change', e => {
-      if (e.target.checked) {
-        try {
-          // Import dynamically to avoid circular dependencies
-          import('./time/time.js').then(module => {
-            // Update the global state
-            globalState.setTimingSource(module.TIMING_SOURCES.PERFORMANCE_NOW);
-            console.log('[TIMING] Switched to performance.now() timing');
-          });
-        } catch (error) {
-          console.error('[TIMING] Error switching timing source:', error);
-        }
-      }
     });
   }
   
@@ -1438,13 +1403,13 @@ function setupGlobalUI(globalState) {
     bpmRange,
     bpmNumber,
     bpmValue,
-    audioContextRadio,
-    performanceNowRadio,
     useEqualTemperamentCheckbox,
     referenceFreqRange,
     referenceFreqNumber,
     referenceFreqValue
   };
+  
+  console.log('[TIMING] Using RockSolidTiming - ultra-simple, bulletproof timing system');
 }
 
 // Check if DOM is loaded, otherwise wait for it
@@ -1521,3 +1486,26 @@ window.updateUIForActiveLayer = function(layerId) {
   // Update UI with the active layer state
   return window.updateUIFromState(layerState);
 };
+
+/**
+ * Setup timing source controls for comparison
+ */
+function setupTimingSourceControls() {
+  const timingSourceRadios = document.querySelectorAll('input[name="timingSource"]');
+  
+  if (timingSourceRadios.length > 0) {
+    timingSourceRadios.forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          const mode = e.target.value; // 'webworker' or 'performance'
+          console.log(`[TIMING] Switching to ${mode} mode for comparison`);
+          setTimingMode(mode);
+        }
+      });
+    });
+    
+    console.log('[TIMING] Timing source controls initialized');
+  } else {
+    console.warn('[TIMING] No timing source radio buttons found');
+  }
+}

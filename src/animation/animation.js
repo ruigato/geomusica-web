@@ -68,8 +68,10 @@ export function animate(props) {
     }
   }
   
-  // Use requestAnimationFrame to schedule the next frame
-  requestAnimationFrame(() => animate(props));
+  // Use setTimeout instead of requestAnimationFrame to avoid focus-based throttling
+  // Target ~120 FPS (8.33ms) but allow browser to optimize
+  const targetFrameTime = 1000 / TARGET_FPS; // ~8.33ms for 120 FPS
+  setTimeout(() => animate(props), targetFrameTime);
   
   // CRITICAL FIX: Increment frameCount BEFORE any early returns
   frameCount++;
