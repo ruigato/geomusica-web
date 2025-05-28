@@ -98,6 +98,138 @@ export function applyUnisonParameterChange(setterName, value, layerManager) {
 }
 
 /**
+ * Copy all parameters from source layer to target layer
+ * @param {LayerManager} layerManager The layer manager instance
+ * @param {number} sourceLayerId ID of the source layer
+ * @param {number} targetLayerId ID of the target layer
+ */
+export function copyLayerParameters(layerManager, sourceLayerId, targetLayerId) {
+  if (!layerManager || !layerManager.layers) {
+    console.error('Invalid layer manager for copy operation');
+    return;
+  }
+  
+  const sourceLayer = layerManager.layers[sourceLayerId];
+  const targetLayer = layerManager.layers[targetLayerId];
+  
+  if (!sourceLayer || !targetLayer) {
+    console.error(`Invalid layer IDs: source=${sourceLayerId}, target=${targetLayerId}`);
+    return;
+  }
+  
+  const sourceState = sourceLayer.state;
+  const targetState = targetLayer.state;
+  
+  if (!sourceState || !targetState) {
+    console.error('Invalid layer states for copy operation');
+    return;
+  }
+  
+  // List of all copyable parameters (based on unisonParameters)
+  const copyableParameters = [
+    'setRadius', 'setSegments', 'setCopies', 'setStepScale', 'setAngle',
+    'setLerpTime', 'setAltScale', 'setAltStepN', 'setFractalValue',
+    'setMinDuration', 'setMaxDuration', 'setDurationPhase',
+    'setMinVelocity', 'setMaxVelocity', 'setVelocityPhase',
+    'setEuclidValue', 'setUseEuclid', 'setUseFractal', 'setUseStars',
+    'setUseCuts', 'setUseTesselation', 'setUseAltScale', 'setUseLerp', 'setUseQuantization',
+    'setUsePlainIntersections', 'setShowAxisFreqLabels', 'setShowPointsFreqLabels',
+    'setUseDelete', 'setDeleteMin', 'setDeleteMax', 'setDeleteMode', 'setDeleteTarget', 'setDeleteSeed',
+    'setDurationMode', 'setVelocityMode',
+    'setModulusValue', 'setUseModulus', 'setDurationModulo', 'setVelocityModulo',
+    'setTimeSubdivisionValue', 'setUseTimeSubdivision', 'setQuantizationValue',
+    'setStarSkip'
+  ];
+  
+  // Map setter names to property names for reading values
+  const setterToProperty = {
+    'setRadius': 'radius',
+    'setSegments': 'segments', 
+    'setCopies': 'copies',
+    'setStepScale': 'stepScale',
+    'setAngle': 'angle',
+    'setLerpTime': 'lerpTime',
+    'setAltScale': 'altScale',
+    'setAltStepN': 'altStepN',
+    'setFractalValue': 'fractalValue',
+    'setMinDuration': 'minDuration',
+    'setMaxDuration': 'maxDuration',
+    'setDurationPhase': 'durationPhase',
+    'setMinVelocity': 'minVelocity',
+    'setMaxVelocity': 'maxVelocity',
+    'setVelocityPhase': 'velocityPhase',
+    'setEuclidValue': 'euclidValue',
+    'setUseEuclid': 'useEuclid',
+    'setUseFractal': 'useFractal',
+    'setUseStars': 'useStars',
+    'setUseCuts': 'useCuts',
+    'setUseTesselation': 'useTesselation',
+    'setUseAltScale': 'useAltScale',
+    'setUseLerp': 'useLerp',
+    'setUseQuantization': 'useQuantization',
+    'setUsePlainIntersections': 'usePlainIntersections',
+    'setShowAxisFreqLabels': 'showAxisFreqLabels',
+    'setShowPointsFreqLabels': 'showPointsFreqLabels',
+    'setUseDelete': 'useDelete',
+    'setDeleteMin': 'deleteMin',
+    'setDeleteMax': 'deleteMax',
+    'setDeleteMode': 'deleteMode',
+    'setDeleteTarget': 'deleteTarget',
+    'setDeleteSeed': 'deleteSeed',
+    'setDurationMode': 'durationMode',
+    'setVelocityMode': 'velocityMode',
+    'setModulusValue': 'modulusValue',
+    'setUseModulus': 'useModulus',
+    'setDurationModulo': 'durationModulo',
+    'setVelocityModulo': 'velocityModulo',
+    'setTimeSubdivisionValue': 'timeSubdivisionValue',
+    'setUseTimeSubdivision': 'useTimeSubdivision',
+    'setQuantizationValue': 'quantizationValue',
+    'setStarSkip': 'starSkip'
+  };
+  
+  let copiedCount = 0;
+  let errorCount = 0;
+  
+  // Copy each parameter
+  copyableParameters.forEach(setterName => {
+    const propertyName = setterToProperty[setterName];
+    
+    if (!propertyName) {
+      console.warn(`No property mapping found for setter: ${setterName}`);
+      return;
+    }
+    
+    // Check if both source and target have the setter method
+    if (typeof targetState[setterName] === 'function') {
+      try {
+        // Get the value from source state
+        const value = sourceState[propertyName];
+        
+        if (value !== undefined) {
+          // Set the value on target state
+          targetState[setterName](value);
+          copiedCount++;
+        }
+      } catch (error) {
+        console.error(`Error copying ${setterName}:`, error);
+        errorCount++;
+      }
+    }
+  });
+  
+  console.log(`Layer copy complete: ${copiedCount} parameters copied from Layer ${sourceLayerId + 1} to Layer ${targetLayerId + 1}${errorCount > 0 ? ` (${errorCount} errors)` : ''}`);
+  
+  // Force UI update to reflect the changes
+  if (typeof window.syncStateAcrossSystems === 'function') {
+    window.syncStateAcrossSystems();
+  }
+  
+  // Update layer buttons to reflect any visual changes
+  updateLayerButtons(layerManager);
+}
+
+/**
  * Set up the Layer tab UI with controls for managing layers
  * @param {LayerManager} layerManager The layer manager instance
  * @returns {Object} Object containing UI references
@@ -279,6 +411,108 @@ export function setupLayersUI(layerManager) {
   layerColorContainer.appendChild(colorHelpText);
   
   layerTab.appendChild(layerColorContainer);
+  
+  // Add Copy Parameters control
+  const copyParametersContainer = document.createElement('div');
+  copyParametersContainer.className = 'control copy-parameters-section';
+  
+  const copyParametersTitle = document.createElement('h3');
+  copyParametersTitle.textContent = 'Copy Parameters';
+  copyParametersTitle.style.margin = '10px 0 5px 0';
+  copyParametersTitle.style.fontSize = '16px';
+  copyParametersTitle.style.fontWeight = 'bold';
+  copyParametersContainer.appendChild(copyParametersTitle);
+
+  // Copy to layer selector
+  const copyToContainer = document.createElement('div');
+  copyToContainer.className = 'control';
+  
+  const copyToLabel = document.createElement('label');
+  copyToLabel.textContent = 'Copy to Layer:';
+  copyToLabel.setAttribute('for', 'copyToLayerSelect');
+  copyToContainer.appendChild(copyToLabel);
+  
+  const copyToSelect = document.createElement('select');
+  copyToSelect.id = 'copyToLayerSelect';
+  
+  // Populate with layer options (excluding current active layer)
+  const updateCopyToOptions = () => {
+    copyToSelect.innerHTML = '';
+    const activeLayerId = layerManager.activeLayerId;
+    
+    for (let i = 0; i < layerManager.layers.length; i++) {
+      if (i !== activeLayerId) { // Don't include the active layer
+        const option = document.createElement('option');
+        option.value = i;
+        option.textContent = `Layer ${i + 1}`;
+        copyToSelect.appendChild(option);
+      }
+    }
+    
+    // Disable if no target layers available
+    copyToSelect.disabled = layerManager.layers.length <= 1;
+  };
+  
+  updateCopyToOptions();
+  copyToContainer.appendChild(copyToSelect);
+  copyParametersContainer.appendChild(copyToContainer);
+
+  // Copy button
+  const copyButtonContainer = document.createElement('div');
+  copyButtonContainer.className = 'control';
+  
+  const copyButton = document.createElement('button');
+  copyButton.textContent = 'Copy Parameters';
+  copyButton.className = 'copy-parameters-button';
+  copyButton.style.padding = '8px 16px';
+  copyButton.style.backgroundColor = '#2196F3';
+  copyButton.style.color = 'white';
+  copyButton.style.border = 'none';
+  copyButton.style.borderRadius = '4px';
+  copyButton.style.cursor = 'pointer';
+  copyButton.style.fontSize = '14px';
+  copyButton.style.fontWeight = 'bold';
+  copyButton.style.transition = 'background-color 0.3s ease';
+  copyButton.style.width = '100%';
+  
+  // Disable if no target layers available
+  copyButton.disabled = layerManager.layers.length <= 1;
+  
+  // Add hover effect
+  copyButton.addEventListener('mouseenter', () => {
+    if (!copyButton.disabled) {
+      copyButton.style.backgroundColor = '#1976D2';
+    }
+  });
+  copyButton.addEventListener('mouseleave', () => {
+    if (!copyButton.disabled) {
+      copyButton.style.backgroundColor = '#2196F3';
+    }
+  });
+  
+  // Add click handler to copy parameters
+  copyButton.addEventListener('click', () => {
+    const targetLayerId = parseInt(copyToSelect.value);
+    const sourceLayerId = layerManager.activeLayerId;
+    
+    if (isNaN(targetLayerId) || sourceLayerId === undefined) {
+      console.error('Invalid layer selection for copy operation');
+      return;
+    }
+    
+    copyLayerParameters(layerManager, sourceLayerId, targetLayerId);
+  });
+  
+  copyButtonContainer.appendChild(copyButton);
+  copyParametersContainer.appendChild(copyButtonContainer);
+
+  // Add help text
+  const copyHelpText = document.createElement('div');
+  copyHelpText.className = 'help-text';
+  copyHelpText.textContent = 'Copy all parameters from the active layer to the selected target layer';
+  copyParametersContainer.appendChild(copyHelpText);
+
+  layerTab.appendChild(copyParametersContainer);
   
   // Add Rainbow Colors button
   const rainbowColorsContainer = document.createElement('div');
@@ -535,7 +769,10 @@ export function setupLayersUI(layerManager) {
     layerLinkFromSelect,
     layerLinkToSelect,
     layerLinkTraceCheckbox,
-    layerLinkTrailLengthSlider
+    layerLinkTrailLengthSlider,
+    copyToSelect,
+    copyButton,
+    updateCopyToOptions
   };
 }
 
@@ -643,6 +880,9 @@ export function updateLayerButtons(layerManager) {
         colorPicker.value = hexColor;
       }
       
+      // Update copy dropdown options when active layer changes
+      updateCopyDropdownOptions(layerManager);
+      
       // Ensure UI reflects the newly selected layer's state
       if (typeof window.syncStateAcrossSystems === 'function') {
         // Pass true to indicate this is a layer switch operation
@@ -655,6 +895,49 @@ export function updateLayerButtons(layerManager) {
   
   // Update layer link dropdowns
   updateLayerLinkDropdowns(layerManager);
+  
+  // Update copy dropdown options
+  updateCopyDropdownOptions(layerManager);
+}
+
+/**
+ * Update the copy dropdown options when layers change
+ * @param {LayerManager} layerManager The layer manager instance
+ */
+function updateCopyDropdownOptions(layerManager) {
+  const copyToSelect = document.getElementById('copyToLayerSelect');
+  const copyButton = document.querySelector('.copy-parameters-button');
+  
+  if (!copyToSelect) return;
+  
+  // Clear existing options
+  copyToSelect.innerHTML = '';
+  const activeLayerId = layerManager.activeLayerId;
+  
+  // Populate with layer options (excluding current active layer)
+  for (let i = 0; i < layerManager.layers.length; i++) {
+    if (i !== activeLayerId) { // Don't include the active layer
+      const option = document.createElement('option');
+      option.value = i;
+      option.textContent = `Layer ${i + 1}`;
+      copyToSelect.appendChild(option);
+    }
+  }
+  
+  // Enable/disable controls based on available target layers
+  const hasTargets = layerManager.layers.length > 1;
+  copyToSelect.disabled = !hasTargets;
+  
+  if (copyButton) {
+    copyButton.disabled = !hasTargets;
+    if (hasTargets) {
+      copyButton.style.backgroundColor = '#2196F3';
+      copyButton.style.cursor = 'pointer';
+    } else {
+      copyButton.style.backgroundColor = '#cccccc';
+      copyButton.style.cursor = 'not-allowed';
+    }
+  }
 }
 
 /**
