@@ -353,7 +353,7 @@ export function setupLayersUI(layerManager) {
   layerLinkEnableCheckbox.addEventListener('change', (e) => {
     // Import and use the layer link manager
     import('../geometry/layerLink.js').then(module => {
-      module.layerLinkManager.setEnabled(e.target.checked);
+      module.layerLinkManager.setEnabled(e.target.checked, layerManager);
       
       // Update link visibility controls
       const fromSelect = document.getElementById('layerLinkFrom');

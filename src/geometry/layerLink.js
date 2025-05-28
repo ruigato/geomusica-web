@@ -53,14 +53,18 @@ export class LayerLinkManager {
   /**
    * Set the enabled state of layer linking
    * @param {boolean} enabled - Whether layer linking is enabled
+   * @param {Object} layerManager - Optional layer manager instance for creating initial links
    */
-  setEnabled(enabled) {
+  setEnabled(enabled, layerManager = null) {
     this.enabled = enabled;
     this.linkGroup.visible = enabled;
     
     if (!enabled) {
       this.clearLinks();
       this.clearTraces();
+    } else if (layerManager) {
+      // When enabling, create initial links if layerManager is provided
+      this.updateLinks(layerManager);
     }
     
     if (DEBUG_LAYER_LINK) {
@@ -503,6 +507,34 @@ export class LayerLinkManager {
     if (this.midPointMaterial) this.midPointMaterial.dispose();
     if (this.traceMaterial) this.traceMaterial.dispose();
     if (this.midPointGeometry) this.midPointGeometry.dispose();
+  }
+  
+  /**
+   * Handle parameter changes that affect layer links
+   * @param {number} layerId - ID of the layer that changed
+   * @param {string} parameterName - Name of the parameter that changed
+   * @param {Object} layerManager - The layer manager instance
+   */
+  onParameterChange(layerId, parameterName, layerManager) {
+    if (!this.enabled || !layerManager) {
+      return;
+    }
+    
+    // Check if this parameter affects layer links
+    const linkAffectingParams = ['copies', 'segments', 'radius', 'stepScale', 'angle'];
+    if (!linkAffectingParams.includes(parameterName)) {
+      return;
+    }
+    
+    // Check if this layer is involved in the current link
+    if (layerId === this.fromLayerId || layerId === this.toLayerId) {
+      // Update links immediately
+      this.updateLinks(layerManager);
+      
+      if (DEBUG_LAYER_LINK) {
+        console.log(`[LAYER LINK] Updated links due to ${parameterName} change in layer ${layerId}`);
+      }
+    }
   }
 }
 

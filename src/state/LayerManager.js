@@ -646,6 +646,15 @@ export class LayerManager {
       // Check if any parameters have changed
       const hasParameterChanges = state.hasParameterChanged();
       
+      // Check if parameters that affect layer links have changed
+      const layerLinkAffectingChanges = hasParameterChanges && (
+        state.parameterChanges.copies ||
+        state.parameterChanges.segments ||
+        state.parameterChanges.radius ||
+        state.parameterChanges.stepScale ||
+        state.parameterChanges.angle
+      );
+      
       // CRITICAL FIX: Create geometry ONLY for this layer when it's needed
       // This ensures we're updating the correct layer's geometry
       if (!layer.baseGeo || hasParameterChanges) {
@@ -712,6 +721,19 @@ export class LayerManager {
         
         if ((shouldLog || hasParameterChanges) && DEBUG_LOGGING) {
           
+        }
+        
+        // Update layer links if this layer is involved in linking and parameters affecting links changed
+        if (layerLinkAffectingChanges) {
+          // Import and update layer link manager if parameters that affect vertex positions changed
+          import('../geometry/layerLink.js').then(module => {
+            if (module.layerLinkManager.enabled && 
+                (layerId === module.layerLinkManager.fromLayerId || layerId === module.layerLinkManager.toLayerId)) {
+              module.layerLinkManager.updateLinks(this);
+            }
+          }).catch(error => {
+            // Silently ignore if layer link module is not available
+          });
         }
       }
       

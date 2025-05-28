@@ -293,16 +293,17 @@ export function createAppState() {
       if (this.targetRadius !== newValue) {
         this.targetRadius = newValue;
         this.parameterChanges.radius = true;
-        
-        // If lerping is off, update the actual value immediately
         if (!this.useLerp) {
-          this.radius = newValue;
+          this.radius = this.targetRadius;
         }
         
         // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
         
         // FIXED: Reset trigger state when radius changes to prevent false triggers
         this.resetTriggerState();
+        
+        // Notify layer link manager of parameter change
+        this.notifyLayerLinkParameterChange('radius');
       }
     },
     
@@ -321,6 +322,9 @@ export function createAppState() {
         
         // FIXED: Reset trigger state when copies change to prevent false triggers
         this.resetTriggerState();
+        
+        // Notify layer link manager of parameter change
+        this.notifyLayerLinkParameterChange('copies');
       }
     },
     
@@ -337,6 +341,9 @@ export function createAppState() {
         
         // FIXED: Reset trigger state when segments change to prevent false triggers
         this.resetTriggerState();
+        
+        // Notify layer link manager of parameter change
+        this.notifyLayerLinkParameterChange('segments');
       }
     },
     
@@ -356,6 +363,9 @@ export function createAppState() {
         
         // FIXED: Reset trigger state when step scale changes to prevent false triggers
         this.resetTriggerState();
+        
+        // Notify layer link manager of parameter change
+        this.notifyLayerLinkParameterChange('stepScale');
       }
     },
     
@@ -372,6 +382,9 @@ export function createAppState() {
           this.angle = this.targetAngle;
         }
         // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
+        
+        // Notify layer link manager of parameter change
+        this.notifyLayerLinkParameterChange('angle');
       }
     },
     
@@ -1494,6 +1507,30 @@ export function createAppState() {
       // Also try to access via global state if available
       if (window._globalState && window._globalState.resetTriggerSystem) {
         window._globalState.resetTriggerSystem();
+      }
+    },
+    
+    /**
+     * Notify layer link manager of parameter change
+     * @param {string} parameter Parameter name
+     */
+    notifyLayerLinkParameterChange(parameter) {
+      // Get the layer ID from the state
+      const layerId = this.layerId;
+      if (layerId === undefined) return;
+      
+      // Try to get the layer manager and notify layer link manager
+      try {
+        // Import layer link manager and notify of parameter change
+        import('../geometry/layerLink.js').then(module => {
+          if (module.layerLinkManager && window._layers) {
+            module.layerLinkManager.onParameterChange(layerId, parameter, window._layers);
+          }
+        }).catch(error => {
+          // Silently ignore if layer link module is not available
+        });
+      } catch (error) {
+        // Silently ignore errors
       }
     }
   };
