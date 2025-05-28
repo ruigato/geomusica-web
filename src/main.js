@@ -860,6 +860,45 @@ async function initializeApplication() {
           triggerAudio(note, csound);
         };
         
+        // Initialize MIDI system after audio is set up
+        try {
+          const { initializeCompleteMidiSystem, createMidiEnhancedTriggerAudio, enableMidiIntegration } = await import('./midi/index.js');
+          
+          // Initialize complete MIDI system with UI integration
+          const midiResult = await initializeCompleteMidiSystem({
+            uiContainer: document.body,
+            layerManager: layerManager,
+            globalState: globalState,
+            originalAudioCallback: handleAudioTrigger,
+            autoEnable: false // Don't auto-enable, let user choose
+          });
+          
+          if (midiResult.success) {
+            console.log('[MAIN] MIDI system initialized successfully');
+            
+            // Create enhanced audio trigger that supports both audio and MIDI
+            const enhancedAudioTrigger = await createMidiEnhancedTriggerAudio(handleAudioTrigger);
+            
+            // Replace the original trigger with the enhanced one
+            window.enhancedAudioTrigger = enhancedAudioTrigger;
+            
+            // Automatically enable MIDI integration
+            await enableMidiIntegration();
+            console.log('[MAIN] MIDI integration enabled automatically');
+            
+            // Make MIDI functions available globally for debugging
+            window.testMidi = async (freq = 440, dur = 1) => {
+              const { testMidiOutput } = await import('./midi/index.js');
+              testMidiOutput(1, freq, dur);
+            };
+            
+          } else {
+            console.warn('[MAIN] MIDI system initialization failed:', midiResult.error);
+          }
+        } catch (error) {
+          console.warn('[MAIN] MIDI system not available:', error.message);
+        }
+        
         // Start animation after timing verification is complete
         animate({
           scene,
@@ -879,7 +918,7 @@ async function initializeApplication() {
             set lastAngle(value) { globalState.lastAngle = value; }
           },
           globalState,
-          triggerAudioCallback: handleAudioTrigger
+          triggerAudioCallback: window.enhancedAudioTrigger || handleAudioTrigger // Use enhanced trigger if available
         });
         
         // Silent trigger function for UI previews
