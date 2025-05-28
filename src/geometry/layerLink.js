@@ -64,11 +64,13 @@ export class LayerLinkManager {
         height: 1024,
         fadeAmount: 1.0, // No fade for maximum accumulation
         trailIntensity: 1.0,
-        pointSize: 2.0 // Small point size
+        pointSize: 1.0, // 1 pixel for pixel-perfect trails
+        useLines: true, // Enable line-based rendering for smooth trails
+        trailLength: 500 // Long trails for pixel-perfect line rendering (equivalent to 0.999 fade)
       });
       
       if (DEBUG_LAYER_LINK) {
-        console.log('[LAYER LINK] GPU trace system initialized');
+        console.log('[LAYER LINK] GPU trace system initialized with pixel-perfect line trails (default mode)');
       }
     } catch (error) {
       console.error('[LAYER LINK] Failed to initialize GPU trace system:', error);
@@ -138,52 +140,69 @@ export class LayerLinkManager {
           this.initializeGPUTraces(this.renderer);
         }
         
-        // Add trace display mesh to the scene if GPU system is available
-        if (this.gpuTraceSystem && !this.traceDisplayMesh && !this.gpuTraceSystem.usingBasicMaterials) {
-          this.traceDisplayMesh = this.gpuTraceSystem.getDisplayMesh();
-          if (this.traceDisplayMesh) {
-            // Position the display mesh to match world coordinates
-            const worldSize = 1000; // Should match the worldSize in GPUTraceSystem camera setup
-            
-            this.traceDisplayMesh.position.set(0, 0, 10); // Position in front for visibility
-            this.traceDisplayMesh.scale.set(worldSize, worldSize, 1); // Scale to match world bounds exactly
-            this.traceDisplayMesh.renderOrder = 1000; // Render on top of everything
-            this.traceDisplayMesh.material.transparent = true;
-            this.traceDisplayMesh.material.depthTest = false;
-            this.traceDisplayMesh.material.depthWrite = false;
-            
-            // Ensure good visibility settings
-            if (this.traceDisplayMesh.material.uniforms) {
-              if (this.traceDisplayMesh.material.uniforms.opacity) {
-                this.traceDisplayMesh.material.uniforms.opacity.value = 0.9;
-              }
-              if (this.traceDisplayMesh.material.uniforms.colorTint) {
-                this.traceDisplayMesh.material.uniforms.colorTint.value.setRGB(1.2, 0.8, 1.2);
-              }
+        // For line-based trails (pixel-perfect), always use basic materials mode
+        if (this.gpuTraceSystem && this.gpuTraceSystem.useLines) {
+          // Force basic materials mode for line trails
+          this.gpuTraceSystem.usingBasicMaterials = true;
+          
+          // Get the appropriate mesh (line or points)
+          if (!this.tracePointsMesh) {
+            this.tracePointsMesh = this.gpuTraceSystem.getPointsMesh();
+            if (this.tracePointsMesh) {
+              this.tracePointsMesh.renderOrder = 10; // Render on top
+              this.linkGroup.add(this.tracePointsMesh);
+              console.log('[LAYER LINK] Added pixel-perfect line trails to scene');
+              console.log('[LAYER LINK] Trail mesh details:', {
+                geometry: !!this.tracePointsMesh.geometry,
+                material: this.tracePointsMesh.material.type,
+                isLineSegments: this.tracePointsMesh.type === 'LineSegments',
+                visible: this.tracePointsMesh.visible,
+                parent: !!this.tracePointsMesh.parent
+              });
+            } else {
+              console.warn('[LAYER LINK] Failed to get line mesh from GPU trace system');
             }
-            
-            this.linkGroup.add(this.traceDisplayMesh);
-            console.log('[LAYER LINK] Added GPU trail display mesh to scene');
-            console.log('[LAYER LINK] Display mesh scale:', this.traceDisplayMesh.scale);
           }
         }
-        
-        // For basic materials, add the points mesh directly to the scene
-        if (this.gpuTraceSystem && this.gpuTraceSystem.usingBasicMaterials && !this.tracePointsMesh) {
+        // For legacy point trails, use GPU feedback system
+        else if (this.gpuTraceSystem && !this.gpuTraceSystem.useLines && !this.gpuTraceSystem.usingBasicMaterials) {
+          // Add GPU feedback display mesh for legacy point trails
+          if (!this.traceDisplayMesh) {
+            this.traceDisplayMesh = this.gpuTraceSystem.getDisplayMesh();
+            if (this.traceDisplayMesh) {
+              // Position the display mesh to match world coordinates
+              const worldSize = 1000; // Should match the worldSize in GPUTraceSystem camera setup
+              
+              this.traceDisplayMesh.position.set(0, 0, 10); // Position in front for visibility
+              this.traceDisplayMesh.scale.set(worldSize, worldSize, 1); // Scale to match world bounds exactly
+              this.traceDisplayMesh.renderOrder = 1000; // Render on top of everything
+              this.traceDisplayMesh.material.transparent = true;
+              this.traceDisplayMesh.material.depthTest = false;
+              this.traceDisplayMesh.material.depthWrite = false;
+              
+              // Ensure good visibility settings
+              if (this.traceDisplayMesh.material.uniforms) {
+                if (this.traceDisplayMesh.material.uniforms.opacity) {
+                  this.traceDisplayMesh.material.uniforms.opacity.value = 0.9;
+                }
+                if (this.traceDisplayMesh.material.uniforms.colorTint) {
+                  this.traceDisplayMesh.material.uniforms.colorTint.value.setRGB(1.2, 0.8, 1.2);
+                }
+              }
+              
+              this.linkGroup.add(this.traceDisplayMesh);
+              console.log('[LAYER LINK] Added GPU feedback trail display mesh to scene (legacy mode)');
+              console.log('[LAYER LINK] Display mesh scale:', this.traceDisplayMesh.scale);
+            }
+          }
+        }
+        // Fallback: use basic materials for any other case
+        else if (this.gpuTraceSystem && !this.tracePointsMesh) {
           this.tracePointsMesh = this.gpuTraceSystem.getPointsMesh();
           if (this.tracePointsMesh) {
             this.tracePointsMesh.renderOrder = 10; // Render on top
             this.linkGroup.add(this.tracePointsMesh);
-            console.log('[LAYER LINK] Added trace points mesh to scene (basic materials)');
-            console.log('[LAYER LINK] Points mesh details:', {
-              geometry: !!this.tracePointsMesh.geometry,
-              material: this.tracePointsMesh.material.type,
-              pointCount: this.tracePointsMesh.geometry?.attributes?.position?.count || 0,
-              visible: this.tracePointsMesh.visible,
-              parent: !!this.tracePointsMesh.parent
-            });
-          } else {
-            console.warn('[LAYER LINK] Failed to get points mesh from GPU trace system');
+            console.log('[LAYER LINK] Added basic trail mesh to scene (fallback mode)');
           }
         }
       } catch (error) {
@@ -195,15 +214,15 @@ export class LayerLinkManager {
       }
     }
     
-    // Show/hide trace display mesh
+    // Show/hide trace display mesh (legacy GPU feedback)
     if (this.traceDisplayMesh) {
       this.traceDisplayMesh.visible = enabled;
     }
     
-    // Show/hide trace points mesh
+    // Show/hide trace points/line mesh (pixel-perfect or basic)
     if (this.tracePointsMesh) {
       this.tracePointsMesh.visible = enabled;
-      console.log('[LAYER LINK] Set trace points mesh visibility to', enabled);
+      console.log('[LAYER LINK] Set trace mesh visibility to', enabled);
     }
     
     if (DEBUG_LAYER_LINK) {
@@ -2583,5 +2602,253 @@ if (typeof window !== 'undefined') {
     }
     
     console.log(`Trail style set to: ${style}`);
+  };
+  
+  window.enablePixelPerfectTrails = () => {
+    console.log('=== Enabling Pixel-Perfect Line Trails ===');
+    
+    if (!layerLinkManager.gpuTraceSystem) {
+      console.log('No GPU trace system');
+      return;
+    }
+    
+    const system = layerLinkManager.gpuTraceSystem;
+    
+    // Enable line-based rendering
+    system.useLines = true;
+    
+    // Recreate materials with line support
+    system.createMaterials();
+    
+    // Update existing meshes
+    if (system.trailMesh && system.lineMaterial) {
+      system.trailMesh.material = system.lineMaterial;
+      console.log('Updated trail mesh to use line material');
+    }
+    
+    // Clear trails and restart
+    clearTrails();
+    
+    console.log('✅ Pixel-perfect line trails enabled!');
+    console.log('Trails will now render as smooth 1-pixel lines instead of point sprites');
+  };
+  
+  window.enablePointTrails = () => {
+    console.log('=== Enabling Point-Based Trails ===');
+    
+    if (!layerLinkManager.gpuTraceSystem) {
+      console.log('No GPU trace system');
+      return;
+    }
+    
+    const system = layerLinkManager.gpuTraceSystem;
+    
+    // Disable line-based rendering
+    system.useLines = false;
+    
+    // Recreate materials with point support
+    system.createMaterials();
+    
+    // Clear trails and restart
+    clearTrails();
+    
+    console.log('✅ Point-based trails enabled!');
+    console.log('Trails will now render as point sprites (original behavior)');
+  };
+  
+  window.testPixelPerfectTrails = () => {
+    console.log('=== Testing Pixel-Perfect Trails ===');
+    
+    // Enable pixel-perfect trails
+    enablePixelPerfectTrails();
+    
+    // Set optimal settings for visibility
+    setTimeout(() => {
+      setTrailFade(0.98); // Slow fade for visible trails
+      
+      if (layerLinkManager.gpuTraceSystem) {
+        const system = layerLinkManager.gpuTraceSystem;
+        
+        // Set line material properties for maximum visibility
+        if (system.lineMaterial) {
+          system.lineMaterial.opacity = 1.0;
+          system.lineMaterial.color.setHex(0x00ff88); // Bright green for visibility
+          console.log('Set line material to bright green with full opacity');
+        }
+        
+        // Set display material for good visibility
+        if (system.displayMaterial.uniforms) {
+          system.displayMaterial.uniforms.opacity.value = 0.9;
+          system.displayMaterial.uniforms.colorTint.value.setRGB(1.0, 2.0, 1.0); // Green tint
+          console.log('Set display material to green tint');
+        }
+      }
+      
+      console.log('Starting continuous rendering to build up pixel-perfect trails...');
+      
+      // Render continuously for a few seconds to build up trails
+      let renderCount = 0;
+      const renderInterval = setInterval(() => {
+        layerLinkManager.gpuTraceSystem.render(layerLinkManager.midPoints, performance.now() * 0.001);
+        renderCount++;
+        
+        if (renderCount >= 30) { // 3 seconds
+          clearInterval(renderInterval);
+          console.log('🌟 Pixel-perfect trail test complete!');
+          console.log('You should now see smooth, continuous 1-pixel trails without gaps or jitter!');
+        }
+      }, 100);
+    }, 1000);
+  };
+  
+  window.setPixelPerfectTrailLength = (length) => {
+    console.log(`=== Setting Pixel-Perfect Trail Length to ${length} ===`);
+    
+    if (!layerLinkManager.gpuTraceSystem) {
+      console.log('No GPU trace system');
+      return;
+    }
+    
+    if (!layerLinkManager.gpuTraceSystem.useLines) {
+      console.log('Not using line-based trails. Enable with enablePixelPerfectTrails() first.');
+      return;
+    }
+    
+    layerLinkManager.gpuTraceSystem.setTrailLength(length);
+    console.log(`Pixel-perfect trail length set to: ${length} historical positions`);
+    console.log(`This will keep ${Math.floor(length / 10)} frames of position history`);
+  };
+  
+  window.setVeryLongPixelTrails = () => {
+    console.log('=== Setting Very Long Pixel-Perfect Trails (equivalent to 0.999 fade) ===');
+    setPixelPerfectTrailLength(1000); // Very long trails
+    console.log('Pixel-perfect trails are now very long and persistent!');
+  };
+  
+  window.setMediumPixelTrails = () => {
+    console.log('=== Setting Medium Length Pixel-Perfect Trails ===');
+    setPixelPerfectTrailLength(200); // Medium trails
+    console.log('Pixel-perfect trails are now medium length');
+  };
+  
+  window.setShortPixelTrails = () => {
+    console.log('=== Setting Short Pixel-Perfect Trails ===');
+    setPixelPerfectTrailLength(50); // Short trails
+    console.log('Pixel-perfect trails are now short');
+  };
+  
+  window.usePixelPerfectTrails = () => {
+    console.log('=== Switching to Pixel-Perfect Line Trails (Default Mode) ===');
+    
+    if (!layerLinkManager.gpuTraceSystem) {
+      console.log('No GPU trace system - will use pixel-perfect trails when initialized');
+      return;
+    }
+    
+    const system = layerLinkManager.gpuTraceSystem;
+    
+    // Enable line-based rendering
+    system.useLines = true;
+    
+    // Recreate materials and scenes for line rendering
+    system.createMaterials();
+    system.createScenes();
+    
+    // Clear existing trails and restart
+    layerLinkManager.clearTraces();
+    layerLinkManager.setTraceEnabled(false);
+    setTimeout(() => {
+      layerLinkManager.setTraceEnabled(true);
+      console.log('✅ Switched to pixel-perfect line trails');
+      console.log('Trails will render as smooth 1-pixel lines without gaps or jitter');
+    }, 100);
+  };
+  
+  window.useLegacyPointTrails = () => {
+    console.log('=== Switching to Legacy Point Sprite Trails ===');
+    
+    if (!layerLinkManager.gpuTraceSystem) {
+      console.log('No GPU trace system');
+      return;
+    }
+    
+    const system = layerLinkManager.gpuTraceSystem;
+    
+    // Disable line-based rendering
+    system.useLines = false;
+    
+    // Recreate materials and scenes for point rendering
+    system.createMaterials();
+    system.createScenes();
+    
+    // Clear existing trails and restart
+    layerLinkManager.clearTraces();
+    layerLinkManager.setTraceEnabled(false);
+    setTimeout(() => {
+      layerLinkManager.setTraceEnabled(true);
+      console.log('✅ Switched to legacy point sprite trails');
+      console.log('Trails will render as point sprites with GPU feedback (may have gaps/jitter)');
+      console.log('Use setTrailFade(0.999) to control fade for this mode');
+    }, 100);
+  };
+  
+  window.getCurrentTrailMode = () => {
+    if (!layerLinkManager.gpuTraceSystem) {
+      console.log('No GPU trace system initialized');
+      return;
+    }
+    
+    const mode = layerLinkManager.gpuTraceSystem.useLines ? 'Pixel-Perfect Lines' : 'Legacy Point Sprites';
+    console.log(`Current trail mode: ${mode}`);
+    
+    if (layerLinkManager.gpuTraceSystem.useLines) {
+      console.log(`Trail length: ${layerLinkManager.gpuTraceSystem.trailLength} positions`);
+      console.log(`History frames: ${layerLinkManager.gpuTraceSystem.maxHistoryFrames}`);
+    } else {
+      console.log(`Fade amount: ${layerLinkManager.gpuTraceSystem.fadeAmount}`);
+    }
+    
+    return mode;
+  };
+  
+  window.forcePixelPerfectTrails = () => {
+    console.log('=== Forcing Pixel-Perfect Trail System Restart ===');
+    
+    // Clear current system
+    layerLinkManager.setTraceEnabled(false);
+    layerLinkManager.clearTraces();
+    
+    // Dispose and recreate GPU trace system
+    if (layerLinkManager.gpuTraceSystem) {
+      layerLinkManager.gpuTraceSystem.dispose();
+      layerLinkManager.gpuTraceSystem = null;
+    }
+    
+    // Force recreation with pixel-perfect settings
+    if (layerLinkManager.renderer) {
+      layerLinkManager.gpuTraceSystem = new GPUTraceSystem(layerLinkManager.renderer, {
+        width: 1024,
+        height: 1024,
+        fadeAmount: 1.0,
+        trailIntensity: 1.0,
+        pointSize: 1.0,
+        useLines: true, // Force line-based rendering
+        trailLength: 500 // Long trails
+      });
+      
+      console.log('✅ GPU trace system recreated with pixel-perfect line trails');
+      console.log('System settings:', {
+        useLines: layerLinkManager.gpuTraceSystem.useLines,
+        trailLength: layerLinkManager.gpuTraceSystem.trailLength,
+        usingBasicMaterials: layerLinkManager.gpuTraceSystem.usingBasicMaterials
+      });
+    }
+    
+    // Re-enable traces
+    setTimeout(() => {
+      layerLinkManager.setTraceEnabled(true);
+      console.log('🌟 Pixel-perfect trails should now be visible in bright green!');
+      console.log('If you still see magenta trails, run this function again.');
+    }, 100);
   };
 } 

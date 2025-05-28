@@ -18,7 +18,17 @@ export class GPUTraceSystem {
     this.height = options.height || 1024;
     this.fadeAmount = options.fadeAmount || 1.0; // No fade for maximum accumulation
     this.trailIntensity = options.trailIntensity || 1.0;
-    this.pointSize = options.pointSize || 2.0; // Small point size
+    this.pointSize = options.pointSize || 1.0; // 1 pixel for pixel-perfect trails
+    this.useLines = options.useLines !== false; // Default to true for pixel-perfect trails
+    this.trailLength = options.trailLength || 100; // Number of historical positions to keep for line trails
+    
+    // Store position history for line interpolation (multiple frames)
+    this.positionHistory = []; // Array of position arrays, one per frame
+    this.maxHistoryFrames = Math.max(10, Math.floor(this.trailLength / 10)); // Keep enough frames for desired trail length
+    
+    // Store previous positions for line interpolation
+    this.previousPositions = [];
+    this.currentPositions = [];
     
     // Check for required WebGL extensions
     this.checkWebGLSupport();
@@ -35,6 +45,7 @@ export class GPUTraceSystem {
     
     if (DEBUG_GPU_TRACE) {
       console.log('[GPU TRACE] System initialized with resolution:', this.width, 'x', this.height);
+      console.log('[GPU TRACE] Using', this.useLines ? 'line-based' : 'point-based', 'rendering');
     }
   }
   
@@ -179,45 +190,61 @@ export class GPUTraceSystem {
    * Create trail shader materials
    */
   createTrailShaders() {
-    // Point rendering material - renders points to texture
-    this.pointMaterial = new THREE.ShaderMaterial({
-      uniforms: {
-        pointSize: { value: this.pointSize }, // Use the configured point size
-        opacity: { value: 1.0 }
-      },
-      vertexShader: `
-        uniform float pointSize;
-        attribute vec3 color;
-        varying vec3 vColor;
-        
-        void main() {
-          vColor = color;
-          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-          gl_Position = projectionMatrix * mvPosition;
-          gl_PointSize = pointSize;
-        }
-      `,
-      fragmentShader: `
-        uniform float opacity;
-        varying vec3 vColor;
-        
-        void main() {
-          // Create circular points
-          vec2 coord = gl_PointCoord - vec2(0.5);
-          float dist = length(coord);
-          if (dist > 0.5) discard;
+    if (this.useLines) {
+      // Line rendering material - renders 1-pixel lines to texture
+      this.lineMaterial = new THREE.LineBasicMaterial({
+        color: 0x00ff88, // Bright green for pixel-perfect trails
+        linewidth: 1, // 1 pixel width for pixel-perfect trails
+        transparent: true,
+        opacity: this.trailIntensity,
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        depthWrite: false
+      });
+      
+      // Use line material as point material for compatibility
+      this.pointMaterial = this.lineMaterial;
+    } else {
+      // Point rendering material - renders points to texture (fallback)
+      this.pointMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+          pointSize: { value: this.pointSize },
+          opacity: { value: 1.0 }
+        },
+        vertexShader: `
+          uniform float pointSize;
+          attribute vec3 color;
+          varying vec3 vColor;
           
-          // Smooth edges
-          float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
-          gl_FragColor = vec4(vColor, alpha * opacity);
-        }
-      `,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthTest: false,
-      depthWrite: false
-    });
-    
+          void main() {
+            vColor = color;
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            gl_Position = projectionMatrix * mvPosition;
+            gl_PointSize = pointSize;
+          }
+        `,
+        fragmentShader: `
+          uniform float opacity;
+          varying vec3 vColor;
+          
+          void main() {
+            // Create circular points
+            vec2 coord = gl_PointCoord - vec2(0.5);
+            float dist = length(coord);
+            if (dist > 0.5) discard;
+            
+            // Smooth edges
+            float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
+            gl_FragColor = vec4(vColor, alpha * opacity);
+          }
+        `,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        depthWrite: false
+      });
+    }
+
     // Feedback material - blends previous frame with fade
     this.feedbackMaterial = new THREE.ShaderMaterial({
       uniforms: {
@@ -247,7 +274,7 @@ export class GPUTraceSystem {
       depthTest: false,
       depthWrite: false
     });
-    
+
     // Display material - shows the trail texture in the scene
     this.displayMaterial = new THREE.ShaderMaterial({
       uniforms: {
@@ -286,17 +313,33 @@ export class GPUTraceSystem {
    * Create basic materials as fallback
    */
   createBasicMaterials() {
-    // Point rendering material - basic version for fallback
-    this.pointMaterial = new THREE.PointsMaterial({
-      color: 0xff00ff,
-      size: this.pointSize, // Use configured point size
-      transparent: true,
-      opacity: 1.0,
-      blending: THREE.NormalBlending,
-      depthTest: false,
-      depthWrite: false,
-      sizeAttenuation: false
-    });
+    if (this.useLines) {
+      // Line rendering material - basic version for fallback
+      this.lineMaterial = new THREE.LineBasicMaterial({
+        color: 0x00ff88, // Bright green for pixel-perfect trails
+        linewidth: 1, // 1 pixel width for pixel-perfect trails
+        transparent: true,
+        opacity: this.trailIntensity,
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        depthWrite: false
+      });
+      
+      // Use line material as point material for compatibility
+      this.pointMaterial = this.lineMaterial;
+    } else {
+      // Point rendering material - basic version for fallback
+      this.pointMaterial = new THREE.PointsMaterial({
+        color: 0xff00ff,
+        size: this.pointSize, // Use configured point size
+        transparent: true,
+        opacity: 1.0,
+        blending: THREE.NormalBlending,
+        depthTest: false,
+        depthWrite: false,
+        sizeAttenuation: false
+      });
+    }
     
     // Feedback material - basic version
     this.feedbackMaterial = new THREE.MeshBasicMaterial({
@@ -326,11 +369,20 @@ export class GPUTraceSystem {
       }
     }
     
+    // Update trail mesh material if it exists
+    if (this.trailMesh) {
+      this.trailMesh.material = this.lineMaterial;
+      if (DEBUG_GPU_TRACE) {
+        console.log('[GPU TRACE] Updated existing trail mesh with basic line material');
+      }
+    }
+    
     // Mark as using basic materials (not custom shaders)
     this.usingBasicMaterials = true;
     
     if (DEBUG_GPU_TRACE) {
       console.log('[GPU TRACE] Using basic Three.js materials (no custom shaders)');
+      console.log('[GPU TRACE] Line-based rendering:', this.useLines);
     }
   }
   
@@ -379,18 +431,34 @@ export class GPUTraceSystem {
     this.feedbackQuad = new THREE.Mesh(feedbackGeometry, this.feedbackMaterial);
     this.feedbackScene.add(this.feedbackQuad);
     
-    // Scene for point rendering (off-screen)
+    // Scene for trail rendering (off-screen)
     this.pointScene = new THREE.Scene();
     this.pointCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     
-    // Points geometry (will be updated with midpoint positions)
-    this.pointsGeometry = new THREE.BufferGeometry();
-    // Initialize with empty attributes to prevent shader errors
-    this.pointsGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
-    this.pointsGeometry.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
-    
-    this.pointsMesh = new THREE.Points(this.pointsGeometry, this.pointMaterial);
-    this.pointScene.add(this.pointsMesh);
+    if (this.useLines) {
+      // Line geometry for smooth trails
+      this.trailGeometry = new THREE.BufferGeometry();
+      // Initialize with empty attributes to prevent shader errors
+      this.trailGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+      
+      this.trailMesh = new THREE.LineSegments(this.trailGeometry, this.lineMaterial);
+      this.pointScene.add(this.trailMesh);
+      
+      // Also keep points mesh for compatibility
+      this.pointsGeometry = new THREE.BufferGeometry();
+      this.pointsGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+      this.pointsGeometry.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
+      this.pointsMesh = new THREE.Points(this.pointsGeometry, this.pointMaterial);
+    } else {
+      // Points geometry (original behavior)
+      this.pointsGeometry = new THREE.BufferGeometry();
+      // Initialize with empty attributes to prevent shader errors
+      this.pointsGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+      this.pointsGeometry.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
+      
+      this.pointsMesh = new THREE.Points(this.pointsGeometry, this.pointMaterial);
+      this.pointScene.add(this.pointsMesh);
+    }
     
     // Scene for display rendering (on-screen)
     this.displayScene = new THREE.Scene();
@@ -437,34 +505,115 @@ export class GPUTraceSystem {
   updatePointPositions(midPoints) {
     if (!midPoints || midPoints.length === 0) {
       // Set empty geometry to avoid shader errors
-      this.pointsGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
-      this.pointsGeometry.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
+      if (this.pointsGeometry) {
+        this.pointsGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+        this.pointsGeometry.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
+      }
+      if (this.trailGeometry) {
+        this.trailGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+      }
       return;
     }
     
-    const positions = [];
-    const colors = [];
-    
-    // Use world coordinates for both basic materials and GPU trails
+    // Extract current positions
+    const currentPositions = [];
     for (const midPoint of midPoints) {
       if (midPoint && midPoint.position) {
         const x = midPoint.position.x;
         const y = midPoint.position.y;
         const z = midPoint.position.z || 0;
         
-        positions.push(x, y, z);
-        colors.push(1.0, 0.0, 1.0); // RGB for magenta
+        currentPositions.push({ x, y, z });
       }
     }
     
-    // Always update geometry, even if empty
-    this.pointsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    this.pointsGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    this.pointsGeometry.attributes.position.needsUpdate = true;
-    this.pointsGeometry.attributes.color.needsUpdate = true;
+    // Add current positions to history
+    this.positionHistory.push(currentPositions);
+    
+    // Limit history to maxHistoryFrames
+    while (this.positionHistory.length > this.maxHistoryFrames) {
+      this.positionHistory.shift();
+    }
+    
+    // Create point positions for compatibility (current frame only)
+    const positions = [];
+    const colors = [];
+    for (const pos of currentPositions) {
+      positions.push(pos.x, pos.y, pos.z);
+      colors.push(1.0, 0.0, 1.0); // RGB for magenta
+    }
+    
+    // Create line segments for long trails using position history
+    const linePositions = [];
+    
+    if (this.useLines && this.positionHistory.length > 1) {
+      // Create trails by connecting positions across multiple frames
+      const numPoints = Math.min(...this.positionHistory.map(frame => frame.length));
+      
+      for (let pointIndex = 0; pointIndex < numPoints; pointIndex++) {
+        // Create a trail for each point by connecting its positions across frames
+        for (let frameIndex = 0; frameIndex < this.positionHistory.length - 1; frameIndex++) {
+          const currentFrame = this.positionHistory[frameIndex];
+          const nextFrame = this.positionHistory[frameIndex + 1];
+          
+          if (pointIndex < currentFrame.length && pointIndex < nextFrame.length) {
+            const currentPos = currentFrame[pointIndex];
+            const nextPos = nextFrame[pointIndex];
+            
+            // Add line segment from current frame position to next frame position
+            linePositions.push(currentPos.x, currentPos.y, currentPos.z);
+            linePositions.push(nextPos.x, nextPos.y, nextPos.z);
+            
+            // Add interpolated segments for very fast movement to eliminate gaps
+            const distance = Math.sqrt(
+              Math.pow(nextPos.x - currentPos.x, 2) + 
+              Math.pow(nextPos.y - currentPos.y, 2) + 
+              Math.pow(nextPos.z - currentPos.z, 2)
+            );
+            
+            // If the distance is large, add intermediate points
+            if (distance > 10) { // Threshold for adding intermediate points
+              const steps = Math.ceil(distance / 5); // One point every 5 units
+              for (let step = 1; step < steps; step++) {
+                const t = step / steps;
+                const interpX = currentPos.x + (nextPos.x - currentPos.x) * t;
+                const interpY = currentPos.y + (nextPos.y - currentPos.y) * t;
+                const interpZ = currentPos.z + (nextPos.z - currentPos.z) * t;
+                
+                // Add line segment from previous interpolated point to current
+                const prevT = (step - 1) / steps;
+                const prevInterpX = currentPos.x + (nextPos.x - currentPos.x) * prevT;
+                const prevInterpY = currentPos.y + (nextPos.y - currentPos.y) * prevT;
+                const prevInterpZ = currentPos.z + (nextPos.z - currentPos.z) * prevT;
+                
+                linePositions.push(prevInterpX, prevInterpY, prevInterpZ);
+                linePositions.push(interpX, interpY, interpZ);
+              }
+            }
+          }
+        }
+      }
+      
+      // Update line geometry
+      if (this.trailGeometry) {
+        this.trailGeometry.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+        this.trailGeometry.attributes.position.needsUpdate = true;
+      }
+    }
+    
+    // Always update point geometry for compatibility
+    if (this.pointsGeometry) {
+      this.pointsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      this.pointsGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      this.pointsGeometry.attributes.position.needsUpdate = true;
+      this.pointsGeometry.attributes.color.needsUpdate = true;
+    }
     
     if (DEBUG_GPU_TRACE && positions.length > 0 && Math.random() < 0.1) {
       console.log('[GPU TRACE] Updated geometry with', positions.length / 3, 'points');
+      if (this.useLines) {
+        console.log('[GPU TRACE] Created', linePositions.length / 6, 'line segments from', this.positionHistory.length, 'frames of history');
+      }
       console.log('[GPU TRACE] First point world coords:', positions[0], positions[1], positions[2]);
     }
   }
@@ -666,11 +815,16 @@ export class GPUTraceSystem {
   
   /**
    * Get the points mesh for adding to the main scene (for basic materials)
-   * @returns {THREE.Points} Points mesh
+   * @returns {THREE.Points|THREE.LineSegments} Points or line mesh
    */
   getPointsMesh() {
     if (!this.initialized || !this.usingBasicMaterials) {
       return null;
+    }
+    
+    // Return the appropriate mesh based on rendering mode
+    if (this.useLines && this.trailMesh) {
+      return this.trailMesh;
     }
     
     return this.pointsMesh;
@@ -706,9 +860,16 @@ export class GPUTraceSystem {
     
     if (params.trailIntensity !== undefined) {
       this.trailIntensity = params.trailIntensity;
-      // Trail intensity can be used to modify point opacity
+      // Trail intensity can be used to modify opacity
       if (this.pointMaterial.uniforms && this.pointMaterial.uniforms.opacity) {
         this.pointMaterial.uniforms.opacity.value = this.trailIntensity;
+      } else if (this.pointMaterial.opacity !== undefined) {
+        this.pointMaterial.opacity = this.trailIntensity;
+      }
+      
+      // Also update line material if using lines
+      if (this.lineMaterial && this.lineMaterial.opacity !== undefined) {
+        this.lineMaterial.opacity = this.trailIntensity;
       }
     }
     
@@ -718,6 +879,20 @@ export class GPUTraceSystem {
         this.pointMaterial.uniforms.pointSize.value = this.pointSize;
       } else if (this.pointMaterial.size !== undefined) {
         this.pointMaterial.size = this.pointSize;
+      }
+    }
+    
+    if (params.trailLength !== undefined) {
+      this.trailLength = params.trailLength;
+      this.maxHistoryFrames = Math.max(10, Math.floor(this.trailLength / 10));
+      
+      // Trim existing history if new length is shorter
+      while (this.positionHistory.length > this.maxHistoryFrames) {
+        this.positionHistory.shift();
+      }
+      
+      if (DEBUG_GPU_TRACE) {
+        console.log('[GPU TRACE] Trail length updated to:', this.trailLength, 'frames:', this.maxHistoryFrames);
       }
     }
     
@@ -733,9 +908,29 @@ export class GPUTraceSystem {
       }
     }
     
+    if (params.color !== undefined) {
+      // Update line material color if using lines
+      if (this.lineMaterial && this.lineMaterial.color) {
+        this.lineMaterial.color.copy(params.color);
+      }
+      
+      // Update point material color if available
+      if (this.pointMaterial.color) {
+        this.pointMaterial.color.copy(params.color);
+      }
+    }
+    
     if (DEBUG_GPU_TRACE) {
       console.log('[GPU TRACE] Parameters updated:', params);
     }
+  }
+  
+  /**
+   * Set the length of pixel-perfect line trails
+   * @param {number} length Number of historical positions to keep (higher = longer trails)
+   */
+  setTrailLength(length) {
+    this.setParameters({ trailLength: length });
   }
   
   /**
@@ -749,10 +944,12 @@ export class GPUTraceSystem {
     // Dispose materials
     if (this.feedbackMaterial) this.feedbackMaterial.dispose();
     if (this.pointMaterial) this.pointMaterial.dispose();
+    if (this.lineMaterial) this.lineMaterial.dispose();
     if (this.displayMaterial) this.displayMaterial.dispose();
     
     // Dispose geometries
     if (this.pointsGeometry) this.pointsGeometry.dispose();
+    if (this.trailGeometry) this.trailGeometry.dispose();
     
     this.initialized = false;
     
