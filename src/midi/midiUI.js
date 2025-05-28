@@ -7,6 +7,7 @@ import {
   selectMidiDevice, 
   getMidiStatus,
   setMidiMicrotonalMode,
+  setMidiMTSMode,
   setMidiPitchBendRange,
   setMidiDebugMode,
   stopAllMidiNotes,
@@ -220,6 +221,29 @@ function createMicrotonalSection() {
   modeContainer.appendChild(modeHelp);
   
   section.appendChild(modeContainer);
+  
+  // MTS mode toggle
+  const mtsContainer = document.createElement('div');
+  mtsContainer.className = 'control';
+  
+  const mtsLabel = document.createElement('label');
+  mtsLabel.textContent = 'MTS Mode (MIDI Tuning Standard):';
+  mtsLabel.setAttribute('for', 'midiMTSCheckbox');
+  mtsContainer.appendChild(mtsLabel);
+  
+  const mtsCheckbox = document.createElement('input');
+  mtsCheckbox.type = 'checkbox';
+  mtsCheckbox.id = 'midiMTSCheckbox';
+  mtsCheckbox.checked = false; // Default disabled
+  mtsCheckbox.addEventListener('change', handleMTSModeChange);
+  mtsContainer.appendChild(mtsCheckbox);
+  
+  const mtsHelp = document.createElement('div');
+  mtsHelp.className = 'help-text';
+  mtsHelp.textContent = 'Uses MTS Real-time Single Note Tuning SysEx for precise frequency control (requires MTS-compatible hardware/software like Pianoteq, Kontakt, etc.)';
+  mtsContainer.appendChild(mtsHelp);
+  
+  section.appendChild(mtsContainer);
   
   // Pitch bend range
   const bendContainer = document.createElement('div');
@@ -494,6 +518,14 @@ function handleMicrotonalModeChange(event) {
 }
 
 /**
+ * Handle MTS mode change
+ */
+function handleMTSModeChange(event) {
+  const enabled = event.target.checked;
+  setMidiMTSMode(enabled);
+}
+
+/**
  * Handle pitch bend range change
  */
 function handlePitchBendRangeChange(event) {
@@ -569,6 +601,25 @@ function updateMidiStatus() {
     enableCheckbox.checked = status.isEnabled;
   }
   
+  // Update MTS checkbox and disable if SysEx not supported
+  const mtsCheckbox = document.getElementById('midiMTSCheckbox');
+  if (mtsCheckbox) {
+    mtsCheckbox.checked = status.mtsMode;
+    mtsCheckbox.disabled = !status.mtsSysExSupported;
+    
+    // Update help text to show SysEx status
+    const mtsHelp = mtsCheckbox.parentElement.querySelector('.help-text');
+    if (mtsHelp) {
+      if (status.mtsSysExSupported) {
+        mtsHelp.textContent = 'Uses MTS Real-time Single Note Tuning SysEx for precise frequency control (requires MTS-compatible hardware/software like Pianoteq, Kontakt, etc.)';
+        mtsHelp.style.color = '#888';
+      } else {
+        mtsHelp.textContent = 'SysEx not supported by browser/device - MTS mode unavailable (will use pitch bend fallback)';
+        mtsHelp.style.color = '#F44336';
+      }
+    }
+  }
+  
   // Update integration checkbox
   const integrationCheckbox = document.getElementById('midiIntegrationCheckbox');
   if (integrationCheckbox) {
@@ -601,7 +652,8 @@ function updateMidiStatus() {
       Notes Played: ${status.stats.notesPlayed}<br>
       Notes Stopped: ${status.stats.notesStopped}<br>
       Active Notes: ${status.activeNotes}<br>
-      Errors: ${status.stats.errors}
+      Errors: ${status.stats.errors}<br>
+      SysEx Support: ${status.mtsSysExSupported ? 'Yes' : 'No'}
     `;
   }
 }

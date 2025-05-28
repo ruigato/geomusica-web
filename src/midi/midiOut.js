@@ -29,6 +29,8 @@ class MidiOutManager {
     // Microtonal settings
     this.pitchBendRange = 2; // semitones (±2 semitones = ±200 cents)
     this.microtonalMode = true; // Enable microtonal compensation
+    this.mtsMode = false; // Enable MTS (MIDI Tuning Standard) mode
+    this.mtsSysExSupported = false; // Track if SysEx is supported
     
     // MIDI device settings
     this.deviceName = null;
@@ -60,7 +62,17 @@ class MidiOutManager {
         return false;
       }
       
-      this.midiAccess = await navigator.requestMIDIAccess();
+      // Request MIDI access with SysEx support
+      this.midiAccess = await navigator.requestMIDIAccess({ sysex: true });
+      
+      // Check if SysEx is actually supported
+      this.mtsSysExSupported = this.midiAccess.sysexEnabled;
+      
+      if (this.mtsSysExSupported) {
+        console.log('[MIDI OUT] SysEx support enabled - MTS mode available');
+      } else {
+        console.warn('[MIDI OUT] SysEx not supported - MTS mode will use pitch bend fallback');
+      }
       
       // Enumerate available output devices
       this.updateAvailableDevices();
@@ -85,8 +97,35 @@ class MidiOutManager {
       return true;
     } catch (error) {
       console.error('[MIDI OUT] Failed to initialize MIDI:', error);
-      this.stats.errors++;
-      return false;
+      
+      // Try again without SysEx if the first attempt failed
+      try {
+        console.log('[MIDI OUT] Retrying MIDI initialization without SysEx...');
+        this.midiAccess = await navigator.requestMIDIAccess({ sysex: false });
+        this.mtsSysExSupported = false;
+        
+        this.updateAvailableDevices();
+        this.midiAccess.onstatechange = (event) => {
+          console.log('[MIDI OUT] MIDI device state changed:', event.port.name, event.port.state);
+          this.updateAvailableDevices();
+          
+          if (event.port === this.outputDevice && event.port.state === 'disconnected') {
+            this.outputDevice = null;
+            this.isEnabled = false;
+            console.log('[MIDI OUT] Current output device disconnected');
+          }
+        };
+        
+        this.isInitialized = true;
+        console.log('[MIDI OUT] MIDI system initialized without SysEx support');
+        console.log('[MIDI OUT] Available devices:', this.availableDevices.map(d => d.name));
+        
+        return true;
+      } catch (fallbackError) {
+        console.error('[MIDI OUT] Failed to initialize MIDI even without SysEx:', fallbackError);
+        this.stats.errors++;
+        return false;
+      }
     }
   }
   
@@ -216,8 +255,24 @@ class MidiOutManager {
       const midiNote = midiData.note;
       const pitchBend = midiData.bend;
       
-      // Set pitch bend for microtonal accuracy
-      if (this.microtonalMode && Math.abs(pitchBend) > 10) {
+      // Choose microtonal method: MTS or pitch bend
+      if (this.mtsMode) {
+        // Try to use MTS SysEx for precise frequency control
+        const mtsSuccess = this.sendMTSSysEx(midiNote, frequency);
+        
+        if (!mtsSuccess) {
+          // Fall back to pitch bend if MTS failed
+          if (this.microtonalMode && Math.abs(pitchBend) > 10) {
+            this.sendPitchBend(channel, pitchBend);
+            if (this.debug) {
+              console.log(`[MIDI OUT] MTS failed, using pitch bend fallback: ${pitchBend}`);
+            }
+          }
+        } else if (this.debug) {
+          console.log(`[MIDI OUT] MTS Mode: Note ${midiNote} tuned to ${frequency.toFixed(2)}Hz`);
+        }
+      } else if (this.microtonalMode && Math.abs(pitchBend) > 10) {
+        // Use traditional pitch bend for microtonal accuracy
         this.sendPitchBend(channel, pitchBend);
       }
       
@@ -239,8 +294,8 @@ class MidiOutManager {
         this.activeNotes.delete(noteKey);
         this.stats.notesStopped++;
         
-        // Reset pitch bend after note ends (if it was bent)
-        if (this.microtonalMode && Math.abs(pitchBend) > 10) {
+        // Reset pitch bend after note ends (if it was bent and not using MTS)
+        if (!this.mtsMode && this.microtonalMode && Math.abs(pitchBend) > 10) {
           setTimeout(() => this.sendPitchBend(channel, 0), 10);
         }
       }, duration);
@@ -255,8 +310,8 @@ class MidiOutManager {
         isLayerLink
       });
       
-      // Send polyphonic aftertouch for microtonal expression
-      if (this.microtonalMode) {
+      // Send polyphonic aftertouch for microtonal expression (only if not using MTS)
+      if (!this.mtsMode && this.microtonalMode) {
         const aftertouch = this.calculateAftertouch(frequency, note);
         if (aftertouch > 0) {
           setTimeout(() => {
@@ -271,7 +326,8 @@ class MidiOutManager {
       this.stats.lastNoteTime = performance.now();
       
       if (this.debug) {
-        console.log(`[MIDI OUT] Note: ${frequency.toFixed(2)}Hz → Ch${channel} Note${midiNote} Bend${pitchBend} Vel${velocity} Dur${duration}ms`);
+        const method = this.mtsMode ? 'MTS' : (this.microtonalMode ? 'PitchBend' : 'Standard');
+        console.log(`[MIDI OUT] ${method}: ${frequency.toFixed(2)}Hz → Ch${channel} Note${midiNote} Vel${velocity} Dur${duration}ms`);
       }
       
     } catch (error) {
@@ -419,6 +475,97 @@ class MidiOutManager {
   }
   
   /**
+   * Send MTS (MIDI Tuning Standard) SysEx message for single note tuning
+   * Real-time Single Note Tuning Format: F0 7F [device ID] 08 02 [tuning program] 01 [MIDI note] [xx] [yy] [zz] F7
+   * 
+   * Frequency Encoding:
+   * - xx = semitone (MIDI note number to retune to, unit is 100 cents)
+   * - yy = MSB of fractional part (1/128 semitone = 0.78125 cent units)
+   * - zz = LSB of fractional part (1/16384 semitone = 0.006103515625 cent units)
+   * 
+   * Example: 535 Hz → 72.384 semitones → xx=72, yy=49, zz=26
+   * 
+   * @param {number} midiNote - MIDI note number (0-127) to retune
+   * @param {number} frequency - Target frequency in Hz
+   * @param {number} deviceId - MIDI device ID (default: 0x00 for device 0)
+   * @param {number} tuningProgram - Tuning program number (default: 0)
+   * @returns {boolean} True if SysEx was sent successfully, false if fallback needed
+   */
+  sendMTSSysEx(midiNote, frequency, deviceId = 0x00, tuningProgram = 0) {
+    if (!this.outputDevice) return false;
+    
+    // Check if SysEx is supported
+    if (!this.mtsSysExSupported) {
+      if (this.debug) {
+        console.log('[MIDI OUT] SysEx not supported, skipping MTS message');
+      }
+      return false;
+    }
+    
+    try {
+      // Calculate target semitone from frequency
+      // Formula: semitone = 69 + 12 * log2(frequency / 440)
+      const targetSemitone = 69 + 12 * Math.log2(frequency / 440);
+      
+      // Split into integer and fractional parts
+      const xx = Math.floor(targetSemitone); // Semitone part (MIDI note number to retune to)
+      const fractionalSemitones = targetSemitone - xx; // Fractional part in semitones
+      
+      // Convert fractional part to cents (1 semitone = 100 cents)
+      const fractionalCents = fractionalSemitones * 100;
+      
+      // Calculate yy and zz values according to MTS specification
+      // yy = MSB of fractional part (1/128 semitone = 0.78125 cent units)
+      // zz = LSB of fractional part (1/16384 semitone = 0.006103515625 cent units)
+      const yy = Math.floor(fractionalCents / 0.78125);
+      const remainingCents = fractionalCents - (yy * 0.78125);
+      const zz = Math.floor(remainingCents / 0.006103515625); // 1/16384 semitone
+      
+      // Clamp values to valid 7-bit range
+      const xxClamped = Math.max(0, Math.min(127, xx));
+      const yyClamped = Math.max(0, Math.min(127, yy));
+      const zzClamped = Math.max(0, Math.min(127, zz));
+      
+      // Construct MTS Real-time Single Note Tuning SysEx message
+      const sysExMessage = [
+        0xF0,           // SysEx start
+        0x7F,           // Universal Real-Time (not 0x7E!)
+        deviceId,       // Device ID
+        0x08,           // MIDI Tuning Standard
+        0x02,           // Real-time Single Note Tuning Change
+        tuningProgram,  // Tuning program number
+        0x01,           // Number of notes being changed (1 for single note)
+        midiNote,       // MIDI note number to retune
+        xxClamped,      // Semitone (MIDI note number to retune to)
+        yyClamped,      // MSB of fractional part
+        zzClamped,      // LSB of fractional part
+        0xF7            // SysEx end
+      ];
+      
+      // Send the SysEx message
+      this.outputDevice.send(sysExMessage);
+      
+      if (this.debug) {
+        console.log(`[MIDI OUT] MTS SysEx: Note ${midiNote} → ${frequency.toFixed(2)}Hz`);
+        console.log(`[MIDI OUT] Target semitone: ${targetSemitone.toFixed(4)} (xx:${xxClamped}, yy:${yyClamped}, zz:${zzClamped})`);
+        console.log(`[MIDI OUT] SysEx: ${sysExMessage.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ')}`);
+      }
+      
+      return true;
+      
+    } catch (error) {
+      console.error('[MIDI OUT] Error sending MTS SysEx:', error);
+      console.warn('[MIDI OUT] SysEx not supported by browser/device - falling back to pitch bend');
+      
+      // Disable MTS mode to prevent further errors
+      this.mtsMode = false;
+      this.mtsSysExSupported = false;
+      
+      return false;
+    }
+  }
+  
+  /**
    * Stop all notes on all channels
    */
   stopAllNotes() {
@@ -459,6 +606,32 @@ class MidiOutManager {
   }
   
   /**
+   * Set MTS (MIDI Tuning Standard) mode
+   * @param {boolean} enabled - Enable MTS mode for precise frequency control
+   */
+  setMTSMode(enabled) {
+    if (enabled && !this.mtsSysExSupported) {
+      console.warn('[MIDI OUT] Cannot enable MTS mode: SysEx not supported by browser/device');
+      console.warn('[MIDI OUT] MTS mode requires SysEx support. Will use pitch bend fallback instead.');
+      this.mtsMode = false;
+      return;
+    }
+    
+    this.mtsMode = enabled;
+    console.log(`[MIDI OUT] MTS mode ${enabled ? 'enabled' : 'disabled'}`);
+    
+    if (enabled) {
+      console.log('[MIDI OUT] MTS mode enabled - using SysEx messages for precise frequency control');
+      console.log('[MIDI OUT] Note: MTS mode requires compatible hardware/software (e.g., Pianoteq)');
+    } else {
+      // Reset all pitch bends to center when switching back to pitch bend mode
+      for (let channel = 1; channel <= 16; channel++) {
+        this.sendPitchBend(channel, 0);
+      }
+    }
+  }
+  
+  /**
    * Set pitch bend range for microtonal accuracy
    * @param {number} semitones - Pitch bend range in semitones (1-12)
    */
@@ -486,6 +659,8 @@ class MidiOutManager {
       availableDevices: this.availableDevices,
       activeNotes: this.activeNotes.size,
       microtonalMode: this.microtonalMode,
+      mtsMode: this.mtsMode,
+      mtsSysExSupported: this.mtsSysExSupported,
       pitchBendRange: this.pitchBendRange,
       stats: {
         ...this.stats,
@@ -544,6 +719,10 @@ export function setMidiMicrotonalMode(enabled) {
   midiOutManager.setMicrotonalMode(enabled);
 }
 
+export function setMidiMTSMode(enabled) {
+  midiOutManager.setMTSMode(enabled);
+}
+
 export function setMidiPitchBendRange(semitones) {
   midiOutManager.setPitchBendRange(semitones);
 }
@@ -567,6 +746,7 @@ if (typeof window !== 'undefined') {
   window.playMidiNote = playMidiNote;
   window.stopAllMidiNotes = stopAllMidiNotes;
   window.setMidiMicrotonalMode = setMidiMicrotonalMode;
+  window.setMidiMTSMode = setMidiMTSMode;
   window.setMidiPitchBendRange = setMidiPitchBendRange;
   window.setMidiDebugMode = setMidiDebugMode;
 }

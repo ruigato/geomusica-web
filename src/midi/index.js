@@ -217,6 +217,11 @@ export async function setMidiMicrotonalMode(enabled) {
   return setMidiMicrotonalMode(enabled);
 }
 
+export async function setMidiMTSMode(enabled) {
+  const { setMidiMTSMode } = await import('./midiOut.js');
+  return setMidiMTSMode(enabled);
+}
+
 export async function setMidiPitchBendRange(semitones) {
   const { setMidiPitchBendRange } = await import('./midiOut.js');
   return setMidiPitchBendRange(semitones);
