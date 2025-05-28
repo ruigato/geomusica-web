@@ -17,6 +17,113 @@ const TARGET_FPS = 120; // Target 120 FPS for better trigger detection
 const MIN_FRAME_TIME = 1 / TARGET_FPS;
 const MAX_FRAME_TIME = MIN_FRAME_TIME * 2;
 
+// Animation Worker for background-resistant timing
+let animationWorker = null;
+let animationProps = null;
+
+/**
+ * Initialize the animation worker for background-resistant animation
+ */
+function initializeAnimationWorker() {
+  if (animationWorker) {
+    animationWorker.terminate();
+  }
+  
+  // Create a Web Worker for animation timing that won't be throttled
+  const workerCode = `
+    let intervalId = null;
+    const TARGET_FPS = 120;
+    const frameTime = 1000 / TARGET_FPS; // ~8.33ms for 120 FPS
+    
+    function startAnimation() {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      
+      intervalId = setInterval(() => {
+        self.postMessage({
+          type: 'animationFrame',
+          timestamp: performance.now()
+        });
+      }, frameTime);
+      
+      console.log('[ANIMATION WORKER] Started at', TARGET_FPS, 'FPS');
+    }
+    
+    function stopAnimation() {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+      console.log('[ANIMATION WORKER] Stopped');
+    }
+    
+    self.onmessage = function(e) {
+      switch(e.data.type) {
+        case 'start':
+          startAnimation();
+          break;
+        case 'stop':
+          stopAnimation();
+          break;
+        case 'setFPS':
+          const newFPS = e.data.fps || TARGET_FPS;
+          const newFrameTime = 1000 / newFPS;
+          if (intervalId) {
+            stopAnimation();
+            setTimeout(startAnimation, 0);
+          }
+          break;
+      }
+    };
+    
+    // Start immediately
+    startAnimation();
+  `;
+  
+  try {
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    animationWorker = new Worker(URL.createObjectURL(blob));
+    
+    animationWorker.onmessage = (e) => {
+      if (e.data.type === 'animationFrame' && animationProps) {
+        // Trigger the actual animation frame
+        animateFrame(animationProps);
+      }
+    };
+    
+    animationWorker.onerror = (error) => {
+      console.error('[ANIMATION WORKER] Error:', error);
+      // Fallback to setTimeout if worker fails
+      fallbackToSetTimeout();
+    };
+    
+    console.log('[ANIMATION] Using Web Worker for background-resistant animation');
+    return true;
+  } catch (error) {
+    console.error('[ANIMATION WORKER] Failed to create:', error);
+    fallbackToSetTimeout();
+    return false;
+  }
+}
+
+/**
+ * Fallback to setTimeout-based animation if Web Worker fails
+ */
+function fallbackToSetTimeout() {
+  console.warn('[ANIMATION] Falling back to setTimeout-based animation');
+  
+  function timeoutLoop() {
+    if (animationProps) {
+      animateFrame(animationProps);
+      const targetFrameTime = 1000 / TARGET_FPS;
+      setTimeout(timeoutLoop, targetFrameTime);
+    }
+  }
+  
+  timeoutLoop();
+}
+
 /**
  * Get current time safely, falling back to performance timing if audio timing isn't ready
  * @returns {number} Current time in seconds
@@ -34,6 +141,28 @@ function getSafeTime() {
  * @param {Object} props Animation properties and dependencies
  */
 export function animate(props) {
+  // Store props for the worker to use
+  animationProps = props;
+  
+  // Initialize the animation worker for background-resistant timing
+  const workerInitialized = initializeAnimationWorker();
+  
+  if (!workerInitialized) {
+    console.warn('[ANIMATION] Worker initialization failed, using fallback');
+  }
+  
+  // Initialize trigger system
+  resetTriggerSystem();
+  lastAudioTime = getSafeTime();
+  
+  console.log('[ANIMATION] Animation system started with background-resistant timing');
+}
+
+/**
+ * Core animation frame logic - called by either worker or setTimeout
+ * @param {Object} props Animation properties and dependencies
+ */
+function animateFrame(props) {
   const { 
     scene, 
     cam, 
@@ -43,12 +172,6 @@ export function animate(props) {
     globalState,
     stats 
   } = props;
-  
-  // Initialize trigger system on first frame
-  if (frameCount === 0) {
-    resetTriggerSystem();
-    lastAudioTime = getSafeTime(); // Initialize with safe time
-  }
   
   // IMPORTANT: Set camera and renderer in scene userData at the very beginning
   // This ensures they're available throughout the entire frame
@@ -67,11 +190,6 @@ export function animate(props) {
       });
     }
   }
-  
-  // Use setTimeout instead of requestAnimationFrame to avoid focus-based throttling
-  // Target ~120 FPS (8.33ms) but allow browser to optimize
-  const targetFrameTime = 1000 / TARGET_FPS; // ~8.33ms for 120 FPS
-  setTimeout(() => animate(props), targetFrameTime);
   
   // CRITICAL FIX: Increment frameCount BEFORE any early returns
   frameCount++;
@@ -288,4 +406,41 @@ export function animate(props) {
   if (stats) {
     stats.end();
   }
+}
+
+/**
+ * Stop the animation system and clean up resources
+ */
+export function stopAnimation() {
+  if (animationWorker) {
+    animationWorker.postMessage({ type: 'stop' });
+    animationWorker.terminate();
+    animationWorker = null;
+  }
+  
+  animationProps = null;
+  console.log('[ANIMATION] Animation system stopped');
+}
+
+/**
+ * Set animation FPS (for testing purposes)
+ * @param {number} fps Target frames per second
+ */
+export function setAnimationFPS(fps) {
+  if (animationWorker) {
+    animationWorker.postMessage({ type: 'setFPS', fps: fps });
+    console.log(`[ANIMATION] FPS set to ${fps}`);
+  }
+}
+
+// Make functions available globally for debugging
+if (typeof window !== 'undefined') {
+  window.stopAnimation = stopAnimation;
+  window.setAnimationFPS = setAnimationFPS;
+  window.getAnimationStats = () => ({
+    frameCount,
+    fpsStats,
+    workerActive: !!animationWorker,
+    lastAudioTime
+  });
 }
