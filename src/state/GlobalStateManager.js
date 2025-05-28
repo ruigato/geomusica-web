@@ -144,8 +144,7 @@ export class GlobalStateManager {
     // Calculate elapsed time using audio time
     const elapsedTime = currentTime - this._layerTimingSystem.lastUpdateTime;
     
-    // FIXED: Always update angles even if this is the first access for this layer
-    // to maintain continuous rotation using audio timing
+    // FIXED: Always update the base angle to maintain continuous rotation using audio timing
     if (elapsedTime > 0) {
       // Calculate base rotation (degrees) based on BPM
       // 120 BPM = 0.5 rotations per second = 180 degrees per second
@@ -155,37 +154,36 @@ export class GlobalStateManager {
       // Update the base angle
       this._layerTimingSystem.baseAngle = (this._layerTimingSystem.baseAngle + baseDeltaAngleDegrees) % 360;
       
-      // Update all layer angles with their respective multipliers
-      for (const [id, multiplier] of this._layerTimingSystem.layerMultipliers.entries()) {
-        // Get current accumulated angle for this layer (or initialize it)
-        const currentAngle = this._layerTimingSystem.accumulatedAngles.get(id) || this._layerTimingSystem.baseAngle;
-        
-        // Calculate new angle with this layer's multiplier
-        const newAngle = (currentAngle + (baseDeltaAngleDegrees * multiplier)) % 360;
-        
-        // Store the new accumulated angle
-        this._layerTimingSystem.accumulatedAngles.set(id, newAngle);
-      }
-      
       // Update the last update time using audio time
       this._layerTimingSystem.lastUpdateTime = currentTime;
     }
     
-    // Get the accumulated angle for this specific layer
-    let layerAngle = this._layerTimingSystem.accumulatedAngles.get(layerId);
+    // NEW APPROACH: Calculate layer angle based on transport time and subdivision
+    // This ensures layers stay in sync when subdivision changes (with jumps)
     
-    // FIXED: If this is the first time for this layer, initialize it based on the base angle
-    // but avoid causing a jump in animation by using the current base angle
-    if (layerAngle === undefined) {
-      layerAngle = this._layerTimingSystem.baseAngle;
-      this._layerTimingSystem.accumulatedAngles.set(layerId, layerAngle);
-    }
+    // Calculate the current transport position in measures
+    const rotationsPerSecond = this.bpm / 240; // 120 BPM = 0.5 rotations per second
+    const totalRotations = currentTime * rotationsPerSecond;
     
+    // Apply time subdivision to the transport position
+    // For subdivision values:
+    // - 1x = normal speed (1 full revolution per 2 seconds at 120 BPM)
+    // - 2x = double speed (2 full revolutions per 2 seconds at 120 BPM)
+    // - 0.5x = half speed (0.5 full revolutions per 2 seconds at 120 BPM)
+    const subdivisionMultiplier = timeSubdivisionValue || 1;
+    const subdivisionRotations = totalRotations * subdivisionMultiplier;
+    
+    // Convert to degrees and normalize to 0-360
+    const layerAngleDegrees = (subdivisionRotations * 360) % 360;
+    
+    // Store the calculated angle for this layer
+    this._layerTimingSystem.accumulatedAngles.set(layerId, layerAngleDegrees);
+
     // Convert from degrees to radians for the return value
-    const angleRadians = (layerAngle * Math.PI) / 180;
-    
+    const angleRadians = (layerAngleDegrees * Math.PI) / 180;
+
     return {
-      angleDegrees: layerAngle,
+      angleDegrees: layerAngleDegrees,
       angleRadians: angleRadians,
       baseAngleDegrees: this._layerTimingSystem.baseAngle,
       lastUpdateTime: this._layerTimingSystem.lastUpdateTime,

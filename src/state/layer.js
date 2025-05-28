@@ -967,18 +967,26 @@ export class Layer {
       
       const currentTime = getSafeTime();
       
-      // Default to a slow rotation (45 degrees per second)
-      const lastUpdateTime = this.lastUpdateTime || (currentTime - 0.016);
-      const deltaTime = currentTime - lastUpdateTime;
-      const rotationSpeed = Math.PI / 4; // 45 degrees per second
+      // NEW APPROACH: Use transport-based calculation even in fallback
+      // This ensures consistency with the main timing system
       
-      // Check if time subdivision should be applied to this fallback
+      // Default BPM for fallback (can be overridden by state if available)
+      const fallbackBPM = this.state?.bpm || 120;
+      
+      // Calculate rotations per second based on BPM
+      // 120 BPM = 0.5 rotations per second (1 full revolution per 2 seconds)
+      const rotationsPerSecond = fallbackBPM / 240;
+      const totalRotations = currentTime * rotationsPerSecond;
+      
+      // Apply time subdivision to the transport position
+      let subdivisionRotations = totalRotations;
       if (this.state && this.state.useTimeSubdivision && this.state.timeSubdivisionValue !== 1) {
-        const multiplier = this.state.timeSubdivisionValue;
-        this.currentAngle = (this.currentAngle || 0) + rotationSpeed * deltaTime * multiplier;
-      } else {
-        this.currentAngle = (this.currentAngle || 0) + rotationSpeed * deltaTime;
+        const subdivisionValue = this.state.timeSubdivisionValue;
+        subdivisionRotations = totalRotations * subdivisionValue;
       }
+      
+      // Convert to radians and normalize to 0-2π
+      this.currentAngle = (subdivisionRotations * 2 * Math.PI) % (2 * Math.PI);
     }
     
     // Store the time for future delta calculations

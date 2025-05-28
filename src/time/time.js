@@ -464,8 +464,10 @@ export function applyTimeSubdivision(measureCount, subdivisionValue, useSubdivis
     return measureCount % 1;
   }
   
-  const moduloResult = measureCount % subdivisionValue;
-  return moduloResult / subdivisionValue;
+  // NEW APPROACH: Apply subdivision to the transport time directly
+  // This ensures sync when subdivision changes (with jumps)
+  const subdivisionMeasures = measureCount * subdivisionValue;
+  return subdivisionMeasures % 1;
 }
 
 /**
@@ -486,8 +488,24 @@ export function timeToRotation(normalizedTime) {
  */
 export function calculateRotation(bpm, subdivisionValue, useSubdivision) {
   const currentTime = getCurrentTime();
-  const measureCount = getCurrentMeasures(bpm);
-  const normalizedTime = applyTimeSubdivision(measureCount, subdivisionValue, useSubdivision);
+  
+  // NEW APPROACH: Calculate rotation directly from transport time and subdivision
+  // This ensures layers stay in sync when subdivision changes (with jumps)
+  
+  // Calculate rotations per second based on BPM
+  // 120 BPM = 0.5 rotations per second (1 full revolution per 2 seconds)
+  const rotationsPerSecond = bpm / 240;
+  const totalRotations = currentTime * rotationsPerSecond;
+  
+  // Apply time subdivision to the transport position
+  let subdivisionRotations = totalRotations;
+  if (useSubdivision && subdivisionValue) {
+    subdivisionRotations = totalRotations * subdivisionValue;
+  }
+  
+  // Get the fractional part (0-1) for one complete rotation
+  const normalizedTime = subdivisionRotations % 1;
+  
   return timeToRotation(normalizedTime);
 }
 
