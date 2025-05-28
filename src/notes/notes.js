@@ -85,9 +85,8 @@ export function createNote(triggerData, state) {
   // Calculate velocity based on selected mode and parameters
   const velocity = calculateVelocity(pointIndex, state);
   
-  // Calculate pan (stereo position) based on angle
-  const angRad = angle % (2 * Math.PI);
-  const pan = Math.sin(angRad);
+  // Calculate pan (stereo position) - removed auto panning, now fixed to center
+  const pan = 0; // Fixed center position instead of Math.sin(angRad)
   
   // Create parameter info object with safe defaults
   const parameterInfo = {
