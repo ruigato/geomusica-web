@@ -268,6 +268,11 @@ export function animate(props) {
   if (scene._layerManager) {
     // Import and update layer link manager
     import('../geometry/layerLink.js').then(module => {
+      // Set renderer reference for GPU trace initialization
+      if (!module.layerLinkManager.renderer) {
+        module.layerLinkManager.setRenderer(renderer);
+      }
+      
       module.layerLinkManager.update(scene._layerManager);
     }).catch(error => {
       // Silently ignore if layer link module is not available

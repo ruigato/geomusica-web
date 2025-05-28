@@ -1608,9 +1608,9 @@ function detectLayerLinkTriggers(layer, audioTime, audioCallback, camera, render
       // Get mid-point triggers from the layer link manager
       const midPointTriggers = linkManager.getMidPointTriggers();
       
-      if (Math.random() < 0.01) { // Log occasionally
-        console.log(`[LAYER LINK] Found ${midPointTriggers ? midPointTriggers.length : 0} mid-point triggers for layer ${layer.id}`);
-      }
+      // if (Math.random() < 0.01) { // Log occasionally
+      //   console.log(`[LAYER LINK] Found ${midPointTriggers ? midPointTriggers.length : 0} mid-point triggers for layer ${layer.id}`);
+      // }
       
       if (!midPointTriggers || midPointTriggers.length === 0) {
         return false;
@@ -1648,23 +1648,23 @@ function detectLayerLinkTriggers(layer, audioTime, audioCallback, camera, render
         // Check for axis crossings using the correct method
         const crossingResult = subframeEngine.detectCrossing(triggerId, DEFAULT_COOLDOWN_TIME);
         
-        // Enhanced debug logging for layer link triggers
-        if (Math.random() < 0.005) { // Log occasionally to avoid spam
-          console.log(`[LAYER LINK DEBUG] Link ${linkIndex}: pos(${x.toFixed(1)}, ${y.toFixed(1)}) crossing: ${crossingResult.hasCrossed} ID: ${triggerId}`);
-          
-          // Show precision improvement when crossing detected
-          if (crossingResult.hasCrossed) {
-            const preciseX = crossingResult.position.x;
-            const preciseY = crossingResult.position.y;
-            const positionDiff = Math.sqrt((x - preciseX) ** 2 + (y - preciseY) ** 2);
-            console.log(`[LAYER LINK PRECISION] Raw: (${x.toFixed(2)}, ${y.toFixed(2)}) -> Precise: (${preciseX.toFixed(2)}, ${preciseY.toFixed(2)}) diff: ${positionDiff.toFixed(2)} factor: ${crossingResult.crossingFactor.toFixed(3)}`);
-          }
-          
-          // Check if we're close to the Y-axis
-          if (Math.abs(x) < 50) {
-            console.log(`[LAYER LINK DEBUG] Near Y-axis! x=${x.toFixed(1)}, y=${y.toFixed(1)}`);
-          }
-        }
+        // Enhanced debug logging for layer link triggers - DISABLED
+        // if (Math.random() < 0.005) { // Log occasionally to avoid spam
+        //   console.log(`[LAYER LINK DEBUG] Link ${linkIndex}: pos(${x.toFixed(1)}, ${y.toFixed(1)}) crossing: ${crossingResult.hasCrossed} ID: ${triggerId}`);
+        //   
+        //   // Show precision improvement when crossing detected
+        //   if (crossingResult.hasCrossed) {
+        //     const preciseX = crossingResult.position.x;
+        //     const preciseY = crossingResult.position.y;
+        //     const positionDiff = Math.sqrt((x - preciseX) ** 2 + (y - preciseY) ** 2);
+        //     console.log(`[LAYER LINK PRECISION] Raw: (${x.toFixed(2)}, ${y.toFixed(2)}) -> Precise: (${preciseX.toFixed(2)}, ${preciseY.toFixed(2)}) diff: ${positionDiff.toFixed(2)} factor: ${crossingResult.crossingFactor.toFixed(3)}`);
+        //   }
+        //   
+        //   // Check if we're close to the Y-axis
+        //   if (Math.abs(x) < 50) {
+        //     console.log(`[LAYER LINK DEBUG] Near Y-axis! x=${x.toFixed(1)}, y=${y.toFixed(1)}`);
+        //   }
+        // }
         
         if (crossingResult && crossingResult.hasCrossed) {
           // Use the precise crossing position from subframe detection
@@ -1720,9 +1720,9 @@ function detectLayerLinkTriggers(layer, audioTime, audioCallback, camera, render
             );
           }
           
-          if (DEBUG_LOGGING) {
-            console.log(`[LAYER LINK] Trigger detected: raw(${x.toFixed(2)}, ${y.toFixed(2)}) -> precise(${preciseX.toFixed(2)}, ${preciseY.toFixed(2)}) link ${linkIndex} time=${crossingResult.exactTime.toFixed(4)}`);
-          }
+          // if (DEBUG_LOGGING) {
+          //   console.log(`[LAYER LINK] Trigger detected: raw(${x.toFixed(2)}, ${y.toFixed(2)}) -> precise(${preciseX.toFixed(2)}, ${preciseY.toFixed(2)}) link ${linkIndex} time=${crossingResult.exactTime.toFixed(4)}`);
+          // }
           
           anyTriggers = true;
         }
