@@ -898,6 +898,46 @@ async function initializeApplication() {
         } catch (error) {
           console.warn('[MAIN] MIDI system not available:', error.message);
         }
+
+        // Initialize OSC system after MIDI is set up
+        try {
+          const { initializeOSC } = await import('./osc/oscManager.js');
+          const { initializeOSCUI } = await import('./osc/oscUIIntegration.js');
+          
+          console.log('[MAIN] Initializing OSC system...');
+          
+          // Initialize OSC UI integration first (patches UI controls)
+          initializeOSCUI();
+          console.log('[MAIN] OSC UI integration initialized');
+          
+          // Try to initialize OSC connections (may fail if bridge server is not running)
+          try {
+            const oscResult = await initializeOSC();
+            if (oscResult) {
+              console.log('[MAIN] OSC system initialized successfully');
+              console.log('[MAIN] OSC IN: localhost:13245, OSC OUT: localhost:53421');
+              console.log('[MAIN] Make sure to run the OSC bridge server: cd osc-bridge && npm start');
+            } else {
+              console.warn('[MAIN] OSC system initialization failed - bridge server may not be running');
+            }
+          } catch (oscError) {
+            console.warn('[MAIN] OSC connections failed (bridge server not running?):', oscError.message);
+            console.log('[MAIN] OSC UI integration is still active for when bridge server becomes available');
+          }
+          
+          // Make OSC functions available globally for debugging
+          window.testOSC = async (message = '/G01/Radius 200') => {
+            console.log('[OSC DEBUG] Testing message:', message);
+            if (window.oscManager) {
+              window.oscManager.handleOSCMessage(message);
+            } else {
+              console.warn('[OSC DEBUG] OSC manager not available');
+            }
+          };
+          
+        } catch (error) {
+          console.warn('[MAIN] OSC system not available:', error.message);
+        }
         
         // Start animation after timing verification is complete
         animate({
