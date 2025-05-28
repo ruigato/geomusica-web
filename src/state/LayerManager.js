@@ -1170,4 +1170,252 @@ export class LayerManager {
       console.error('Error applying sine wave colors:', error);
     }
   }
+
+  /**
+   * Reset all layers to their default configurations
+   * This recreates the default layer setup with 3 layers: triangle, square, pentagon
+   */
+  resetAllLayersToDefaults() {
+    if (DEBUG_LOGGING) {
+      console.log('[LayerManager] Resetting all layers to defaults');
+    }
+
+    // Clear existing layers except keep the structure
+    this.layers.forEach(layer => {
+      if (layer.group && layer.group.parent) {
+        layer.group.parent.remove(layer.group);
+      }
+      if (layer.baseGeo && layer.baseGeo.dispose) {
+        layer.baseGeo.dispose();
+      }
+    });
+    
+    // Clear the layers array
+    this.layers = [];
+    
+    // Clear the layer container
+    this.layerContainer.clear();
+    
+    // Recreate the default layers as defined in createDefaultLayers
+    
+    // Create the first layer (triangle)
+    const layer0 = this.createLayer({
+      visible: true,
+      radius: 200,
+      segments: 3,  // Triangle
+      copies: 3
+    });
+    
+    // Configure first layer with all default values
+    layer0.state.copies = 3;
+    layer0.state.segments = 3;
+    layer0.state.radius = 80;
+    layer0.state.stepScale = 1.5;
+    layer0.state.angle = 0;
+    layer0.state.startingAngle = 0;
+    
+    // Reset all other state properties to defaults
+    this.resetLayerStateToDefaults(layer0.state);
+    
+    layer0.setColor(new THREE.Color(0x00ff00)); // Green
+    
+    // Force parameter changes to update for layer 0
+    layer0.state.parameterChanges.copies = true;
+    layer0.state.parameterChanges.segments = true;
+    layer0.state.parameterChanges.radius = true;
+    layer0.state.parameterChanges.stepScale = true;
+    
+    // Create the second layer (square)
+    const layer1 = this.createLayer({
+      visible: true,
+      radius: 180,
+      segments: 4,  // Square
+      copies: 4
+    });
+    
+    // Configure second layer with all default values
+    layer1.state.copies = 4;
+    layer1.state.segments = 4;
+    layer1.state.radius = 180;
+    layer1.state.stepScale = 1.3;
+    layer1.state.angle = 0;
+    layer1.state.startingAngle = 0;
+    
+    // Reset all other state properties to defaults
+    this.resetLayerStateToDefaults(layer1.state);
+    
+    layer1.setColor(new THREE.Color(0x0088ff)); // Blue
+    
+    // Force parameter changes to update for layer 1
+    layer1.state.parameterChanges.copies = true;
+    layer1.state.parameterChanges.segments = true;
+    layer1.state.parameterChanges.radius = true;
+    layer1.state.parameterChanges.stepScale = true;
+    
+    // Create the third layer (pentagon)
+    const layer2 = this.createLayer({
+      visible: true,
+      radius: 160,
+      segments: 5,  // Pentagon
+      copies: 5
+    });
+    
+    // Configure third layer with all default values
+    layer2.state.copies = 5;
+    layer2.state.segments = 5;
+    layer2.state.radius = 160;
+    layer2.state.stepScale = 1.2;
+    layer2.state.angle = 0;
+    layer2.state.startingAngle = 0;
+    
+    // Reset all other state properties to defaults
+    this.resetLayerStateToDefaults(layer2.state);
+    
+    layer2.setColor(new THREE.Color(0xff5500)); // Orange
+    
+    // Force parameter changes to update for layer 2
+    layer2.state.parameterChanges.copies = true;
+    layer2.state.parameterChanges.segments = true;
+    layer2.state.parameterChanges.radius = true;
+    layer2.state.parameterChanges.stepScale = true;
+    
+    // Set the first layer as active
+    this.setActiveLayer(0);
+    
+    // Ensure visibility of all layers
+    layer0.setVisible(true);
+    layer1.setVisible(true);
+    layer2.setVisible(true);
+    
+    // Force UI update to reflect the reset
+    if (typeof window.syncStateAcrossSystems === 'function') {
+      window.syncStateAcrossSystems(true);
+    }
+    
+    // Update layer UI if it exists
+    if (typeof window.updateLayerButtons === 'function') {
+      window.updateLayerButtons(this);
+    }
+    
+    if (DEBUG_LOGGING) {
+      console.log('[LayerManager] Reset complete - created 3 default layers');
+    }
+    
+    return true;
+  }
+
+  /**
+   * Reset a layer's state to default values
+   * @param {Object} state The layer state to reset
+   */
+  resetLayerStateToDefaults(state) {
+    // Define fallback default values in case import fails
+    const fallbackDefaults = {
+      DELETE_MIN: 1,
+      DELETE_MAX: 4,
+      DELETE_SEED: 0,
+      DELETE_MODE: 'pattern',
+      DELETE_TARGET: 'points',
+      MODULUS_VALUE: 2,
+      TIME_SUBDIVISION_VALUE: 1,
+      QUANTIZATION_VALUE: 4,
+      ALT_SCALE: 1.0,
+      ALT_STEP_N: 2,
+      LERP_TIME: 1.0,
+      SHOW_AXIS_FREQ_LABELS: false,
+      SHOW_POINTS_FREQ_LABELS: false
+    };
+
+    // Reset all boolean flags to false
+    state.useFractal = false;
+    state.useEuclid = false;
+    state.useStars = false;
+    state.useDelete = false;
+    state.useCuts = false;
+    state.useTesselation = false;
+    state.useModulus = false;
+    state.useTimeSubdivision = false;
+    state.useQuantization = false;
+    state.useAltScale = false;
+    state.useLerp = false;
+    state.useIntersections = false;
+    state.usePlainIntersections = false;
+    
+    // Reset numeric values to defaults (using fallbacks first)
+    state.fractalValue = 1;
+    state.euclidValue = 3;
+    state.starSkip = 1;
+    state.deleteMin = fallbackDefaults.DELETE_MIN;
+    state.deleteMax = fallbackDefaults.DELETE_MAX;
+    state.deleteSeed = fallbackDefaults.DELETE_SEED;
+    state.deleteMode = fallbackDefaults.DELETE_MODE;
+    state.deleteTarget = fallbackDefaults.DELETE_TARGET;
+    state.modulusValue = fallbackDefaults.MODULUS_VALUE;
+    state.timeSubdivisionValue = fallbackDefaults.TIME_SUBDIVISION_VALUE;
+    state.quantizationValue = fallbackDefaults.QUANTIZATION_VALUE;
+    state.altScale = fallbackDefaults.ALT_SCALE;
+    state.altStepN = fallbackDefaults.ALT_STEP_N;
+    state.lerpTime = fallbackDefaults.LERP_TIME;
+    
+    // Reset duration and velocity parameters
+    state.durationMode = 'modulo';
+    state.durationModulo = 3;
+    state.minDuration = 0.1;
+    state.maxDuration = 0.5;
+    state.velocityMode = 'modulo';
+    state.velocityModulo = 4;
+    state.minVelocity = 0.3;
+    state.maxVelocity = 0.9;
+    
+    // Reset shape type
+    state.shapeType = 'regular';
+    state.forceRegularStarPolygon = false;
+    
+    // Reset frequency label settings
+    state.showAxisFreqLabels = fallbackDefaults.SHOW_AXIS_FREQ_LABELS;
+    state.showPointsFreqLabels = fallbackDefaults.SHOW_POINTS_FREQ_LABELS;
+    
+    // Clear arrays and sets
+    state.lastTrig = new Set();
+    state.markers = [];
+    state.pointFreqLabels = [];
+    state.intersectionPoints = [];
+    
+    // Reset flags
+    state.needsIntersectionUpdate = false;
+    state.needsPointFreqLabelsUpdate = false;
+    state.justCalculatedIntersections = false;
+    state.debug = false;
+    
+    // Reset all parameter change flags
+    if (typeof state.resetParameterChanges === 'function') {
+      state.resetParameterChanges();
+    }
+
+    // Try to import DEFAULT_VALUES to override with actual defaults
+    import('../config/constants.js').then(({ DEFAULT_VALUES }) => {
+      // Override with actual default values if available
+      state.deleteMin = DEFAULT_VALUES.DELETE_MIN || fallbackDefaults.DELETE_MIN;
+      state.deleteMax = DEFAULT_VALUES.DELETE_MAX || fallbackDefaults.DELETE_MAX;
+      state.deleteSeed = DEFAULT_VALUES.DELETE_SEED || fallbackDefaults.DELETE_SEED;
+      state.deleteMode = DEFAULT_VALUES.DELETE_MODE || fallbackDefaults.DELETE_MODE;
+      state.deleteTarget = DEFAULT_VALUES.DELETE_TARGET || fallbackDefaults.DELETE_TARGET;
+      state.modulusValue = DEFAULT_VALUES.MODULUS_VALUE || fallbackDefaults.MODULUS_VALUE;
+      state.timeSubdivisionValue = DEFAULT_VALUES.TIME_SUBDIVISION_VALUE || fallbackDefaults.TIME_SUBDIVISION_VALUE;
+      state.quantizationValue = DEFAULT_VALUES.QUANTIZATION_VALUE || fallbackDefaults.QUANTIZATION_VALUE;
+      state.altScale = DEFAULT_VALUES.ALT_SCALE || fallbackDefaults.ALT_SCALE;
+      state.altStepN = DEFAULT_VALUES.ALT_STEP_N || fallbackDefaults.ALT_STEP_N;
+      state.lerpTime = DEFAULT_VALUES.LERP_TIME || fallbackDefaults.LERP_TIME;
+      state.showAxisFreqLabels = DEFAULT_VALUES.SHOW_AXIS_FREQ_LABELS || fallbackDefaults.SHOW_AXIS_FREQ_LABELS;
+      state.showPointsFreqLabels = DEFAULT_VALUES.SHOW_POINTS_FREQ_LABELS || fallbackDefaults.SHOW_POINTS_FREQ_LABELS;
+      
+      if (DEBUG_LOGGING) {
+        console.log('[LayerManager] Applied actual DEFAULT_VALUES to layer state');
+      }
+    }).catch(error => {
+      if (DEBUG_LOGGING) {
+        console.warn('Could not import DEFAULT_VALUES for state reset, using fallbacks:', error);
+      }
+    });
+  }
 } 

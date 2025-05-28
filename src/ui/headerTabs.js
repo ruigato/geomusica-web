@@ -37,6 +37,7 @@ export function setupHeaderTabs() {
   // Set up expand/collapse all buttons
   const expandAllButton = document.getElementById('expand-all-btn');
   const collapseAllButton = document.getElementById('collapse-all-btn');
+  const resetLayersButton = document.getElementById('reset-layers-btn');
   
   if (expandAllButton) {
     expandAllButton.addEventListener('click', () => {
@@ -47,6 +48,12 @@ export function setupHeaderTabs() {
   if (collapseAllButton) {
     collapseAllButton.addEventListener('click', () => {
       collapseAllSections();
+    });
+  }
+  
+  if (resetLayersButton) {
+    resetLayersButton.addEventListener('click', () => {
+      resetAllLayers();
     });
   }
 }
@@ -101,4 +108,49 @@ function collapseAllSections() {
       localStorage.setItem(`section_${sectionId}_collapsed`, 'true');
     }
   });
+}
+
+/**
+ * Resets all layers to their default configurations
+ */
+function resetAllLayers() {
+  // Show confirmation dialog
+  if (confirm('Reset all layers to default values? This will restore the original 3 layers (triangle, square, pentagon) with their default settings.')) {
+    try {
+      // Get the layer manager
+      const layerManager = window._layers;
+      
+      if (!layerManager) {
+        console.error('Layer manager not found');
+        alert('Error: Layer manager not available');
+        return;
+      }
+      
+      // Reset all layers to defaults
+      const success = layerManager.resetAllLayersToDefaults();
+      
+      if (success) {
+        console.log('Successfully reset all layers to defaults');
+        
+        // Update the layer UI if the function exists
+        if (typeof window.updateLayerButtons === 'function') {
+          window.updateLayerButtons(layerManager);
+        }
+        
+        // Force a complete UI sync
+        if (typeof window.syncStateAcrossSystems === 'function') {
+          window.syncStateAcrossSystems(true);
+        }
+        
+        // Show success message
+        console.log('Layers reset to default values');
+      } else {
+        console.error('Failed to reset layers');
+        alert('Error: Failed to reset layers');
+      }
+    } catch (error) {
+      console.error('Error resetting layers:', error);
+      alert('Error: ' + error.message);
+    }
+  }
 } 
