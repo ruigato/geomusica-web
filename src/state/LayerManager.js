@@ -1172,8 +1172,79 @@ export class LayerManager {
   }
 
   /**
+   * Reset a single layer to default values while preserving its color
+   * @param {number} layerId The ID of the layer to reset
+   * @returns {boolean} True if successful, false otherwise
+   */
+  resetLayerToDefaults(layerId) {
+    if (layerId < 0 || layerId >= this.layers.length) {
+      console.error(`[LayerManager] Invalid layer ID: ${layerId}`);
+      return false;
+    }
+
+    const layer = this.layers[layerId];
+    if (!layer || !layer.state) {
+      console.error(`[LayerManager] Layer ${layerId} not found or has no state`);
+      return false;
+    }
+
+    console.log(`[LayerManager] Resetting layer ${layerId} to defaults`);
+
+    // Store the current color
+    const currentColor = layer.color.clone();
+    console.log(`[LayerManager] Preserving color: ${currentColor.getHexString()}`);
+
+    // Reset the layer's state to defaults
+    this.resetLayerStateToDefaults(layer.state);
+
+    // Set uniform base values for all layers
+    layer.state.copies = 0;
+    layer.state.segments = 3; // Keep segments as triangle for base shape
+    layer.state.radius = 432; // Standard radius
+    layer.state.stepScale = 1;
+    layer.state.angle = 15;
+    layer.state.startingAngle = 0;
+
+    // Set note parameters to modulo 1
+    layer.state.durationMode = 'modulo';
+    layer.state.durationModulo = 1;
+    layer.state.velocityMode = 'modulo';
+    layer.state.velocityModulo = 1;
+
+    console.log(`[LayerManager] Set uniform defaults: copies=${layer.state.copies}, segments=${layer.state.segments}, radius=${layer.state.radius}, angle=${layer.state.angle}, stepScale=${layer.state.stepScale}`);
+
+    // Restore the original color
+    layer.setColor(currentColor);
+    console.log(`[LayerManager] Restored color: ${layer.color.getHexString()}`);
+
+    // Force parameter changes to update
+    layer.state.parameterChanges.copies = true;
+    layer.state.parameterChanges.segments = true;
+    layer.state.parameterChanges.radius = true;
+    layer.state.parameterChanges.stepScale = true;
+    layer.state.parameterChanges.angle = true;
+    layer.state.parameterChanges.startingAngle = true;
+    layer.state.parameterChanges.durationMode = true;
+    layer.state.parameterChanges.durationModulo = true;
+    layer.state.parameterChanges.velocityMode = true;
+    layer.state.parameterChanges.velocityModulo = true;
+
+    // Force geometry recreation
+    this.initializeLayerGeometry(layer);
+
+    // Force UI update to reflect the reset
+    if (typeof window.syncStateAcrossSystems === 'function') {
+      window.syncStateAcrossSystems(true);
+    }
+
+    console.log(`[LayerManager] Layer ${layerId} reset to uniform defaults with preserved color`);
+
+    return true;
+  }
+
+  /**
    * Reset all layers to their default configurations
-   * This recreates the default layer setup with 3 layers: triangle, square, pentagon
+   * @returns {boolean} True if successful, false otherwise
    */
   resetAllLayersToDefaults() {
     if (DEBUG_LOGGING) {

@@ -111,11 +111,11 @@ function collapseAllSections() {
 }
 
 /**
- * Resets all layers to their default configurations
+ * Resets the active layer to its default configuration
  */
 function resetAllLayers() {
   // Show confirmation dialog
-  if (confirm('Reset all layers to default values? This will restore the original 3 layers (triangle, square, pentagon) with their default settings.')) {
+  if (confirm('Reset the active layer to default values? This will restore the default settings while keeping the current color.')) {
     try {
       // Get the layer manager
       const layerManager = window._layers;
@@ -126,11 +126,19 @@ function resetAllLayers() {
         return;
       }
       
-      // Reset all layers to defaults
-      const success = layerManager.resetAllLayersToDefaults();
+      // Get the active layer
+      const activeLayer = layerManager.getActiveLayer();
+      if (!activeLayer) {
+        console.error('No active layer found');
+        alert('Error: No active layer found');
+        return;
+      }
+      
+      // Reset the active layer to defaults (this method preserves color internally)
+      const success = layerManager.resetLayerToDefaults(layerManager.activeLayerId);
       
       if (success) {
-        console.log('Successfully reset all layers to defaults');
+        console.log(`Successfully reset Layer ${layerManager.activeLayerId + 1} to defaults`);
         
         // Update the layer UI if the function exists
         if (typeof window.updateLayerButtons === 'function') {
@@ -143,13 +151,13 @@ function resetAllLayers() {
         }
         
         // Show success message
-        console.log('Layers reset to default values');
+        console.log(`Layer ${layerManager.activeLayerId + 1} reset to default values`);
       } else {
-        console.error('Failed to reset layers');
-        alert('Error: Failed to reset layers');
+        console.error('Failed to reset layer');
+        alert('Error: Failed to reset layer');
       }
     } catch (error) {
-      console.error('Error resetting layers:', error);
+      console.error('Error resetting layer:', error);
       alert('Error: ' + error.message);
     }
   }

@@ -230,6 +230,17 @@ export function copyLayerParameters(layerManager, sourceLayerId, targetLayerId) 
 }
 
 /**
+ * Set up the fixed layer controls that are always visible
+ * @param {LayerManager} layerManager The layer manager instance
+ */
+function setupFixedLayerControls(layerManager) {
+  // Initialize the fixed layer buttons
+  updateFixedLayerButtons(layerManager);
+  
+  console.log('Fixed layer controls initialized');
+}
+
+/**
  * Set up the Layer tab UI with controls for managing layers
  * @param {LayerManager} layerManager The layer manager instance
  * @returns {Object} Object containing UI references
@@ -239,6 +250,9 @@ export function setupLayersUI(layerManager) {
     console.error('Cannot set up layers UI: No layer manager provided');
     return null;
   }
+  
+  // Set up the fixed layer controls first
+  setupFixedLayerControls(layerManager);
   
   // Create the layer tab container
   const layerTab = document.getElementById('layer-tab');
@@ -288,22 +302,6 @@ export function setupLayersUI(layerManager) {
   layerCountContainer.appendChild(helpText);
   
   layerTab.appendChild(layerCountContainer);
-  
-  // Create layer selector container
-  const layerSelectorContainer = document.createElement('div');
-  layerSelectorContainer.className = 'control';
-  
-  const layerSelectorLabel = document.createElement('label');
-  layerSelectorLabel.textContent = 'Active Layer:';
-  layerSelectorContainer.appendChild(layerSelectorLabel);
-  
-  // Create button container for layer selection
-  const layerButtonsContainer = document.createElement('div');
-  layerButtonsContainer.className = 'layer-buttons';
-  layerButtonsContainer.id = 'layerButtons';
-  layerSelectorContainer.appendChild(layerButtonsContainer);
-  
-  layerTab.appendChild(layerSelectorContainer);
   
   // Add UNISON mode control
   const unisonContainer = document.createElement('div');
@@ -842,7 +840,16 @@ function colorToRGB(color) {
  * @param {LayerManager} layerManager The layer manager instance
  */
 export function updateLayerButtons(layerManager) {
-  const container = document.getElementById('layerButtons');
+  // Only update the fixed layer buttons now
+  updateFixedLayerButtons(layerManager);
+}
+
+/**
+ * Update the fixed layer buttons that are always visible
+ * @param {LayerManager} layerManager The layer manager instance
+ */
+function updateFixedLayerButtons(layerManager) {
+  const container = document.getElementById('fixed-layer-buttons');
   if (!container) return;
   
   // Clear existing buttons
@@ -853,7 +860,7 @@ export function updateLayerButtons(layerManager) {
     const layer = layerManager.layers[i];
     const button = document.createElement('button');
     button.textContent = `Layer ${i + 1}`;
-    button.className = 'layer-button';
+    button.className = 'fixed-layer-button';
     button.dataset.layerId = i;
     
     // Mark active layer
@@ -892,12 +899,6 @@ export function updateLayerButtons(layerManager) {
     
     container.appendChild(button);
   }
-  
-  // Update layer link dropdowns
-  updateLayerLinkDropdowns(layerManager);
-  
-  // Update copy dropdown options
-  updateCopyDropdownOptions(layerManager);
 }
 
 /**
