@@ -264,6 +264,16 @@ export function animate(props) {
     }
   }
   
+  // Update layer links if available
+  if (scene._layerManager) {
+    // Import and update layer link manager
+    import('../geometry/layerLink.js').then(module => {
+      module.layerLinkManager.update(scene._layerManager);
+    }).catch(error => {
+      // Silently ignore if layer link module is not available
+    });
+  }
+  
   // Render the scene
   renderer.render(scene, cam);
   

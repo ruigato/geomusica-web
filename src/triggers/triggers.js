@@ -40,6 +40,11 @@ const subframeEngine = new TemporalTriggerEngine({
 // Initialize the engine
 subframeEngine.initialize();
 
+// Expose subframe engine for debugging
+if (typeof window !== 'undefined') {
+  window._subframeEngine = subframeEngine;
+}
+
 // Subframe timing variables - now based on audio sample rate
 const POSITION_RECORD_INTERVAL = 1 / 120; // Record positions at max 120Hz for efficiency
 const DEFAULT_COOLDOWN_TIME = 0.05; // 50ms default cooldown between triggers
@@ -835,7 +840,12 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
   }
   
   // SUBFRAME ENHANCEMENT: Check for triggers with subframe precision
-  return detectSubframeTriggers(layer, tNow, audioCallback, camera, renderer, scene);
+  const layerTriggered = detectSubframeTriggers(layer, tNow, audioCallback, camera, renderer, scene);
+  
+  // LAYER LINK ENHANCEMENT: Check for layer link triggers
+  const linkTriggered = detectLayerLinkTriggers(layer, tNow, audioCallback, camera, renderer, scene);
+  
+  return layerTriggered || linkTriggered;
 }
 
 /**
@@ -1572,6 +1582,162 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
   }
   
   return anyTriggers;
+}
+
+/**
+ * Detect layer link triggers for mid-points between linked layers
+ * @param {Object} layer Current layer being processed
+ * @param {number} audioTime Current audio time in seconds
+ * @param {Function} audioCallback Callback function for triggered notes
+ * @param {THREE.Camera} camera Camera reference
+ * @param {THREE.Renderer} renderer Renderer reference
+ * @param {THREE.Scene} scene Scene reference
+ * @returns {boolean} True if any layer link triggers were detected
+ */
+function detectLayerLinkTriggers(layer, audioTime, audioCallback, camera, renderer, scene) {
+  // Import layer link manager dynamically to avoid circular dependencies
+  try {
+    // Check if layer link manager is available and enabled
+    if (typeof window !== 'undefined' && window.layerLinkManager) {
+      const linkManager = window.layerLinkManager;
+      
+      if (!linkManager.enabled) {
+        return false;
+      }
+      
+      // Get mid-point triggers from the layer link manager
+      const midPointTriggers = linkManager.getMidPointTriggers();
+      
+      if (Math.random() < 0.01) { // Log occasionally
+        console.log(`[LAYER LINK] Found ${midPointTriggers ? midPointTriggers.length : 0} mid-point triggers for layer ${layer.id}`);
+      }
+      
+      if (!midPointTriggers || midPointTriggers.length === 0) {
+        return false;
+      }
+      
+      let anyTriggers = false;
+      
+      // Check each mid-point for axis crossings
+      for (const triggerData of midPointTriggers) {
+        if (!triggerData || !triggerData.isLinkTrigger) {
+          continue;
+        }
+        
+        const { x, y, linkIndex } = triggerData;
+        
+        // Validate coordinates
+        if (isNaN(x) || isNaN(y) || x === undefined || y === undefined) {
+          continue;
+        }
+        
+        // Create a stable ID for this link trigger (don't include position to maintain history)
+        const triggerId = `link_${linkIndex}_${layer.id}`;
+        
+        // Check if this trigger was recently fired
+        if (recentTriggers.has(triggerId)) {
+          const lastTriggerTime = recentTriggers.get(triggerId).time;
+          if (audioTime - lastTriggerTime < DEFAULT_COOLDOWN_TIME) {
+            continue; // Skip if within cooldown period
+          }
+        }
+        
+        // Record position in subframe engine for axis crossing detection
+        subframeEngine.recordVertexPosition(triggerId, { x, y, z: 0 }, audioTime);
+        
+        // Check for axis crossings using the correct method
+        const crossingResult = subframeEngine.detectCrossing(triggerId, DEFAULT_COOLDOWN_TIME);
+        
+        // Enhanced debug logging for layer link triggers
+        if (Math.random() < 0.005) { // Log occasionally to avoid spam
+          console.log(`[LAYER LINK DEBUG] Link ${linkIndex}: pos(${x.toFixed(1)}, ${y.toFixed(1)}) crossing: ${crossingResult.hasCrossed} ID: ${triggerId}`);
+          
+          // Show precision improvement when crossing detected
+          if (crossingResult.hasCrossed) {
+            const preciseX = crossingResult.position.x;
+            const preciseY = crossingResult.position.y;
+            const positionDiff = Math.sqrt((x - preciseX) ** 2 + (y - preciseY) ** 2);
+            console.log(`[LAYER LINK PRECISION] Raw: (${x.toFixed(2)}, ${y.toFixed(2)}) -> Precise: (${preciseX.toFixed(2)}, ${preciseY.toFixed(2)}) diff: ${positionDiff.toFixed(2)} factor: ${crossingResult.crossingFactor.toFixed(3)}`);
+          }
+          
+          // Check if we're close to the Y-axis
+          if (Math.abs(x) < 50) {
+            console.log(`[LAYER LINK DEBUG] Near Y-axis! x=${x.toFixed(1)}, y=${y.toFixed(1)}`);
+          }
+        }
+        
+        if (crossingResult && crossingResult.hasCrossed) {
+          // Use the precise crossing position from subframe detection
+          const preciseX = crossingResult.position.x;
+          const preciseY = crossingResult.position.y;
+          
+          // Calculate frequency for the precise crossing position
+          const frequencyData = calculateFrequency(preciseX, preciseY, layer.state);
+          
+          // Create note for layer link trigger using precise position
+          const note = createNote({
+            x: preciseX,
+            y: preciseY,
+            angle: frequencyData.angle,
+            copyIndex: -1, // Special value for link triggers
+            vertexIndex: linkIndex,
+            isIntersection: false,
+            isLinkTrigger: true,
+            linkIndex: linkIndex
+          }, layer.state);
+          
+          // Add subframe-specific properties like normal vertices
+          note.time = crossingResult.exactTime;
+          note.isSubframe = true;
+          note.crossingFactor = crossingResult.crossingFactor;
+          note.position = crossingResult.position;
+          note.layerId = layer.id;
+          
+          // Override default values for link triggers
+          note.velocity = 0.7;
+          note.duration = 0.5;
+          
+          // Record this trigger to prevent immediate re-triggering
+          recentTriggers.set(triggerId, { time: audioTime });
+          
+          // Fire the audio callback
+          if (audioCallback) {
+            audioCallback(note);
+          }
+          
+          // Create visual marker for the link trigger using precise position
+          if (scene && camera && renderer) {
+            createMarker(
+              frequencyData.angle,
+              preciseX,
+              preciseY,
+              scene,
+              note,
+              camera,
+              renderer,
+              false,
+              layer
+            );
+          }
+          
+          if (DEBUG_LOGGING) {
+            console.log(`[LAYER LINK] Trigger detected: raw(${x.toFixed(2)}, ${y.toFixed(2)}) -> precise(${preciseX.toFixed(2)}, ${preciseY.toFixed(2)}) link ${linkIndex} time=${crossingResult.exactTime.toFixed(4)}`);
+          }
+          
+          anyTriggers = true;
+        }
+      }
+      
+      return anyTriggers;
+    }
+  } catch (error) {
+    // Log errors for debugging but don't throw to prevent cascading failures
+    if (DEBUG_LOGGING) {
+      console.warn('Layer link trigger detection failed:', error);
+    }
+  }
+  
+  return false;
 }
 
 /**

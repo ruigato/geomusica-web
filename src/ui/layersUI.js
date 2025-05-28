@@ -324,6 +324,156 @@ export function setupLayersUI(layerManager) {
   
   layerTab.appendChild(rainbowColorsContainer);
   
+  // Add Layer Link controls
+  const layerLinkContainer = document.createElement('div');
+  layerLinkContainer.className = 'control layer-link-section';
+  
+  // Layer Link title
+  const layerLinkTitle = document.createElement('h3');
+  layerLinkTitle.textContent = 'Layer Link';
+  layerLinkTitle.style.margin = '10px 0 5px 0';
+  layerLinkTitle.style.fontSize = '16px';
+  layerLinkTitle.style.fontWeight = 'bold';
+  layerLinkContainer.appendChild(layerLinkTitle);
+  
+  // Layer Link enable checkbox
+  const layerLinkEnableContainer = document.createElement('div');
+  layerLinkEnableContainer.className = 'control';
+  
+  const layerLinkEnableLabel = document.createElement('label');
+  layerLinkEnableLabel.textContent = 'Enable Layer Link:';
+  layerLinkEnableLabel.setAttribute('for', 'layerLinkEnable');
+  layerLinkEnableContainer.appendChild(layerLinkEnableLabel);
+  
+  const layerLinkEnableCheckbox = document.createElement('input');
+  layerLinkEnableCheckbox.type = 'checkbox';
+  layerLinkEnableCheckbox.id = 'layerLinkEnable';
+  layerLinkEnableCheckbox.checked = false;
+  
+  layerLinkEnableCheckbox.addEventListener('change', (e) => {
+    // Import and use the layer link manager
+    import('../geometry/layerLink.js').then(module => {
+      module.layerLinkManager.setEnabled(e.target.checked);
+      
+      // Update link visibility controls
+      const fromSelect = document.getElementById('layerLinkFrom');
+      const toSelect = document.getElementById('layerLinkTo');
+      const traceCheckbox = document.getElementById('layerLinkTrace');
+      
+      if (fromSelect) fromSelect.disabled = !e.target.checked;
+      if (toSelect) toSelect.disabled = !e.target.checked;
+      if (traceCheckbox) traceCheckbox.disabled = !e.target.checked;
+    });
+  });
+  
+  layerLinkEnableContainer.appendChild(layerLinkEnableCheckbox);
+  
+  const layerLinkEnableHelp = document.createElement('div');
+  layerLinkEnableHelp.className = 'help-text';
+  layerLinkEnableHelp.textContent = 'Enable linking between layer vertices';
+  layerLinkEnableContainer.appendChild(layerLinkEnableHelp);
+  
+  layerLinkContainer.appendChild(layerLinkEnableContainer);
+  
+  // From Layer selector
+  const layerLinkFromContainer = document.createElement('div');
+  layerLinkFromContainer.className = 'control';
+  
+  const layerLinkFromLabel = document.createElement('label');
+  layerLinkFromLabel.textContent = 'From Layer:';
+  layerLinkFromLabel.setAttribute('for', 'layerLinkFrom');
+  layerLinkFromContainer.appendChild(layerLinkFromLabel);
+  
+  const layerLinkFromSelect = document.createElement('select');
+  layerLinkFromSelect.id = 'layerLinkFrom';
+  layerLinkFromSelect.disabled = true;
+  
+  // Populate with layer options
+  for (let i = 0; i < layerManager.layers.length; i++) {
+    const option = document.createElement('option');
+    option.value = i;
+    option.textContent = `Layer ${i + 1}`;
+    layerLinkFromSelect.appendChild(option);
+  }
+  
+  layerLinkFromSelect.addEventListener('change', (e) => {
+    import('../geometry/layerLink.js').then(module => {
+      module.layerLinkManager.setFromLayer(parseInt(e.target.value));
+      module.layerLinkManager.updateLinks(layerManager);
+    });
+  });
+  
+  layerLinkFromContainer.appendChild(layerLinkFromSelect);
+  layerLinkContainer.appendChild(layerLinkFromContainer);
+  
+  // To Layer selector
+  const layerLinkToContainer = document.createElement('div');
+  layerLinkToContainer.className = 'control';
+  
+  const layerLinkToLabel = document.createElement('label');
+  layerLinkToLabel.textContent = 'To Layer:';
+  layerLinkToLabel.setAttribute('for', 'layerLinkTo');
+  layerLinkToContainer.appendChild(layerLinkToLabel);
+  
+  const layerLinkToSelect = document.createElement('select');
+  layerLinkToSelect.id = 'layerLinkTo';
+  layerLinkToSelect.disabled = true;
+  
+  // Populate with layer options
+  for (let i = 0; i < layerManager.layers.length; i++) {
+    const option = document.createElement('option');
+    option.value = i;
+    option.textContent = `Layer ${i + 1}`;
+    layerLinkToSelect.appendChild(option);
+  }
+  
+  // Set default to layer 1 (index 1)
+  if (layerManager.layers.length > 1) {
+    layerLinkToSelect.value = 1;
+  }
+  
+  layerLinkToSelect.addEventListener('change', (e) => {
+    import('../geometry/layerLink.js').then(module => {
+      module.layerLinkManager.setToLayer(parseInt(e.target.value));
+      module.layerLinkManager.updateLinks(layerManager);
+    });
+  });
+  
+  layerLinkToContainer.appendChild(layerLinkToSelect);
+  layerLinkContainer.appendChild(layerLinkToContainer);
+  
+  // Trace enable checkbox
+  const layerLinkTraceContainer = document.createElement('div');
+  layerLinkTraceContainer.className = 'control';
+  
+  const layerLinkTraceLabel = document.createElement('label');
+  layerLinkTraceLabel.textContent = 'Enable Trace:';
+  layerLinkTraceLabel.setAttribute('for', 'layerLinkTrace');
+  layerLinkTraceContainer.appendChild(layerLinkTraceLabel);
+  
+  const layerLinkTraceCheckbox = document.createElement('input');
+  layerLinkTraceCheckbox.type = 'checkbox';
+  layerLinkTraceCheckbox.id = 'layerLinkTrace';
+  layerLinkTraceCheckbox.checked = false;
+  layerLinkTraceCheckbox.disabled = true;
+  
+  layerLinkTraceCheckbox.addEventListener('change', (e) => {
+    import('../geometry/layerLink.js').then(module => {
+      module.layerLinkManager.setTraceEnabled(e.target.checked);
+    });
+  });
+  
+  layerLinkTraceContainer.appendChild(layerLinkTraceCheckbox);
+  
+  const layerLinkTraceHelp = document.createElement('div');
+  layerLinkTraceHelp.className = 'help-text';
+  layerLinkTraceHelp.textContent = 'Show trace paths of link midpoints';
+  layerLinkTraceContainer.appendChild(layerLinkTraceHelp);
+  
+  layerLinkContainer.appendChild(layerLinkTraceContainer);
+  
+  layerTab.appendChild(layerLinkContainer);
+  
   // Initial UI update
   updateLayerButtons(layerManager);
   
@@ -336,7 +486,11 @@ export function setupLayersUI(layerManager) {
   return {
     layerCountInput,
     layerColorPicker,
-    unisonCheckbox
+    unisonCheckbox,
+    layerLinkEnableCheckbox,
+    layerLinkFromSelect,
+    layerLinkToSelect,
+    layerLinkTraceCheckbox
   };
 }
 
@@ -453,6 +607,63 @@ export function updateLayerButtons(layerManager) {
     
     container.appendChild(button);
   }
+  
+  // Update layer link dropdowns
+  updateLayerLinkDropdowns(layerManager);
+}
+
+/**
+ * Update the layer link dropdown options when layers change
+ * @param {LayerManager} layerManager The layer manager instance
+ */
+function updateLayerLinkDropdowns(layerManager) {
+  const fromSelect = document.getElementById('layerLinkFrom');
+  const toSelect = document.getElementById('layerLinkTo');
+  
+  if (!fromSelect || !toSelect) return;
+  
+  // Store current values
+  const currentFromValue = fromSelect.value;
+  const currentToValue = toSelect.value;
+  
+  // Clear existing options
+  fromSelect.innerHTML = '';
+  toSelect.innerHTML = '';
+  
+  // Populate with new layer options
+  for (let i = 0; i < layerManager.layers.length; i++) {
+    const fromOption = document.createElement('option');
+    fromOption.value = i;
+    fromOption.textContent = `Layer ${i + 1}`;
+    fromSelect.appendChild(fromOption);
+    
+    const toOption = document.createElement('option');
+    toOption.value = i;
+    toOption.textContent = `Layer ${i + 1}`;
+    toSelect.appendChild(toOption);
+  }
+  
+  // Restore previous values if they're still valid
+  if (currentFromValue < layerManager.layers.length) {
+    fromSelect.value = currentFromValue;
+  }
+  if (currentToValue < layerManager.layers.length) {
+    toSelect.value = currentToValue;
+  } else if (layerManager.layers.length > 1) {
+    // Default to layer 1 if previous value is invalid
+    toSelect.value = 1;
+  }
+  
+  // Update the layer link manager with new values
+  import('../geometry/layerLink.js').then(module => {
+    module.layerLinkManager.setFromLayer(parseInt(fromSelect.value));
+    module.layerLinkManager.setToLayer(parseInt(toSelect.value));
+    if (module.layerLinkManager.enabled) {
+      module.layerLinkManager.updateLinks(layerManager);
+    }
+  }).catch(error => {
+    console.warn('Layer link module not available:', error);
+  });
 }
 
 // Make the function globally available

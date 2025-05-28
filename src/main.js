@@ -45,6 +45,8 @@ import { setupLayersUI, updateLayersUI } from './ui/layersUI.js';
 // Import the global state manager
 import { GlobalStateManager } from './state/GlobalStateManager.js';
 import { initializeUIInputs } from './ui/uiUtils.js';
+// Import the layer link manager
+import { layerLinkManager } from './geometry/layerLink.js';
 
 // Initialize stats for performance monitoring
 const stats = new Stats();
@@ -613,6 +615,12 @@ async function initializeApplication() {
   
   // Add reference to the scene for easy access
   scene._layerManager = layerManager;
+  
+  // Add layer link group to scene
+  scene.add(layerLinkManager.getLinkGroup());
+  
+  // Make layer link manager available globally for trigger system
+  window.layerLinkManager = layerLinkManager;
   
   // Load saved state (if any) before creating default layers
   loadSavedState().then(savedState => {
