@@ -553,6 +553,9 @@ function refreshMidiDevices() {
   const deviceSelect = document.getElementById('midiDeviceSelect');
   if (!deviceSelect) return;
   
+  // Get current status to check for saved device
+  const status = getMidiStatus();
+  
   // Clear existing options
   deviceSelect.innerHTML = '';
   
@@ -568,6 +571,12 @@ function refreshMidiDevices() {
     const option = document.createElement('option');
     option.value = device.id;
     option.textContent = `${device.name} (${device.manufacturer || 'Unknown'})`;
+    
+    // Select the currently connected device or saved device
+    if (status.isEnabled && status.deviceName === device.name) {
+      option.selected = true;
+    }
+    
     deviceSelect.appendChild(option);
   });
   
@@ -575,7 +584,7 @@ function refreshMidiDevices() {
 }
 
 /**
- * Update MIDI status display
+ * Update MIDI status display and restore saved settings
  */
 function updateMidiStatus() {
   const status = getMidiStatus();
@@ -601,7 +610,13 @@ function updateMidiStatus() {
     enableCheckbox.checked = status.isEnabled;
   }
   
-  // Update MTS checkbox and disable if SysEx not supported
+  // Update microtonal mode checkbox (restore saved setting)
+  const microtonalCheckbox = document.getElementById('midiMicrotonalCheckbox');
+  if (microtonalCheckbox) {
+    microtonalCheckbox.checked = status.microtonalMode;
+  }
+  
+  // Update MTS checkbox and disable if SysEx not supported (restore saved setting)
   const mtsCheckbox = document.getElementById('midiMTSCheckbox');
   if (mtsCheckbox) {
     mtsCheckbox.checked = status.mtsMode;
@@ -618,6 +633,20 @@ function updateMidiStatus() {
         mtsHelp.style.color = '#F44336';
       }
     }
+  }
+  
+  // Update pitch bend range (restore saved setting)
+  const pitchBendRange = document.getElementById('midiPitchBendRange');
+  const pitchBendValue = document.getElementById('midiPitchBendValue');
+  if (pitchBendRange && pitchBendValue) {
+    pitchBendRange.value = status.pitchBendRange;
+    pitchBendValue.textContent = `±${status.pitchBendRange} semitones`;
+  }
+  
+  // Update debug checkbox (restore saved setting)
+  const debugCheckbox = document.getElementById('midiDebugCheckbox');
+  if (debugCheckbox) {
+    debugCheckbox.checked = status.debug || false;
   }
   
   // Update integration checkbox

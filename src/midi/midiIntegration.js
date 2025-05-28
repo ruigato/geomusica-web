@@ -126,29 +126,14 @@ class MidiIntegrationManager {
    */
   routeNoteToMidi(note) {
     try {
-      console.log('[MIDI INTEGRATION] Routing note to MIDI:', {
-        frequency: note.frequency,
-        velocity: note.velocity,
-        duration: note.duration,
-        layerId: note.layerId
-      });
-      
       // Determine if this is a layer link trigger
       const isLayerLink = this.isLayerLinkNote(note);
       
       // Get layer ID for channel mapping
       let layerId = this.getLayerIdFromNote(note);
       
-      console.log('[MIDI INTEGRATION] Note routing details:', {
-        isLayerLink,
-        layerId,
-        originalLayerId: note.layerId
-      });
-      
       // Route to MIDI with appropriate channel mapping
       playMidiNote(note, layerId, isLayerLink);
-      
-      console.log('[MIDI INTEGRATION] Note sent to MIDI successfully');
       
       // Update statistics
       if (isLayerLink) {

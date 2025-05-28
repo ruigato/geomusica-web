@@ -35,6 +35,7 @@ class MidiOutManager {
     // MIDI device settings
     this.deviceName = null;
     this.availableDevices = [];
+    this.selectedDeviceId = null; // Store device ID for persistence
     
     // Performance tracking
     this.stats = {
@@ -47,6 +48,9 @@ class MidiOutManager {
     
     // Debugging
     this.debug = false;
+    
+    // Load saved settings
+    this.loadSettings();
     
     console.log('[MIDI OUT] MidiOutManager initialized');
   }
@@ -94,6 +98,9 @@ class MidiOutManager {
       console.log('[MIDI OUT] MIDI system initialized successfully');
       console.log('[MIDI OUT] Available devices:', this.availableDevices.map(d => d.name));
       
+      // Auto-restore previously selected device
+      setTimeout(() => this.autoRestoreDevice(), 100);
+      
       return true;
     } catch (error) {
       console.error('[MIDI OUT] Failed to initialize MIDI:', error);
@@ -119,6 +126,9 @@ class MidiOutManager {
         this.isInitialized = true;
         console.log('[MIDI OUT] MIDI system initialized without SysEx support');
         console.log('[MIDI OUT] Available devices:', this.availableDevices.map(d => d.name));
+        
+        // Auto-restore previously selected device
+        setTimeout(() => this.autoRestoreDevice(), 100);
         
         return true;
       } catch (fallbackError) {
@@ -180,6 +190,7 @@ class MidiOutManager {
     
     this.outputDevice = targetDevice;
     this.deviceName = targetDevice.name;
+    this.selectedDeviceId = targetDevice.id;
     this.isEnabled = true;
     
     console.log(`[MIDI OUT] Connected to device: ${this.deviceName}`);
@@ -187,7 +198,26 @@ class MidiOutManager {
     // Initialize all channels with default settings
     this.initializeChannels();
     
+    // Save settings
+    this.saveSettings();
+    
     return true;
+  }
+  
+  /**
+   * Auto-restore previously selected device
+   */
+  autoRestoreDevice() {
+    if (this.selectedDeviceId) {
+      const success = this.selectDevice(this.selectedDeviceId);
+      if (success) {
+        console.log('[MIDI OUT] Auto-restored previous device');
+      } else {
+        console.log('[MIDI OUT] Could not restore previous device, it may be disconnected');
+        this.selectedDeviceId = null;
+        this.saveSettings();
+      }
+    }
   }
   
   /**
@@ -240,7 +270,6 @@ class MidiOutManager {
    */
   playNote(note, layerId = 0, isLayerLink = false) {
     if (!this.isEnabled || !this.outputDevice) {
-      if (this.debug) console.log('[MIDI OUT] MIDI not enabled or no device');
       return;
     }
     
@@ -264,12 +293,7 @@ class MidiOutManager {
           // Fall back to pitch bend if MTS failed
           if (this.microtonalMode && Math.abs(pitchBend) > 10) {
             this.sendPitchBend(channel, pitchBend);
-            if (this.debug) {
-              console.log(`[MIDI OUT] MTS failed, using pitch bend fallback: ${pitchBend}`);
-            }
           }
-        } else if (this.debug) {
-          console.log(`[MIDI OUT] MTS Mode: Note ${midiNote} tuned to ${frequency.toFixed(2)}Hz`);
         }
       } else if (this.microtonalMode && Math.abs(pitchBend) > 10) {
         // Use traditional pitch bend for microtonal accuracy
@@ -324,11 +348,6 @@ class MidiOutManager {
       this.stats.notesPlayed++;
       this.stats.channelsUsed.add(channel);
       this.stats.lastNoteTime = performance.now();
-      
-      if (this.debug) {
-        const method = this.mtsMode ? 'MTS' : (this.microtonalMode ? 'PitchBend' : 'Standard');
-        console.log(`[MIDI OUT] ${method}: ${frequency.toFixed(2)}Hz → Ch${channel} Note${midiNote} Vel${velocity} Dur${duration}ms`);
-      }
       
     } catch (error) {
       console.error('[MIDI OUT] Error playing note:', error);
@@ -496,9 +515,6 @@ class MidiOutManager {
     
     // Check if SysEx is supported
     if (!this.mtsSysExSupported) {
-      if (this.debug) {
-        console.log('[MIDI OUT] SysEx not supported, skipping MTS message');
-      }
       return false;
     }
     
@@ -544,12 +560,6 @@ class MidiOutManager {
       
       // Send the SysEx message
       this.outputDevice.send(sysExMessage);
-      
-      if (this.debug) {
-        console.log(`[MIDI OUT] MTS SysEx: Note ${midiNote} → ${frequency.toFixed(2)}Hz`);
-        console.log(`[MIDI OUT] Target semitone: ${targetSemitone.toFixed(4)} (xx:${xxClamped}, yy:${yyClamped}, zz:${zzClamped})`);
-        console.log(`[MIDI OUT] SysEx: ${sysExMessage.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ')}`);
-      }
       
       return true;
       
@@ -603,6 +613,9 @@ class MidiOutManager {
         this.sendPitchBend(channel, 0);
       }
     }
+    
+    // Save settings
+    this.saveSettings();
   }
   
   /**
@@ -614,6 +627,7 @@ class MidiOutManager {
       console.warn('[MIDI OUT] Cannot enable MTS mode: SysEx not supported by browser/device');
       console.warn('[MIDI OUT] MTS mode requires SysEx support. Will use pitch bend fallback instead.');
       this.mtsMode = false;
+      this.saveSettings();
       return;
     }
     
@@ -629,6 +643,9 @@ class MidiOutManager {
         this.sendPitchBend(channel, 0);
       }
     }
+    
+    // Save settings
+    this.saveSettings();
   }
   
   /**
@@ -645,6 +662,9 @@ class MidiOutManager {
         this.sendRPN(channel, 0, 0, this.pitchBendRange);
       }
     }
+    
+    // Save settings
+    this.saveSettings();
   }
   
   /**
@@ -676,6 +696,9 @@ class MidiOutManager {
   setDebugMode(enabled) {
     this.debug = enabled;
     console.log(`[MIDI OUT] Debug mode ${enabled ? 'enabled' : 'disabled'}`);
+    
+    // Save settings
+    this.saveSettings();
   }
   
   /**
@@ -686,8 +709,54 @@ class MidiOutManager {
     this.outputDevice = null;
     this.isEnabled = false;
     this.deviceName = null;
+    this.selectedDeviceId = null;
+    
+    // Save settings (clears selected device)
+    this.saveSettings();
     
     console.log('[MIDI OUT] Disconnected');
+  }
+  
+  /**
+   * Load saved MIDI settings from localStorage
+   */
+  loadSettings() {
+    try {
+      const savedSettings = localStorage.getItem('geomusica-midi-settings');
+      if (savedSettings) {
+        const settings = JSON.parse(savedSettings);
+        
+        // Restore settings with defaults
+        this.microtonalMode = settings.microtonalMode !== undefined ? settings.microtonalMode : true;
+        this.mtsMode = settings.mtsMode !== undefined ? settings.mtsMode : false;
+        this.pitchBendRange = settings.pitchBendRange || 2;
+        this.selectedDeviceId = settings.selectedDeviceId || null;
+        this.debug = settings.debug !== undefined ? settings.debug : false;
+        
+        console.log('[MIDI OUT] Settings loaded from localStorage');
+      }
+    } catch (error) {
+      console.warn('[MIDI OUT] Error loading settings:', error);
+    }
+  }
+  
+  /**
+   * Save current MIDI settings to localStorage
+   */
+  saveSettings() {
+    try {
+      const settings = {
+        microtonalMode: this.microtonalMode,
+        mtsMode: this.mtsMode,
+        pitchBendRange: this.pitchBendRange,
+        selectedDeviceId: this.selectedDeviceId,
+        debug: this.debug
+      };
+      
+      localStorage.setItem('geomusica-midi-settings', JSON.stringify(settings));
+    } catch (error) {
+      console.warn('[MIDI OUT] Error saving settings:', error);
+    }
   }
 }
 
