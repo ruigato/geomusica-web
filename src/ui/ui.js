@@ -287,6 +287,13 @@ function setupModulusRadioButtons(container, state, type = null) {
             { setterName: 'setUseModulus', value: !isDefault }
           ];
           handleRadioButtonChange('setModulusValue', i, additionalSetters);
+          
+          // Send OSC OUT message for legacy compatibility
+          if (window.triggerOSCParameterChange) {
+            // Get current layer ID
+            const layerId = window._layers?.activeLayerId || 0;
+            window.triggerOSCParameterChange('ModulusValue', i, false, layerId);
+          }
         }
       }
     });

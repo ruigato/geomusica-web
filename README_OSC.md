@@ -265,4 +265,122 @@ Many DAWs support OSC:
 - **Ableton Live**: Via Max for Live devices
 - **Bitwig Studio**: Built-in OSC support
 
-This allows you to automate GeoMusica parameters directly from your DAW timeline. 
+This allows you to automate GeoMusica parameters directly from your DAW timeline.
+
+## Legacy OSC Compatibility
+
+GeoMusica includes a legacy compatibility layer for older Max4Live GM_layer.maxpat devices. This allows you to use existing Ableton Live projects and TouchOSC setups without modification.
+
+### Supported Legacy Parameters
+
+The legacy compatibility layer supports **55+ parameters** from the original GM_layer.maxpat, including:
+
+#### Shape Parameters
+- `Number` → `Segments` (0-10 → 2-32)
+- `Copies` → `Copies` (0-32 → 0-32)
+- `Angle` → `Angle` (0-180 → -180-180)
+- `Gscale` → `Radius` (0-5000 → 20-2048)
+- `Stepscale` → `StepScale` (0-3 → 0.01-10)
+- `Offset` → `StartingAngle` (0-1 → 0-360)
+
+#### Duration Parameters
+- `Xdurmin` → `MinDuration` (0-1 → 0.01-1.0)
+- `Xdurmax` → `MaxDuration` (0-5 → 0.01-2.0)
+- `Xdurphase` → `DurationPhase` (0-1 → 0-1)
+- `Xdurcycles` → `DurationModulo` (0-12 → 1-12)
+- `Xdurmode` → `DurationMode` (0-3 → modulo/random/interpolation)
+
+#### Velocity Parameters
+- `Velmin` → `MinVelocity` (0-1 → 0.1-0.9)
+- `Velmax` → `MaxVelocity` (0-1 → 0.2-1.0)
+- `Velphase` → `VelocityPhase` (0-1 → 0-1)
+- `Velcycles` → `VelocityModulo` (0-12 → 1-12)
+- `Velmode` → `VelocityMode` (0-3 → modulo/random/interpolation)
+
+#### Boolean Parameters
+- `Fractal` → `UseFractal` (0/1 → false/true)
+- `Star` → `UseStars` (0/1 → false/true)
+- `Delete` → `UseDelete` (0/1 → false/true)
+- `Tesselate` → `UseTesselation` (0/1 → false/true)
+- `Euclid` → `UseEuclid` (0/1 → false/true)
+
+And many more...
+
+### Legacy Address Format
+
+Legacy devices send messages in the format:
+```
+/LayerName/ParameterName value
+```
+
+Examples:
+```
+/G01/Angle 90        → /G01/Angle 90
+/G01/Gscale 1000     → /G01/Radius 409.6
+/G01/Xdurmode 1      → /G01/DurationMode random
+/G01/Fractal 1       → /G01/UseFractal true
+```
+
+### Automatic Translation
+
+The legacy compatibility layer automatically:
+
+1. **Detects Legacy Messages**: Identifies messages with legacy parameter names
+2. **Translates Parameter Names**: Maps legacy names to current names
+3. **Scales Value Ranges**: Converts legacy ranges to current ranges
+4. **Converts Data Types**: Handles numeric modes → string modes, 0/1 → true/false
+5. **Preserves Layer IDs**: Maintains layer addressing (G01, G02, etc.)
+
+### Usage
+
+Legacy compatibility is **enabled by default**. No configuration required!
+
+Your existing Max4Live devices will work immediately with the new GeoMusica system.
+
+### Monitoring Legacy Usage
+
+Check legacy compatibility statistics:
+
+```javascript
+// Get combined OSC stats including legacy info
+const stats = getCombinedOSCStats();
+console.log('Legacy messages translated:', stats.legacy.messagesTranslated);
+console.log('Unknown legacy parameters:', stats.legacy.unknownParameters);
+
+// Get list of supported legacy parameters
+const legacyParams = getSupportedLegacyOSCParameters();
+console.log('Supported legacy parameters:', legacyParams);
+```
+
+### Testing Legacy Compatibility
+
+Use the built-in test utility:
+
+```javascript
+// Run legacy compatibility tests
+window.testLegacyOsc.runAll();
+
+// Test specific functionality
+window.testLegacyOsc.test();        // Test message translation
+window.testLegacyOsc.testValues();  // Test value conversion
+```
+
+### Disabling Legacy Support
+
+If needed, you can disable legacy compatibility:
+
+```javascript
+setLegacyOSCEnabled(false);  // Disable legacy support
+setLegacyOSCEnabled(true);   // Re-enable legacy support
+```
+
+### Migration Notes
+
+While legacy compatibility provides seamless operation, consider migrating to the current parameter format for new projects:
+
+- **Better Performance**: Direct parameter access without translation overhead
+- **Extended Ranges**: Current parameters often have wider, more precise ranges
+- **New Features**: Access to latest GeoMusica features not available in legacy format
+- **Better Documentation**: Current format is fully documented and actively maintained
+
+The legacy layer ensures your existing projects continue working while you transition to the new system at your own pace. 

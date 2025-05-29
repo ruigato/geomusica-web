@@ -317,8 +317,11 @@ class OSCUIIntegration {
   handleParameterChange(element, parameterName, isGlobal) {
     if (!isOSCEnabled()) return;
     
-    // Only send OSC OUT if user is actively touching the control
-    if (!this.activeInteractions.has(element)) {
+    // For checkboxes and radio buttons, always send OSC OUT (they're momentary actions)
+    // For sliders/numbers, only send OSC OUT if user is actively touching the control
+    const isCheckboxOrRadio = element.type === 'checkbox' || element.type === 'radio';
+    
+    if (!isCheckboxOrRadio && !this.activeInteractions.has(element)) {
       return;
     }
     
@@ -339,7 +342,7 @@ class OSCUIIntegration {
     const layerId = isGlobal ? null : this.getCurrentLayerId();
     sendOSCParameterChange(parameterName, value, isGlobal, layerId);
     
-    console.log(`[OSC UI] Sent parameter change: ${parameterName} = ${value}`);
+    console.log(`[OSC UI] Sent parameter change: ${parameterName} = ${value}${isCheckboxOrRadio ? ' (checkbox/radio)' : ''}`);
   }
   
   /**

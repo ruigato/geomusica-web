@@ -46,6 +46,8 @@ import { GlobalStateManager } from './state/GlobalStateManager.js';
 import { initializeUIInputs } from './ui/uiUtils.js';
 // Import the layer link manager
 import { layerLinkManager } from './geometry/layerLink.js';
+// Import test utilities (development)
+import './osc/testLegacyOsc.js';
 
 // Initialize stats for performance monitoring
 const stats = new Stats();
@@ -1588,3 +1590,10 @@ function setupTimingSourceControls() {
     console.warn('[TIMING] No timing source radio buttons found');
   }
 }
+
+// Make OSC parameter change function globally available for UI components
+window.triggerOSCParameterChange = (parameterName, value, isGlobal = false, layerId = null) => {
+  if (typeof sendOSCParameterChange === 'function') {
+    sendOSCParameterChange(parameterName, value, isGlobal, layerId);
+  }
+};

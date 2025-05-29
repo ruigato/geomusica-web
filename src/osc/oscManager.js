@@ -1,6 +1,16 @@
 // src/osc/oscManager.js - OSC IN/OUT integration for GeoMusica
 // Handles real-time parameter automation via OSC messages
 
+import { 
+  isLegacyOscMessage, 
+  translateLegacyOscMessage,
+  translateToLegacyOscMessage,
+  getLegacyOscStats,
+  setLegacyOscEnabled,
+  getSupportedLegacyParameters,
+  resetLegacyOscStats
+} from './legacyOscCompatibility.js';
+
 /**
  * OSC Manager for GeoMusica
  * Handles OSC IN (parameter automation) and OSC OUT (parameter feedback)
@@ -202,10 +212,25 @@ class OSCManager {
    */
   handleOSCMessage(message) {
     try {
+      // Check if this is a legacy OSC message and translate it
+      let processedMessage = message;
+      
+      if (isLegacyOscMessage(message)) {
+        const translatedMessage = translateLegacyOscMessage(message);
+        if (translatedMessage) {
+          console.log(`[OSC] Legacy message translated: "${message}" -> "${translatedMessage}"`);
+          processedMessage = translatedMessage;
+        } else {
+          console.warn('[OSC] Failed to translate legacy message:', message);
+          this.stats.errors++;
+          return;
+        }
+      }
+
       // Parse OSC message format: "/G{layerId}/{parameterName} {value}"
-      const parsed = this.parseOSCMessage(message);
+      const parsed = this.parseOSCMessage(processedMessage);
       if (!parsed) {
-        console.warn('[OSC IN] Failed to parse message:', message);
+        console.warn('[OSC IN] Failed to parse message:', processedMessage);
         return;
       }
       
@@ -330,8 +355,13 @@ class OSCManager {
         setter.call(targetState, convertedValue);
         console.log(`[OSC] Applied ${parameterName} = ${convertedValue} to ${isGlobal ? 'global' : `layer ${layerId}`}`);
         
-        // Update UI to reflect the change
+        // Update UI to reflect the change (only for active layer)
         this.updateUIForParameter(parameterName, convertedValue, isGlobal, layerId);
+        
+        // Trigger state synchronization to update geometry
+        if (typeof window.syncStateAcrossSystems === 'function') {
+          window.syncStateAcrossSystems();
+        }
       } else {
         console.warn('[OSC] Setter not found:', paramConfig.setter);
       }
@@ -387,9 +417,52 @@ class OSCManager {
       }
       
       // Update checkbox for boolean parameters
-      const checkboxElement = document.getElementById(`use${parameterName}Checkbox`);
+      let checkboxElement;
+      
+      // Handle special cases for checkbox naming
+      if (parameterName === 'UseLerp') {
+        checkboxElement = document.getElementById('useLerpCheckbox');
+      } else {
+        checkboxElement = document.getElementById(`use${parameterName}Checkbox`);
+      }
+      
       if (checkboxElement && typeof value === 'boolean') {
         checkboxElement.checked = value;
+        console.log(`[OSC] Updated checkbox ${checkboxElement.id} = ${value}`);
+      }
+      
+      // Update radio buttons for numeric parameters that use radio groups
+      if (typeof value === 'number') {
+        // Handle special cases for radio button parameters
+        let radioGroupName;
+        
+        if (parameterName === 'ModulusValue') {
+          radioGroupName = 'modulus';
+        } else if (parameterName === 'TimeSubdivisionValue') {
+          radioGroupName = 'timeSubdivisionValue';
+        } else if (parameterName === 'QuantizationValue') {
+          radioGroupName = 'quantizationValue';
+        } else if (parameterName === 'DurationModulo') {
+          radioGroupName = 'durationModulo';
+        } else if (parameterName === 'VelocityModulo') {
+          radioGroupName = 'velocityModulo';
+        }
+        
+        if (radioGroupName) {
+          const radioButtons = document.querySelectorAll(`input[name="${radioGroupName}"]`);
+          radioButtons.forEach(radio => {
+            if (parseFloat(radio.value) === value) {
+              radio.checked = true;
+              
+              // Manually trigger the change event to ensure event handlers are called
+              const changeEvent = new Event('change', { bubbles: true });
+              radio.dispatchEvent(changeEvent);
+              console.log(`[OSC] Updated radio button ${radioGroupName} = ${value}`);
+            } else {
+              radio.checked = false;
+            }
+          });
+        }
       }
       
       console.log(`[OSC] Updated UI for ${isGlobal ? 'global' : `layer ${layerId}`} parameter: ${parameterName} = ${value}`);
@@ -424,6 +497,13 @@ class OSCManager {
       // Create OSC message
       const message = `${address} ${value}`;
       
+      // Try to translate to legacy format for compatibility
+      let finalMessage = message;
+      const legacyMessage = translateToLegacyOscMessage(message);
+      if (legacyMessage) {
+        finalMessage = legacyMessage;
+      }
+      
       // Check if value has changed to avoid spam
       const key = `${address}_${value}`;
       if (this.lastValues.get(address) === value) {
@@ -431,13 +511,13 @@ class OSCManager {
       }
       this.lastValues.set(address, value);
       
-      // Send message
-      this.oscOutSocket.send(message);
+      // Send message (either modern or legacy format)
+      this.oscOutSocket.send(finalMessage);
       
       this.stats.messagesSent++;
       this.stats.lastActivity = Date.now();
       
-      console.log(`[OSC OUT] Sent: ${message}`);
+      console.log(`[OSC OUT] Sent: ${finalMessage}${legacyMessage ? ' (legacy format)' : ''}`);
       
     } catch (error) {
       console.error('[OSC OUT] Error sending message:', error);
@@ -513,6 +593,48 @@ class OSCManager {
     };
     console.log('[OSC] Statistics reset');
   }
+  
+  /**
+   * Get OSC statistics including legacy compatibility stats
+   * @returns {Object} Combined statistics
+   */
+  getCombinedStats() {
+    const legacyStats = getLegacyOscStats();
+    
+    return {
+      // Main OSC stats
+      isEnabled: this.isEnabled,
+      messagesReceived: this.stats.messagesReceived,
+      messagesSent: this.stats.messagesSent,
+      errors: this.stats.errors,
+      lastActivity: this.stats.lastActivity,
+      activeParameters: this.activeParameters.size,
+      
+      // Legacy compatibility stats
+      legacy: {
+        isEnabled: legacyStats.isEnabled,
+        messagesTranslated: legacyStats.messagesTranslated,
+        unknownParameters: legacyStats.unknownParameters,
+        supportedParameters: legacyStats.supportedParameters,
+        errors: legacyStats.errors
+      }
+    };
+  }
+
+  /**
+   * Get current OSC statistics
+   * @returns {Object} Statistics object
+   */
+  getStats() {
+    return {
+      isEnabled: this.isEnabled,
+      messagesReceived: this.stats.messagesReceived,
+      messagesSent: this.stats.messagesSent,
+      errors: this.stats.errors,
+      lastActivity: this.stats.lastActivity,
+      activeParameters: this.activeParameters.size
+    };
+  }
 }
 
 // Create singleton instance
@@ -553,6 +675,37 @@ export function setOSCParameterActive(parameterName, isGlobal = false, layerId =
 
 export function setOSCParameterInactive(parameterName, isGlobal = false, layerId = null) {
   oscManager.setParameterInactive(parameterName, isGlobal, layerId);
+}
+
+/**
+ * Get combined OSC statistics including legacy compatibility
+ * @returns {Object} Combined statistics
+ */
+export function getCombinedOSCStats() {
+  return oscManager.getCombinedStats();
+}
+
+/**
+ * Enable or disable legacy OSC compatibility
+ * @param {boolean} enabled - Whether to enable legacy compatibility
+ */
+export function setLegacyOSCEnabled(enabled) {
+  setLegacyOscEnabled(enabled);
+}
+
+/**
+ * Get list of supported legacy parameters
+ * @returns {Array} Array of supported legacy parameter names
+ */
+export function getSupportedLegacyOSCParameters() {
+  return getSupportedLegacyParameters();
+}
+
+/**
+ * Reset legacy OSC statistics
+ */
+export function resetLegacyOSCStats() {
+  resetLegacyOscStats();
 }
 
 // Make available globally for debugging
