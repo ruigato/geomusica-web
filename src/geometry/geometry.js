@@ -1178,6 +1178,16 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
                                    state.showPointsFreqLabels && 
                                    !isLerping;
     
+    // FIXED Phase 2: Get layer info for proper labeling
+    const layerId = state?.layerId || 0;
+    const layerManager = window.layerManager;
+    const layer = layerManager?.getLayer(layerId);
+    const layerColor = layer?.color?.getHexString() || '#ffffff';
+    
+    // FIXED: Set layerId on group userData for label rotation system
+    if (!group.userData) group.userData = {};
+    group.userData.layerId = layerId;
+    
     // If we should create point labels, initialize the array
     if (shouldCreatePointLabels) {
       state.pointFreqLabels = [];
@@ -1528,48 +1538,52 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
             // Calculate frequency for this vertex
             const freq = Math.hypot(x, y);
             
-            // Format display text
+            // FIXED Phase 2: Format display text with layer context
             let labelText;
-            // Check global state for equal temperament
             const globalState = window._globalState;
             if (globalState && globalState.useEqualTemperament && note.noteName) {
-              labelText = `${freq.toFixed(1)}Hz (${note.noteName}) ${note.duration.toFixed(2)}s`;
+              labelText = `L${layerId+1}: ${freq.toFixed(1)}Hz (${note.noteName}) ${note.duration.toFixed(2)}s`;
             } else {
-              labelText = `${freq.toFixed(2)}Hz ${note.duration.toFixed(2)}s`;
+              labelText = `L${layerId+1}: ${freq.toFixed(2)}Hz ${note.duration.toFixed(2)}s`;
             }
+            
+            // FIXED Phase 2: Create unique label ID with layer prefix
+            const labelId = `L${layerId}-point-${i}-${v}-${Math.random().toString(36).substr(2, 5)}`;
             
             // Create a world position for this vertex in the copy
             const worldPos = new THREE.Vector3(x, y, 0);
             
-            // Apply the copy's rotation
+            // Apply the copy's rotation for initial positioning
             const rotatedPos = worldPos.clone();
             rotatedPos.applyAxisAngle(new THREE.Vector3(0, 0, 1), cumulativeAngleRadians);
             
-            // Create a text label for this vertex
-            const textLabel = createTextLabel(
-              labelText, 
-              rotatedPos, 
-              copyGroup, // Parent is not really used for DOM labels
-              false, // Not an axis label
-              camera,
-              renderer
-            );
+            // FIXED Phase 2: Create label with layer-specific styling
+            const pointLabel = createOrUpdateLabel(labelId, rotatedPos, labelText, camera, renderer);
             
-            // Update the label immediately
-            textLabel.update(camera, renderer);
+            // FIXED Phase 2: Apply layer-specific styling
+            if (pointLabel.domElement) {
+              pointLabel.domElement.style.color = `#${layerColor}`;
+              pointLabel.domElement.style.borderLeft = `3px solid #${layerColor}`;
+              pointLabel.domElement.style.paddingLeft = '6px';
+              pointLabel.domElement.style.backgroundColor = `rgba(${parseInt(layerColor.substr(0,2), 16)}, ${parseInt(layerColor.substr(2,2), 16)}, ${parseInt(layerColor.substr(4,2), 16)}, 0.1)`;
+            }
             
-            // Store reference for cleanup
+            // FIXED: Store both original unrotated position and current rotated position
             const labelInfo = {
-              label: textLabel,
+              label: pointLabel,
               copyIndex: i,
               vertexIndex: v,
-              position: rotatedPos.clone()
+              originalPosition: worldPos.clone(), // Store unrotated position for rotation calculations
+              position: rotatedPos.clone(),      // Store current rotated position
+              copyRotation: cumulativeAngleRadians, // Store copy's rotation offset
+              layerId: layerId,
+              labelId: labelId
             };
             
             state.pointFreqLabels.push(labelInfo);
             pointFreqLabelsCreated.push(labelInfo);
           } catch (labelError) {
-            
+            console.error(`[LABELS] Error creating point label for layer ${layerId}:`, labelError);
             // Continue processing other vertices even if one label fails
           }
         }

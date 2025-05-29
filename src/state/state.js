@@ -727,6 +727,10 @@ export function createAppState() {
         this.cleanupPointFreqLabels();
       } else if (value) {
         this.needsPointFreqLabelsUpdate = true;
+        // FIXED: Force geometry regeneration to create labels
+        this.parameterChanges.showPointsFreqLabels = true;
+        // Also force a general geometry update to ensure labels are created
+        this.parameterChanges.radius = true;
       }
     },
     
@@ -744,7 +748,24 @@ export function createAppState() {
     cleanupPointFreqLabels() {
       if (!this.pointFreqLabels || this.pointFreqLabels.length === 0) return;
       
-      clearLabels();
+      // FIXED Phase 2: Layer-aware cleanup using new labelId property
+      this.pointFreqLabels.forEach(labelInfo => {
+        if (labelInfo.labelId) {
+          // Use the new clearLayerPointLabels approach but for individual labels
+          const element = document.getElementById(labelInfo.labelId);
+          if (element && element.parentNode) {
+            element.parentNode.removeChild(element);
+          }
+        }
+        // Fallback: clean up using the old method if labelId not available
+        if (labelInfo.label && labelInfo.label.id) {
+          const element = document.getElementById(labelInfo.label.id);
+          if (element && element.parentNode) {
+            element.parentNode.removeChild(element);
+          }
+        }
+      });
+      
       this.pointFreqLabels = [];
     },
     

@@ -5,7 +5,7 @@ import { processPendingTriggers, clearLayerMarkers, detectLayerTriggers, resetTr
 import { ANIMATION_STATES, MAX_VELOCITY } from '../config/constants.js';
 // DEPRECATED: Removed import from intersections.js - functionality deprecated
 // import { detectIntersections, applyVelocityToMarkers } from '../geometry/intersections.js';
-import { updateLabelPositions, updateAxisLabels } from '../ui/domLabels.js';
+import { updateLabelPositions, updateAxisLabels, updateAllLayersRotatingLabels } from '../ui/domLabels.js';
 
 // Frame counter and timing stats
 let frameCount = 0;
@@ -333,6 +333,11 @@ function animateFrame(props) {
     // Update and fade out axis labels
     if (typeof updateAxisLabels === 'function') {
       updateAxisLabels();
+    }
+    
+    // FIXED: Update point frequency labels for all layers (Phase 1 fix)
+    if (typeof updateAllLayersRotatingLabels === 'function') {
+      updateAllLayersRotatingLabels(cam, renderer);
     }
   }
   

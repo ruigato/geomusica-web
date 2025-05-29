@@ -1,7 +1,9 @@
 // src/state/layer.js - Layer class for multi-layer architecture
 import { createAppState } from './state.js';
 import * as THREE from 'three';
-import { createPolygonGeometry } from '../geometry/geometry.js';
+import { createPolygonGeometry, updateGroup } from '../geometry/geometry.js';
+import { getCurrentTime } from '../time/time.js';
+import { clearLayerPointLabels } from '../ui/domLabels.js';
 
 // Debug flag to control logging
 const DEBUG_LOGGING = false;
@@ -507,6 +509,15 @@ export class Layer {
    * Dispose of all resources and break all circular references
    */
   dispose() {
+    // FIXED Phase 3: Clear this layer's point frequency labels
+    try {
+      if (this.id !== null && this.id !== undefined) {
+        clearLayerPointLabels(this.id);
+      }
+    } catch (error) {
+      console.error(`[LAYER] Error clearing labels for layer ${this.id}:`, error);
+    }
+    
     // Get a reference to the layer manager before we clear our reference to it
     const layerManager = this.getLayerManager();
     

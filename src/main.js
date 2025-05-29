@@ -617,6 +617,9 @@ async function initializeApplication() {
   // Add reference to the scene for easy access
   scene._layerManager = layerManager;
   
+  // FIXED: Make layer manager available globally for label system
+  window.layerManager = layerManager;
+  
   // Add layer link group to scene
   scene.add(layerLinkManager.getLinkGroup());
   
@@ -808,6 +811,20 @@ async function initializeApplication() {
     
     // Initialize DOM labels
     initLabels(renderer);
+    
+    // FIXED: Ensure layer event listeners are properly initialized for label system
+    try {
+      import('./ui/domLabels.js').then(module => {
+        if (module.initializeLayerEventListeners) {
+          module.initializeLayerEventListeners();
+          console.log('[MAIN] Layer event listeners for label system initialized');
+        }
+      }).catch(error => {
+        console.warn('[MAIN] Failed to initialize layer event listeners:', error);
+      });
+    } catch (error) {
+      console.warn('[MAIN] Failed to import label system:', error);
+    }
     
     // Add debugging buttons
     addDebugButtons();

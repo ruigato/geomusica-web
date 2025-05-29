@@ -666,6 +666,11 @@ export function setupUI(state) {
   if (showPointsFreqLabelsCheckbox) {
     showPointsFreqLabelsCheckbox.addEventListener('change', e => {
       handleCheckboxChange('setShowPointsFreqLabels', e.target.checked);
+      
+      // FIXED: Force immediate state synchronization to update geometry and labels
+      if (typeof window.syncStateAcrossSystems === 'function') {
+        window.syncStateAcrossSystems();
+      }
     });
   }
   

@@ -17,6 +17,9 @@ const activeAxisLabels = new Map();
 const labelMap = new Map();
 let nextLabelId = 1;
 
+// Initialize layer event listeners
+let layerEventListenersInitialized = false;
+
 /**
  * Initialize the DOM labels system
  * @param {THREE.WebGLRenderer} renderer Renderer to get element dimensions
@@ -339,31 +342,77 @@ export function updateRotatingLabels(group, camera, renderer) {
   // Get the group's world rotation
   const worldRotation = group.rotation.z;
   
-  // Check if we have pointFreqLabels in the state
-  const state = group.parent?.userData?.state;
-  if (!state || !state.pointFreqLabels || !state.pointFreqLabels.length) return;
+  // FIXED: Get state from the correct layer instead of assuming group.parent.userData.state
+  const layerId = group.userData.layerId;
+  const layerManager = window.layerManager;
+  
+  if (!layerManager || layerId === undefined) {
+    return;
+  }
+  
+  const layer = layerManager.getLayer(layerId);
+  const state = layer?.state;
+  
+  if (!state || !state.pointFreqLabels || !state.pointFreqLabels.length) {
+    return;
+  }
   
   // Update each point frequency label based on geometry rotation
-  state.pointFreqLabels.forEach(labelInfo => {
+  state.pointFreqLabels.forEach((labelInfo, index) => {
     const label = labelInfo.label;
-    if (!label || !label.id) return;
+    if (!label || !label.id) {
+      return;
+    }
     
-    // Get the original position
-    const originalPos = labelInfo.position.clone();
+    // FIXED: Use the original unrotated position and apply current rotation
+    const originalPos = labelInfo.originalPosition || labelInfo.position;
+    if (!originalPos) {
+      return;
+    }
     
-    // Apply the current group rotation
+    const copyRotation = labelInfo.copyRotation || 0;
+    
+    // Apply both the copy's original rotation and the current group rotation
+    const totalRotation = copyRotation + worldRotation;
     const rotatedPos = originalPos.clone();
-    rotatedPos.applyAxisAngle(new THREE.Vector3(0, 0, 1), worldRotation);
+    rotatedPos.applyAxisAngle(new THREE.Vector3(0, 0, 1), totalRotation);
     
     // Convert to screen position
     const screenPos = worldToScreen(rotatedPos, camera, renderer);
     
-    // Update the DOM element position
-    const elementId = label.id.startsWith('point-') ? label.id : 'point-' + label.id;
-    const element = document.getElementById(elementId);
+    // FIXED: Try multiple ways to find the DOM element
+    let element = null;
+    
+    // Method 1: Try labelId first
+    if (labelInfo.labelId) {
+      element = document.getElementById(labelInfo.labelId);
+    }
+    
+    // Method 2: Try the label.id
+    if (!element && label.id) {
+      element = document.getElementById(label.id);
+    }
+    
+    // Method 3: Try point- prefix
+    if (!element && label.id && !label.id.startsWith('point-')) {
+      element = document.getElementById('point-' + label.id);
+    }
+    
+    // Method 4: Search through active point labels
+    if (!element) {
+      for (const [id, activeLabel] of activePointLabels.entries()) {
+        if (activeLabel === label || (label.id && id.includes(label.id))) {
+          element = activeLabel;
+          break;
+        }
+      }
+    }
+    
     if (element) {
+      // Update the DOM element position with vertical offset to avoid overlapping the vertex
+      const verticalOffset = 20; // Pixels below the vertex
       element.style.left = `${screenPos.x}px`;
-      element.style.top = `${screenPos.y}px`;
+      element.style.top = `${screenPos.y + verticalOffset}px`;
     }
   });
 }
@@ -417,6 +466,56 @@ export function clearLabels() {
     releaseAxisLabel(label);
   });
   activeAxisLabels.clear();
+}
+
+/**
+ * Clear point frequency labels for a specific layer
+ * @param {number} layerId Layer ID to clear labels for
+ */
+export function clearLayerPointLabels(layerId) {
+  if (!layerId && layerId !== 0) return;
+  
+  const layerManager = window.layerManager;
+  if (!layerManager) return;
+  
+  const layer = layerManager.getLayer(layerId);
+  if (!layer || !layer.state || !layer.state.pointFreqLabels) return;
+  
+  // Clear DOM elements for this layer's point labels
+  layer.state.pointFreqLabels.forEach(labelInfo => {
+    if (labelInfo.labelId) {
+      removePointLabel(labelInfo.labelId);
+    }
+    // Also clean up any DOM elements directly
+    if (labelInfo.label && labelInfo.label.id) {
+      const element = document.getElementById(labelInfo.label.id);
+      if (element && element.parentNode) {
+        element.parentNode.removeChild(element);
+      }
+    }
+  });
+  
+  // Clear the layer's label array
+  layer.state.pointFreqLabels = [];
+}
+
+/**
+ * Update rotating labels for all layers
+ * @param {THREE.Camera} camera Camera for positioning
+ * @param {THREE.WebGLRenderer} renderer Renderer for positioning
+ */
+export function updateAllLayersRotatingLabels(camera, renderer) {
+  if (!camera || !renderer) return;
+  
+  const layerManager = window.layerManager;
+  if (!layerManager || !layerManager.layers) return;
+  
+  // Update rotating labels for all layers that have showPointsFreqLabels enabled
+  for (const layer of layerManager.layers) {
+    if (layer && layer.state && layer.state.showPointsFreqLabels && layer.group) {
+      updateRotatingLabels(layer.group, camera, renderer);
+    }
+  }
 }
 
 /**
@@ -538,4 +637,104 @@ function hideOrphanedLabels(activeMarkers) {
       label.style.display = 'none';
     }
   }
+}
+
+/**
+ * Layer lifecycle hook: Called when a new layer is created
+ * @param {number} layerId ID of the newly created layer
+ * @param {Layer} layer The layer object
+ */
+export function onLayerCreated(layerId, layer) {
+  // Initialize label tracking for this layer
+  if (layer && layer.state) {
+    layer.state.pointFreqLabels = layer.state.pointFreqLabels || [];
+  }
+  
+  console.log(`[LABELS] Layer ${layerId} created - label system initialized`);
+}
+
+/**
+ * Layer lifecycle hook: Called when switching between layers
+ * @param {number} fromLayerId Previous active layer ID (null if none)
+ * @param {number} toLayerId New active layer ID
+ */
+export function onLayerChanged(fromLayerId, toLayerId) {
+  // No specific action needed for layer changes - labels are per-layer
+  // and managed individually by their layer IDs
+  console.log(`[LABELS] Layer changed from ${fromLayerId} to ${toLayerId}`);
+}
+
+/**
+ * Clear all labels across all layers
+ */
+export function clearAllLayersLabels() {
+  const layerManager = window.layerManager;
+  if (!layerManager || !layerManager.layers) return;
+  
+  for (const layer of layerManager.layers) {
+    if (layer && layer.id !== undefined) {
+      try {
+        clearLayerPointLabels(layer.id);
+      } catch (error) {
+        console.error(`[LABELS] Error clearing labels for layer ${layer.id}:`, error);
+      }
+    }
+  }
+  
+  // Also clear any remaining global labels
+  clearLabels();
+}
+
+/**
+ * Initialize global event listeners for layer system integration
+ * This should be called once when the label system starts up
+ */
+export function initializeLayerEventListeners() {
+  if (layerEventListenersInitialized) return;
+  
+  // Listen for layer removal events
+  window.addEventListener('layerRemoved', (event) => {
+    const { removedLayerId, idRemapping } = event.detail;
+    
+    console.log(`[LABELS] Layer ${removedLayerId} removed - cleaning up labels`);
+    
+    // Clear labels for the removed layer
+    try {
+      clearLayerPointLabels(removedLayerId);
+    } catch (error) {
+      console.error(`[LABELS] Error clearing labels for removed layer ${removedLayerId}:`, error);
+    }
+    
+    // Update any remaining label references if IDs were remapped
+    if (idRemapping && Object.keys(idRemapping).length > 0) {
+      updateLabelReferencesAfterRemapping(idRemapping);
+    }
+  });
+  
+  // Listen for layer change events
+  window.addEventListener('layerChanged', (event) => {
+    const { layerId, state } = event.detail;
+    onLayerChanged(null, layerId); // We don't track fromLayerId in this event
+  });
+  
+  layerEventListenersInitialized = true;
+  console.log('[LABELS] Layer event listeners initialized');
+}
+
+/**
+ * Update label references after layer ID remapping
+ * @param {Object} idRemapping Map of old IDs to new IDs
+ */
+function updateLabelReferencesAfterRemapping(idRemapping) {
+  // For now, we use layer-specific label IDs so remapping is handled automatically
+  // Future enhancement: could update DOM element IDs if needed
+  console.log('[LABELS] Label references updated after layer ID remapping', idRemapping);
+}
+
+// Auto-initialize when this module is loaded
+if (typeof window !== 'undefined') {
+  // Use setTimeout to ensure this runs after the module is fully loaded
+  setTimeout(() => {
+    initializeLayerEventListeners();
+  }, 100);
 }

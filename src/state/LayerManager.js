@@ -7,6 +7,7 @@ import { updateGroup } from '../geometry/geometry.js';
 import { detectLayerTriggers, clearLayerMarkers } from '../triggers/triggers.js';
 import { resetTriggerSystem } from '../triggers/triggers.js';
 import { generateSineWaveColorPalette } from '../utils/colorPalette.js';
+import { clearLayerPointLabels } from '../ui/domLabels.js';
 
 // Debug flag to control logging
 const DEBUG_LOGGING = false;
@@ -155,6 +156,20 @@ export class LayerManager {
     
     // Add to layer collection
     this.layers.push(layer);
+    
+    // FIXED Phase 3: Notify label system of new layer creation
+    try {
+      // Import and call label system initialization if needed
+      import('../ui/domLabels.js').then(module => {
+        if (module.onLayerCreated && typeof module.onLayerCreated === 'function') {
+          module.onLayerCreated(layer.id, layer);
+        }
+      }).catch(error => {
+        // Silently ignore if function doesn't exist
+      });
+    } catch (error) {
+      // Silently ignore initialization errors
+    }
     
     // If this is the first layer, make it active
     if (this.layers.length === 1) {
@@ -366,6 +381,18 @@ export class LayerManager {
   }
   
   /**
+   * Get a layer by ID
+   * @param {number} layerId The ID of the layer to get
+   * @returns {Layer|null} The layer or null if not found
+   */
+  getLayer(layerId) {
+    if (layerId >= 0 && layerId < this.layers.length) {
+      return this.layers[layerId];
+    }
+    return null;
+  }
+  
+  /**
    * Get active layer state
    * @returns {Object|null} The active layer's state or null
    */
@@ -412,6 +439,13 @@ export class LayerManager {
     
     // Get the layer and dispose its resources
     const layer = this.layers[layerId];
+    
+    // FIXED Phase 3: Clear layer-specific point frequency labels
+    try {
+      clearLayerPointLabels(layerId);
+    } catch (error) {
+      console.error(`[LAYER MANAGER] Error clearing labels for layer ${layerId}:`, error);
+    }
     
     // First remove from the scene to prevent further processing
     if (layer.group && layer.group.parent) {
