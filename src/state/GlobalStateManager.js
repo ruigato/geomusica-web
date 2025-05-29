@@ -160,8 +160,8 @@ export class GlobalStateManager {
     // FIXED: Always update the base angle to maintain continuous rotation using audio timing
     if (elapsedTime > 0) {
       // Calculate base rotation (degrees) based on BPM
-      // 120 BPM = 0.5 rotations per second = 180 degrees per second
-      const rotationsPerSecond = this.bpm / 240;
+      // 120 BPM = 0.125 rotations per second = 45 degrees per second
+      const rotationsPerSecond = this.bpm / 960;
       const baseDeltaAngleDegrees = rotationsPerSecond * 360 * elapsedTime;
       
       // Update the base angle
@@ -175,7 +175,7 @@ export class GlobalStateManager {
     // This ensures layers stay in sync when subdivision changes (with jumps)
     
     // Calculate the current transport position in measures
-    const rotationsPerSecond = this.bpm / 240; // 120 BPM = 0.5 rotations per second
+    const rotationsPerSecond = this.bpm / 960; // 120 BPM = 0.125 rotations per second
     const totalRotations = currentTime * rotationsPerSecond;
     
     // Apply time subdivision to the transport position
@@ -386,12 +386,12 @@ export class GlobalStateManager {
       return { angle: this.lastAngle, lastAngle: this.lastAngle };
     }
     
-    // Adjust calculation to make 120 BPM = 0.5 rotation per second (1 rotation per 2 seconds)
-    // Formula: rotationsPerSecond = BPM / 240
-    // At 60 BPM: 60/240 = 0.25 rotations per second (1 rotation takes 4 seconds)
-    // At 120 BPM: 120/240 = 0.5 rotations per second (1 rotation takes 2 seconds) 
-    // At 240 BPM: 240/240 = 1 rotation per second (1 rotation takes 1 second)
-    const rotationsPerSecond = this.bpm / 240;
+    // Adjust calculation to make 120 BPM = 0.125 rotation per second (1 rotation per 8 seconds)
+    // Formula: rotationsPerSecond = BPM / 960
+    // At 60 BPM: 60/960 = 0.0625 rotations per second (1 rotation takes 16 seconds)
+    // At 120 BPM: 120/960 = 0.125 rotations per second (1 rotation takes 8 seconds) 
+    // At 240 BPM: 240/960 = 0.25 rotations per second (1 rotation takes 4 seconds)
+    const rotationsPerSecond = this.bpm / 960;
     
     // Calculate degrees to rotate this frame
     const degreesPerSecond = rotationsPerSecond * 360;

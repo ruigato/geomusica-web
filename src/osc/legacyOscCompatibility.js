@@ -114,26 +114,26 @@ const LEGACY_PARAMETER_MAPPING = {
     range: { min: 0, max: 7 },
     currentRange: { min: 1, max: 7 },
     type: 'number',
-    discrete: [1, 1.5, 2, 3, 4, 5, 6, 7]
+    discrete: [0.125, 0.25, 0.5, 1, 2, 3, 4, 5]
   },
-  'Freespeed': { 
-    current: 'LerpTime', // Map to closest equivalent
-    range: { min: 0, max: 2.0 },
-    currentRange: { min: 0.1, max: 5.0 },
-    type: 'number'
-  },
-  'Masterspeed': { 
-    current: 'TimeSubdivisionValue', // Map to time subdivision
-    range: { min: 0, max: 4.0 },
-    currentRange: { min: 0.125, max: 8 },
-    type: 'number'
-  },
-  'Sync': { 
-    current: 'UseTimeSubdivision', // Map to time subdivision enable
-    range: { min: 0, max: 1.0 },
-    currentRange: { min: false, max: true },
-    type: 'boolean'
-  },
+  // 'Freespeed': { 
+  //   current: 'LerpTime', // DISABLED - Map to closest equivalent
+  //   range: { min: 0, max: 2.0 },
+  //   currentRange: { min: 0.1, max: 5.0 },
+  //   type: 'number'
+  // },
+  // 'Masterspeed': { 
+  //   current: 'TimeSubdivisionValue', // DISABLED - Map to time subdivision
+  //   range: { min: 0, max: 4.0 },
+  //   currentRange: { min: 0.125, max: 8 },
+  //   type: 'number'
+  // },
+  // 'Sync': { 
+  //   current: 'UseTimeSubdivision', // DISABLED - Map to time subdivision enable
+  //   range: { min: 0, max: 1.0 },
+  //   currentRange: { min: false, max: true },
+  //   type: 'boolean'
+  // },
 
   // Modulation Parameters
   'Modulus': { 
@@ -186,24 +186,24 @@ const LEGACY_PARAMETER_MAPPING = {
     currentRange: { min: false, max: true },
     type: 'boolean'
   },
-  'Tesselatejoin': { 
-    current: 'UseTesselation', // Map to main tesselation toggle
-    range: { min: 0, max: 1 },
-    currentRange: { min: false, max: true },
-    type: 'boolean'
-  },
-  'Tesselaterotate': { 
-    current: 'UseTesselation', // Map to main tesselation toggle
-    range: { min: 0, max: 1 },
-    currentRange: { min: false, max: true },
-    type: 'boolean'
-  },
-  'Tesselatesort': { 
-    current: 'UseTesselation', // Map to main tesselation toggle
-    range: { min: 0, max: 1 },
-    currentRange: { min: false, max: true },
-    type: 'boolean'
-  },
+  // 'Tesselatejoin': { 
+  //   current: 'UseTesselation', // DISABLED - Map to main tesselation toggle
+  //   range: { min: 0, max: 1 },
+  //   currentRange: { min: false, max: true },
+  //   type: 'boolean'
+  // },
+  // 'Tesselaterotate': { 
+  //   current: 'UseTesselation', // DISABLED - Map to main tesselation toggle
+  //   range: { min: 0, max: 1 },
+  //   currentRange: { min: false, max: true },
+  //   type: 'boolean'
+  // },
+  // 'Tesselatesort': { 
+  //   current: 'UseTesselation', // DISABLED - Map to main tesselation toggle
+  //   range: { min: 0, max: 1 },
+  //   currentRange: { min: false, max: true },
+  //   type: 'boolean'
+  // },
   'Star': { 
     current: 'UseStars', 
     range: { min: 0, max: 1 },
@@ -222,12 +222,12 @@ const LEGACY_PARAMETER_MAPPING = {
     currentRange: { min: false, max: true },
     type: 'boolean'
   },
-  'Particles': { 
-    current: 'ShowPointsFreqLabels', 
-    range: { min: 0, max: 1 },
-    currentRange: { min: false, max: true },
-    type: 'boolean'
-  },
+  // 'Particles': { 
+  //   current: 'ShowPointsFreqLabels', // DISABLED
+  //   range: { min: 0, max: 1 },
+  //   currentRange: { min: false, max: true },
+  //   type: 'boolean'
+  // },
   'Intersections': { 
     current: 'UsePlainIntersections', 
     range: { min: 0, max: 1 },
@@ -300,24 +300,24 @@ const LEGACY_PARAMETER_MAPPING = {
   },
 
   // Display and Curve Parameters
-  'Numbers': { 
-    current: 'ShowAxisFreqLabels', 
-    range: { min: 0, max: 1 },
-    currentRange: { min: false, max: true },
-    type: 'boolean'
-  },
-  'Lines': { 
-    current: 'ShowAxisFreqLabels', // Map to axis labels as closest equivalent
-    range: { min: 0, max: 1 },
-    currentRange: { min: false, max: true },
-    type: 'boolean'
-  },
-  'Dots': { 
-    current: 'ShowPointsFreqLabels', // Map to points labels
-    range: { min: 0, max: 1 },
-    currentRange: { min: false, max: true },
-    type: 'boolean'
-  },
+  // 'Numbers': { 
+  //   current: 'ShowAxisFreqLabels', // DISABLED
+  //   range: { min: 0, max: 1 },
+  //   currentRange: { min: false, max: true },
+  //   type: 'boolean'
+  // },
+  // 'Lines': { 
+  //   current: 'ShowAxisFreqLabels', // DISABLED - Map to axis labels as closest equivalent
+  //   range: { min: 0, max: 1 },
+  //   currentRange: { min: false, max: true },
+  //   type: 'boolean'
+  // },
+  // 'Dots': { 
+  //   current: 'ShowPointsFreqLabels', // DISABLED - Dots parameter not implemented yet
+  //   range: { min: 0, max: 1 },
+  //   currentRange: { min: false, max: true },
+  //   type: 'boolean'
+  // },
   // 'Mirror': { 
   //   current: 'AltScale', // DISABLED - Mirror parameter not implemented yet
   //   range: { min: 0, max: 2.0 },
@@ -332,44 +332,44 @@ const LEGACY_PARAMETER_MAPPING = {
   },
 
   // Note Parameters
-  'Temperament': { 
-    current: 'UseEqualTemperament', 
-    range: { min: 0, max: 1 },
-    currentRange: { min: false, max: true },
-    type: 'boolean'
-  },
-  'Noteendless': { 
-    current: 'UseLerp', // Map to lerp as closest equivalent for endless notes
-    range: { min: 0, max: 1 },
-    currentRange: { min: false, max: true },
-    type: 'boolean'
-  },
-  'Noteduration': { 
-    current: 'MaxDuration', // Map to max duration
-    range: { min: 0, max: 4.0 },
-    currentRange: { min: 0.01, max: 2.0 },
-    type: 'number'
-  },
+  // 'Temperament': { 
+  //   current: 'UseEqualTemperament', // DISABLED
+  //   range: { min: 0, max: 1 },
+  //   currentRange: { min: false, max: true },
+  //   type: 'boolean'
+  // },
+  // 'Noteendless': { 
+  //   current: 'UseLerp', // DISABLED - Map to lerp as closest equivalent for endless notes
+  //   range: { min: 0, max: 1 },
+  //   currentRange: { min: false, max: true },
+  //   type: 'boolean'
+  // },
+  // 'Noteduration': { 
+  //   current: 'MaxDuration', // DISABLED - Map to max duration
+  //   range: { min: 0, max: 4.0 },
+  //   currentRange: { min: 0.01, max: 2.0 },
+  //   type: 'number'
+  // },
 
   // Carve Parameters (map to existing functionality)
-  'Carve': { 
-    current: 'UseDelete', // Map to delete as closest equivalent
-    range: { min: 0, max: 1 },
-    currentRange: { min: false, max: true },
-    type: 'boolean'
-  },
-  'Carvex': { 
-    current: 'DeleteMin', // Map to delete min
-    range: { min: 0, max: 1.0 },
-    currentRange: { min: 1, max: 32 },
-    type: 'number'
-  },
-  'Carvey': { 
-    current: 'DeleteMax', // Map to delete max
-    range: { min: 0, max: 1.0 },
-    currentRange: { min: 1, max: 32 },
-    type: 'number'
-  }
+  // 'Carve': { 
+  //   current: 'UseDelete', // DISABLED - Map to delete as closest equivalent
+  //   range: { min: 0, max: 1 },
+  //   currentRange: { min: false, max: true },
+  //   type: 'boolean'
+  // },
+  // 'Carvex': { 
+  //   current: 'DeleteMin', // DISABLED - Map to delete min
+  //   range: { min: 0, max: 1.0 },
+  //   currentRange: { min: 1, max: 32 },
+  //   type: 'number'
+  // },
+  // 'Carvey': { 
+  //   current: 'DeleteMax', // DISABLED - Map to delete max
+  //   range: { min: 0, max: 1.0 },
+  //   currentRange: { min: 1, max: 32 },
+  //   type: 'number'
+  // }
 };
 
 /**
@@ -799,10 +799,10 @@ export function translateToLegacyOscMessage(message) {
       // Multiple legacy parameters map to the same modern parameter
       // Apply priority rules for the most appropriate mapping
       const priorities = {
-        'ShowAxisFreqLabels': ['Numbers', 'Lines'], // Prefer Numbers over Lines
-        'UseDelete': ['Delete', 'Carve'], // Prefer Delete over Carve
-        'DeleteMin': ['Deletemin', 'Carvex'], // Prefer Deletemin over Carvex
-        'DeleteMax': ['Deletemax', 'Carvey'], // Prefer Deletemax over Carvey
+        // 'ShowAxisFreqLabels': ['Lines'], // DISABLED - Both Numbers and Lines are disabled
+        'UseDelete': ['Delete'], // Prefer Delete over Carve (Carve is disabled)
+        'DeleteMin': ['Deletemin'], // Prefer Deletemin over Carvex (Carvex is disabled)
+        'DeleteMax': ['Deletemax'], // Prefer Deletemax over Carvey (Carvey is disabled)
       };
       
       const priorityList = priorities[modernParameterName];

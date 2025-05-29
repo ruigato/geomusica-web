@@ -274,7 +274,7 @@ class TimingDiagnostics {
     for (const bpm of this.highBPMValues) {
       console.log(`[TIMING DIAGNOSTICS] Testing BPM: ${bpm}`);
       
-      const rotationsPerSecond = bpm / 240; // Full rotation time
+      const rotationsPerSecond = bpm / 960; // Full rotation time
       const degreesPerMs = (rotationsPerSecond * 360) / 1000;
       
       const samples = [];

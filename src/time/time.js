@@ -234,7 +234,7 @@ export function calculateRotation(bpm, subdivisionValue, useSubdivision) {
   const currentTime = getCurrentTime();
   
   // Calculate rotations per second based on BPM
-  const rotationsPerSecond = bpm / 240;
+  const rotationsPerSecond = bpm / 960;
   const totalRotations = currentTime * rotationsPerSecond;
   
   // Apply time subdivision

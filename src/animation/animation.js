@@ -257,7 +257,7 @@ function animateFrame(props) {
   if (frameCount % 300 === 0) {
     const currentFPS = 1 / timeDelta;
     const bpm = globalState?.bpm || 120;
-    const rotationHz = bpm / 240; // Rotations per second
+    const rotationHz = bpm / 960; // Rotations per second
   }
   
   // Get the active layer from the scene if available
@@ -267,7 +267,7 @@ function animateFrame(props) {
   if (frameCount % 1200 === 0 && activeLayer) { // Every 20 seconds at 60fps
     const bpm = globalState?.bpm || 120;
     const currentFPS = 1 / timeDelta;
-    const rotationSpeed = bpm / 240; // rotations per second
+    const rotationSpeed = bpm / 960; // rotations per second
     const degreesPerFrame = (rotationSpeed * 360) / currentFPS;
   }
   

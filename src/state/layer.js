@@ -985,8 +985,8 @@ export class Layer {
       const fallbackBPM = this.state?.bpm || 120;
       
       // Calculate rotations per second based on BPM
-      // 120 BPM = 0.5 rotations per second (1 full revolution per 2 seconds)
-      const rotationsPerSecond = fallbackBPM / 240;
+      // 120 BPM = 0.125 rotations per second (1 full revolution per 8 seconds)
+      const rotationsPerSecond = fallbackBPM / 960;
       const totalRotations = currentTime * rotationsPerSecond;
       
       // Apply time subdivision to the transport position
