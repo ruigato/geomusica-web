@@ -47,6 +47,8 @@ import { initializeUIInputs } from './ui/uiUtils.js';
 import { layerLinkManager } from './geometry/layerLink.js';
 // Import test utilities (development)
 import './osc/testLegacyOsc.js';
+// Import trigger dispatcher statically for real-time performance
+import { dispatchTrigger } from './triggers/triggerDispatcher.js';
 
 // Initialize stats for performance monitoring
 const stats = new Stats();
@@ -863,10 +865,9 @@ async function initializeApplication() {
             });
         }
         
-        // Handling audio triggers - CLEAN TRIGGER DISPATCH
-        const handleAudioTrigger = async (note) => {
-          // Import and use the trigger dispatcher
-          const { dispatchTrigger } = await import('./triggers/triggerDispatcher.js');
+        // Handling audio triggers - REAL-TIME TRIGGER DISPATCH (NO ASYNC!)
+        const handleAudioTrigger = (note) => {
+          // Use pre-imported dispatcher for immediate, synchronous dispatch
           return dispatchTrigger(note);
         };
         

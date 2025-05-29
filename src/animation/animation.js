@@ -249,9 +249,7 @@ function animateFrame(props) {
   }
   
   // Process any pending quantized triggers with audio-synchronized timing
-  if (triggerAudioCallback) {
-    processPendingTriggers(currentAudioTime, triggerAudioCallback, scene);
-  }
+  processPendingTriggers(currentAudioTime, scene);
   
   // Log timing info with enhanced frequency for debugging high BPM issues
   if (frameCount % 300 === 0) {
@@ -342,19 +340,10 @@ function animateFrame(props) {
   }
   
   // FIXED: Detect triggers on ALL visible layers with audio-synchronized timing
-  if (triggerAudioCallback && scene._layerManager && scene._layerManager.layers) {
+  if (scene._layerManager && scene._layerManager.layers) {
     for (const layer of scene._layerManager.layers) {
       if (layer && layer.visible && layer.state && layer.state.copies > 0) {
-        const layerContext = {
-          layerId: layer.id,
-          time: currentAudioTime,
-          callback: (note) => {
-            const noteWithLayerId = {...note, layerId: layer.id};
-            triggerAudioCallback(noteWithLayerId);
-          }
-        };
-        
-        detectLayerTriggers(layer, layerContext.time, layerContext.callback);
+        detectLayerTriggers(layer, currentAudioTime);
       }
     }
   }

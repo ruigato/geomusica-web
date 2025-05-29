@@ -13,6 +13,7 @@ import {
 import { createNote } from '../notes/notes.js';
 import { TemporalTriggerEngine } from './SubframeTrigger.js';
 import { calculateDeletedVertices } from '../geometry/geometry.js';
+import { dispatchTrigger } from './triggerDispatcher.js';
 
 const DEBUG_PHANTOM_TRIGGERS = true;
 
@@ -260,10 +261,9 @@ function storePendingTrigger(triggerInfo, quantizedTime) {
  * Process any pending triggers that should now be executed
  * Enhanced for high BPM precision timing using AudioContext
  * @param {number} audioTime Current audio time in seconds
- * @param {Function} audioCallback Callback to execute triggers
  * @param {Object} scene Scene for creating visual markers
  */
-export function processPendingTriggers(audioTime, audioCallback, scene) {
+export function processPendingTriggers(audioTime, scene) {
   if (pendingTriggers.length === 0) return;
   
   // Find triggers that should be executed with enhanced precision
@@ -291,8 +291,8 @@ export function processPendingTriggers(audioTime, audioCallback, scene) {
         }
       }
       
-      // IMPORTANT: Send the complete note object copy with precise audio timing
-      audioCallback(noteCopy);
+      // REAL-TIME DISPATCH: Send to all registered handlers (audio, MIDI, etc.)
+      dispatchTrigger(noteCopy);
       
       // Create a marker with visual feedback
       if (scene && worldRot !== undefined && noteCopy.frequency !== undefined) {
@@ -689,16 +689,13 @@ function checkEnhancedAxisCrossing(prevX, prevY, currX, currY) {
   return { hasCrossed: false, crossingFactor: 0 };
 }
 
-// DEPRECATED: detectIntersectionTriggers function removed - now handled by unified trigger system
-
 /**
  * Detect audio triggers for a layer with subframe precision
  * @param {Object} layer Layer to detect triggers for
  * @param {number} tNow Current time in seconds
- * @param {Function} audioCallback Callback function for triggered audio
  * @returns {boolean} True if any triggers were detected
  */
-export function detectLayerTriggers(layer, tNow, audioCallback) {
+export function detectLayerTriggers(layer, tNow) {
   // Validation checks
   if (!layer) {
     return false;
@@ -840,10 +837,10 @@ export function detectLayerTriggers(layer, tNow, audioCallback) {
   }
   
   // SUBFRAME ENHANCEMENT: Check for triggers with subframe precision
-  const layerTriggered = detectSubframeTriggers(layer, tNow, audioCallback, camera, renderer, scene);
+  const layerTriggered = detectSubframeTriggers(layer, tNow, camera, renderer, scene);
   
   // LAYER LINK ENHANCEMENT: Check for layer link triggers
-  const linkTriggered = detectLayerLinkTriggers(layer, tNow, audioCallback, camera, renderer, scene);
+  const linkTriggered = detectLayerLinkTriggers(layer, tNow, camera, renderer, scene);
   
   return layerTriggered || linkTriggered;
 }
@@ -1271,14 +1268,13 @@ function findIntersectionGroup(copyGroup, layer) {
  * Detect triggers using subframe precision with unified object processing
  * @param {Object} layer Layer to detect triggers for
  * @param {number} audioTime Current audio time in seconds
- * @param {Function} audioCallback Callback for triggered audio
  * @param {THREE.Camera} camera Camera for visual feedback
  * @param {THREE.WebGLRenderer} renderer Renderer for visual feedback
  * @param {THREE.Scene} scene Scene for adding visual markers
  * @returns {boolean} True if any triggers were detected
  */
-function detectSubframeTriggers(layer, audioTime, audioCallback, camera, renderer, scene) {
-  if (!layer || !layer.group || !audioCallback) return false;
+function detectSubframeTriggers(layer, audioTime, camera, renderer, scene) {
+  if (!layer || !layer.group) return false;
   
   const state = layer.state;
   const group = layer.group;
@@ -1509,7 +1505,7 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
               noteCopy.layerId = layerId;
               
               // Trigger audio
-              audioCallback(noteCopy);
+              dispatchTrigger(noteCopy);
               
               // Create visual marker
               createMarker(
@@ -1553,7 +1549,7 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
             if (state && state.useTesselation && triggerableObj.type === 'vertex') {
             }
             
-            audioCallback(note);
+            dispatchTrigger(note);
             
             // Create visual marker
             createMarker(
@@ -1588,13 +1584,12 @@ function detectSubframeTriggers(layer, audioTime, audioCallback, camera, rendere
  * Detect layer link triggers for mid-points between linked layers
  * @param {Object} layer Current layer being processed
  * @param {number} audioTime Current audio time in seconds
- * @param {Function} audioCallback Callback function for triggered notes
  * @param {THREE.Camera} camera Camera reference
  * @param {THREE.Renderer} renderer Renderer reference
  * @param {THREE.Scene} scene Scene reference
  * @returns {boolean} True if any layer link triggers were detected
  */
-function detectLayerLinkTriggers(layer, audioTime, audioCallback, camera, renderer, scene) {
+function detectLayerLinkTriggers(layer, audioTime, camera, renderer, scene) {
   // Import layer link manager dynamically to avoid circular dependencies
   try {
     // Check if layer link manager is available and enabled
@@ -1700,10 +1695,8 @@ function detectLayerLinkTriggers(layer, audioTime, audioCallback, camera, render
           // Record this trigger to prevent immediate re-triggering
           recentTriggers.set(triggerId, { time: audioTime });
           
-          // Fire the audio callback
-          if (audioCallback) {
-            audioCallback(note);
-          }
+          // REAL-TIME DISPATCH: Send to all registered handlers (audio, MIDI, etc.)
+          dispatchTrigger(note);
           
           // Create visual marker for the link trigger using precise position
           if (scene && camera && renderer) {
