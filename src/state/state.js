@@ -174,6 +174,12 @@ export function createAppState() {
     pointFreqLabels: [],
     needsPointFreqLabelsUpdate: false,
     
+    // Point label display options
+    pointLabelShowLayerId: DEFAULT_VALUES.POINT_LABEL_SHOW_LAYER_ID,
+    pointLabelShowVelocity: DEFAULT_VALUES.POINT_LABEL_SHOW_VELOCITY,
+    pointLabelShowDuration: DEFAULT_VALUES.POINT_LABEL_SHOW_DURATION,
+    pointLabelShowFrequency: DEFAULT_VALUES.POINT_LABEL_SHOW_FREQUENCY,
+    
     // Reference to modifiable baseGeo
     baseGeo: null,
     currentGeometryRadius: null,
@@ -740,6 +746,46 @@ export function createAppState() {
      */
     setDebug(value) {
       this.debug = Boolean(value);
+    },
+    
+    /**
+     * Set point label show layer ID option
+     * @param {boolean} value Enable/disable layer ID in point labels
+     */
+    setPointLabelShowLayerId(value) {
+      this.pointLabelShowLayerId = Boolean(value);
+      this.needsPointFreqLabelsUpdate = true;
+      this.parameterChanges.showPointsFreqLabels = true;
+    },
+    
+    /**
+     * Set point label show velocity option
+     * @param {boolean} value Enable/disable velocity in point labels
+     */
+    setPointLabelShowVelocity(value) {
+      this.pointLabelShowVelocity = Boolean(value);
+      this.needsPointFreqLabelsUpdate = true;
+      this.parameterChanges.showPointsFreqLabels = true;
+    },
+    
+    /**
+     * Set point label show duration option
+     * @param {boolean} value Enable/disable duration in point labels
+     */
+    setPointLabelShowDuration(value) {
+      this.pointLabelShowDuration = Boolean(value);
+      this.needsPointFreqLabelsUpdate = true;
+      this.parameterChanges.showPointsFreqLabels = true;
+    },
+    
+    /**
+     * Set point label show frequency option
+     * @param {boolean} value Enable/disable frequency in point labels
+     */
+    setPointLabelShowFrequency(value) {
+      this.pointLabelShowFrequency = Boolean(value);
+      this.needsPointFreqLabelsUpdate = true;
+      this.parameterChanges.showPointsFreqLabels = true;
     },
     
     /**

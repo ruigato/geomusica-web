@@ -797,6 +797,23 @@ export function updateUIFromState(state, uiElements) {
       uiElements.showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
     }
     
+    // Update point label display options
+    if (uiElements.pointLabelShowLayerIdCheckbox && state.pointLabelShowLayerId !== undefined) {
+      uiElements.pointLabelShowLayerIdCheckbox.checked = state.pointLabelShowLayerId;
+    }
+    
+    if (uiElements.pointLabelShowFrequencyCheckbox && state.pointLabelShowFrequency !== undefined) {
+      uiElements.pointLabelShowFrequencyCheckbox.checked = state.pointLabelShowFrequency;
+    }
+    
+    if (uiElements.pointLabelShowDurationCheckbox && state.pointLabelShowDuration !== undefined) {
+      uiElements.pointLabelShowDurationCheckbox.checked = state.pointLabelShowDuration;
+    }
+    
+    if (uiElements.pointLabelShowVelocityCheckbox && state.pointLabelShowVelocity !== undefined) {
+      uiElements.pointLabelShowVelocityCheckbox.checked = state.pointLabelShowVelocity;
+    }
+    
     // Update Lerp Time controls
     if (uiElements.lerpTimeRange && state.lerpTime !== undefined) {
       uiElements.lerpTimeRange.value = state.lerpTime;

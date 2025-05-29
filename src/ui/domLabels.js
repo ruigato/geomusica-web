@@ -21,6 +21,71 @@ let nextLabelId = 1;
 let layerEventListenersInitialized = false;
 
 /**
+ * Format point label text based on display options
+ * @param {Object} options - Display options and data
+ * @param {number} options.layerId - Layer ID
+ * @param {number} options.frequency - Frequency value
+ * @param {string} options.noteName - Note name (if available)
+ * @param {number} options.duration - Duration value
+ * @param {number} options.velocity - Velocity value
+ * @param {Object} options.state - Layer state with display options
+ * @param {Object} options.globalState - Global state for equal temperament
+ * @returns {string} Formatted label text
+ */
+export function formatPointLabelText(options) {
+  const {
+    layerId,
+    frequency,
+    noteName,
+    duration,
+    velocity,
+    state,
+    globalState
+  } = options;
+  
+  const parts = [];
+  
+  // Add layer ID if enabled
+  if (state.pointLabelShowLayerId) {
+    parts.push(`L${layerId + 1}`);
+  }
+  
+  // Add frequency if enabled
+  if (state.pointLabelShowFrequency) {
+    if (globalState && globalState.useEqualTemperament && noteName) {
+      parts.push(`${frequency.toFixed(1)}Hz (${noteName})`);
+    } else {
+      parts.push(`${frequency.toFixed(2)}Hz`);
+    }
+  }
+  
+  // Add duration if enabled
+  if (state.pointLabelShowDuration) {
+    parts.push(`${duration.toFixed(2)}s`);
+  }
+  
+  // Add velocity if enabled
+  if (state.pointLabelShowVelocity) {
+    parts.push(`v${velocity.toFixed(2)}`);
+  }
+  
+  // Join parts with appropriate separators
+  if (parts.length === 0) {
+    return ''; // No content to show
+  }
+  
+  // Use colon after layer ID if it exists, then spaces for other parts
+  let result = '';
+  if (state.pointLabelShowLayerId && parts.length > 1) {
+    result = parts[0] + ': ' + parts.slice(1).join(' ');
+  } else {
+    result = parts.join(' ');
+  }
+  
+  return result;
+}
+
+/**
  * Initialize the DOM labels system
  * @param {THREE.WebGLRenderer} renderer Renderer to get element dimensions
  */

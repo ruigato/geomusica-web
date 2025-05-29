@@ -516,6 +516,12 @@ export function setupUI(state) {
   const showAxisFreqLabelsCheckbox = document.getElementById('showAxisFreqLabelsCheckbox');
   const showPointsFreqLabelsCheckbox = document.getElementById('showPointsFreqLabelsCheckbox');
   
+  // Point label display option checkboxes
+  const pointLabelShowLayerIdCheckbox = document.getElementById('pointLabelShowLayerIdCheckbox');
+  const pointLabelShowFrequencyCheckbox = document.getElementById('pointLabelShowFrequencyCheckbox');
+  const pointLabelShowDurationCheckbox = document.getElementById('pointLabelShowDurationCheckbox');
+  const pointLabelShowVelocityCheckbox = document.getElementById('pointLabelShowVelocityCheckbox');
+  
   // Equal temperament controls
   const useEqualTemperamentCheckbox = document.getElementById('useEqualTemperamentCheckbox');
   const referenceFreqRange = document.getElementById('referenceFreqRange');
@@ -615,6 +621,12 @@ export function setupUI(state) {
   if (useEuclidCheckbox) useEuclidCheckbox.checked = state.useEuclid;
   if (useDeleteCheckbox) useDeleteCheckbox.checked = state.useDelete;
   
+  // Initialize point label option checkboxes
+  if (pointLabelShowLayerIdCheckbox) pointLabelShowLayerIdCheckbox.checked = state.pointLabelShowLayerId;
+  if (pointLabelShowFrequencyCheckbox) pointLabelShowFrequencyCheckbox.checked = state.pointLabelShowFrequency;
+  if (pointLabelShowDurationCheckbox) pointLabelShowDurationCheckbox.checked = state.pointLabelShowDuration;
+  if (pointLabelShowVelocityCheckbox) pointLabelShowVelocityCheckbox.checked = state.pointLabelShowVelocity;
+  
   // Set initial values for scale mod controls from state with null checks
   if (altScaleRange && altScaleNumber && altScaleValue) {
     altScaleRange.value = state.altScale;
@@ -668,6 +680,47 @@ export function setupUI(state) {
       handleCheckboxChange('setShowPointsFreqLabels', e.target.checked);
       
       // FIXED: Force immediate state synchronization to update geometry and labels
+      if (typeof window.syncStateAcrossSystems === 'function') {
+        window.syncStateAcrossSystems();
+      }
+    });
+  }
+  
+  // Setup point label option checkboxes
+  if (pointLabelShowLayerIdCheckbox) {
+    pointLabelShowLayerIdCheckbox.addEventListener('change', e => {
+      handleCheckboxChange('setPointLabelShowLayerId', e.target.checked);
+      // Force label refresh
+      if (typeof window.syncStateAcrossSystems === 'function') {
+        window.syncStateAcrossSystems();
+      }
+    });
+  }
+  
+  if (pointLabelShowFrequencyCheckbox) {
+    pointLabelShowFrequencyCheckbox.addEventListener('change', e => {
+      handleCheckboxChange('setPointLabelShowFrequency', e.target.checked);
+      // Force label refresh
+      if (typeof window.syncStateAcrossSystems === 'function') {
+        window.syncStateAcrossSystems();
+      }
+    });
+  }
+  
+  if (pointLabelShowDurationCheckbox) {
+    pointLabelShowDurationCheckbox.addEventListener('change', e => {
+      handleCheckboxChange('setPointLabelShowDuration', e.target.checked);
+      // Force label refresh
+      if (typeof window.syncStateAcrossSystems === 'function') {
+        window.syncStateAcrossSystems();
+      }
+    });
+  }
+  
+  if (pointLabelShowVelocityCheckbox) {
+    pointLabelShowVelocityCheckbox.addEventListener('change', e => {
+      handleCheckboxChange('setPointLabelShowVelocity', e.target.checked);
+      // Force label refresh
       if (typeof window.syncStateAcrossSystems === 'function') {
         window.syncStateAcrossSystems();
       }
@@ -1395,6 +1448,10 @@ export function setupUI(state) {
       useIntersectionsCheckbox, 
       showAxisFreqLabelsCheckbox,
       showPointsFreqLabelsCheckbox,
+      pointLabelShowLayerIdCheckbox,
+      pointLabelShowFrequencyCheckbox,
+      pointLabelShowDurationCheckbox,
+      pointLabelShowVelocityCheckbox,
       useEqualTemperamentCheckbox,
       referenceFreqRange, referenceFreqNumber, referenceFreqValue,
       fractalRange, fractalNumber, fractalValue,
@@ -1440,6 +1497,10 @@ export function setupUI(state) {
       useIntersectionsCheckbox, 
       showAxisFreqLabelsCheckbox,
       showPointsFreqLabelsCheckbox,
+      pointLabelShowLayerIdCheckbox,
+      pointLabelShowFrequencyCheckbox,
+      pointLabelShowDurationCheckbox,
+      pointLabelShowVelocityCheckbox,
       useEqualTemperamentCheckbox,
       referenceFreqRange, referenceFreqNumber, referenceFreqValue,
       fractalRange, fractalNumber, fractalValue,
@@ -1481,6 +1542,10 @@ export function setupUI(state) {
     useIntersectionsCheckbox, 
     showAxisFreqLabelsCheckbox,
     showPointsFreqLabelsCheckbox,
+    pointLabelShowLayerIdCheckbox,
+    pointLabelShowFrequencyCheckbox,
+    pointLabelShowDurationCheckbox,
+    pointLabelShowVelocityCheckbox,
     useEqualTemperamentCheckbox,
     referenceFreqRange, referenceFreqNumber, referenceFreqValue,
     fractalRange, fractalNumber, fractalValue,

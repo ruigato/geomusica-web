@@ -25,6 +25,7 @@ import {
 // DEPRECATED: Removed import from intersections.js - functionality moved to starCuts.js
 // import { findAllIntersections, processIntersections } from './intersections.js';
 import { createOrUpdateLabel } from '../ui/domLabels.js';
+import { formatPointLabelText } from '../ui/domLabels.js';
 // Import the frequency utilities at the top of geometry.js
 import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils.js';
 import { createNote } from '../notes/notes.js';
@@ -1538,13 +1539,21 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
             // Calculate frequency for this vertex
             const freq = Math.hypot(x, y);
             
-            // FIXED Phase 2: Format display text with layer context
-            let labelText;
+            // FIXED Phase 2: Format display text with layer context using new formatting function
             const globalState = window._globalState;
-            if (globalState && globalState.useEqualTemperament && note.noteName) {
-              labelText = `L${layerId+1}: ${freq.toFixed(1)}Hz (${note.noteName}) ${note.duration.toFixed(2)}s`;
-            } else {
-              labelText = `L${layerId+1}: ${freq.toFixed(2)}Hz ${note.duration.toFixed(2)}s`;
+            const labelText = formatPointLabelText({
+              layerId,
+              frequency: freq,
+              noteName: note.noteName,
+              duration: note.duration,
+              velocity: note.velocity,
+              state,
+              globalState
+            });
+            
+            // Skip creating label if no content to show
+            if (!labelText) {
+              continue;
             }
             
             // FIXED Phase 2: Create unique label ID with layer prefix

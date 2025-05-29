@@ -98,7 +98,13 @@ export const DEFAULT_VALUES = {
   VELOCITY_MODULO: 4, // Default velocity modulo
   MIN_VELOCITY: 0.5, // Default minimum velocity
   MAX_VELOCITY: 1.0, // Default maximum velocity
-  VELOCITY_PHASE: 0.5 // Default velocity phase
+  VELOCITY_PHASE: 0.5, // Default velocity phase
+  
+  // Point label display options
+  POINT_LABEL_SHOW_LAYER_ID: true, // Show layer ID in point labels
+  POINT_LABEL_SHOW_VELOCITY: false, // Show velocity in point labels
+  POINT_LABEL_SHOW_DURATION: true, // Show duration in point labels
+  POINT_LABEL_SHOW_FREQUENCY: true, // Show frequency in point labels
 };
 
 // UI Ranges
@@ -212,7 +218,13 @@ export const PARAMETER_RANGES = {
   DELETE_MAX: { MIN: 1, MAX: 32, STEP: 1 },
   DELETE_MODE: { MIN: 'pattern', MAX: 'random', STEP: null },
   DELETE_TARGET: { MIN: 'points', MAX: 'primitives', STEP: null },
-  DELETE_SEED: { MIN: 0, MAX: 999, STEP: 1 }
+  DELETE_SEED: { MIN: 0, MAX: 999, STEP: 1 },
+  
+  // Point label display options
+  POINT_LABEL_SHOW_LAYER_ID: { MIN: false, MAX: true, STEP: null },
+  POINT_LABEL_SHOW_VELOCITY: { MIN: false, MAX: true, STEP: null },
+  POINT_LABEL_SHOW_DURATION: { MIN: false, MAX: true, STEP: null },
+  POINT_LABEL_SHOW_FREQUENCY: { MIN: false, MAX: true, STEP: null }
 };
 
 // Add this list of valid quantization values for reference
