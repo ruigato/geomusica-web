@@ -8,9 +8,10 @@
  * - Multi-channel output (layers 0-14 map to MIDI channels 1-15, layerlink uses channel 16)
  * - Note duration tracking with automatic note-off
  * - Velocity control
- * - Polyphonic aftertouch for microtonal compensation
- * - Pitch bend for microtonal accuracy
+ * - Polyphonic aftertouch for microtonal compensation (no pitch bend in microtonal mode)
+ * - Pitch bend for microtonal accuracy (only in non-microtonal mode)
  * - Real-time parameter control via MIDI CC
+ * - Endless notes mode to prevent automatic note-off
  */
 class MidiOutManager {
   constructor() {
@@ -28,7 +29,8 @@ class MidiOutManager {
     
     // Microtonal settings
     this.pitchBendRange = 2; // semitones (±2 semitones = ±200 cents)
-    this.microtonalMode = true; // Enable microtonal compensation
+    this.microtonalMode = true; // Enable microtonal compensation (polyphonic aftertouch only)
+    this.endlessNotesMode = false; // Enable endless notes (no automatic note-off)
     this.mtsMode = false; // Enable MTS (MIDI Tuning Standard) mode
     this.mtsSysExSupported = false; // Track if SysEx is supported
     
@@ -51,8 +53,6 @@ class MidiOutManager {
     
     // Load saved settings
     this.loadSettings();
-    
-    console.log('[MIDI OUT] MidiOutManager initialized');
   }
   
   /**
@@ -72,31 +72,21 @@ class MidiOutManager {
       // Check if SysEx is actually supported
       this.mtsSysExSupported = this.midiAccess.sysexEnabled;
       
-      if (this.mtsSysExSupported) {
-        console.log('[MIDI OUT] SysEx support enabled - MTS mode available');
-      } else {
-        console.warn('[MIDI OUT] SysEx not supported - MTS mode will use pitch bend fallback');
-      }
-      
       // Enumerate available output devices
       this.updateAvailableDevices();
       
       // Listen for device changes
       this.midiAccess.onstatechange = (event) => {
-        console.log('[MIDI OUT] MIDI device state changed:', event.port.name, event.port.state);
         this.updateAvailableDevices();
         
         // If our current device was disconnected, clear it
         if (event.port === this.outputDevice && event.port.state === 'disconnected') {
           this.outputDevice = null;
           this.isEnabled = false;
-          console.log('[MIDI OUT] Current output device disconnected');
         }
       };
       
       this.isInitialized = true;
-      console.log('[MIDI OUT] MIDI system initialized successfully');
-      console.log('[MIDI OUT] Available devices:', this.availableDevices.map(d => d.name));
       
       // Auto-restore previously selected device
       setTimeout(() => this.autoRestoreDevice(), 100);
@@ -107,32 +97,26 @@ class MidiOutManager {
       
       // Try again without SysEx if the first attempt failed
       try {
-        console.log('[MIDI OUT] Retrying MIDI initialization without SysEx...');
         this.midiAccess = await navigator.requestMIDIAccess({ sysex: false });
         this.mtsSysExSupported = false;
         
         this.updateAvailableDevices();
         this.midiAccess.onstatechange = (event) => {
-          console.log('[MIDI OUT] MIDI device state changed:', event.port.name, event.port.state);
           this.updateAvailableDevices();
           
           if (event.port === this.outputDevice && event.port.state === 'disconnected') {
             this.outputDevice = null;
             this.isEnabled = false;
-            console.log('[MIDI OUT] Current output device disconnected');
           }
         };
         
         this.isInitialized = true;
-        console.log('[MIDI OUT] MIDI system initialized without SysEx support');
-        console.log('[MIDI OUT] Available devices:', this.availableDevices.map(d => d.name));
         
         // Auto-restore previously selected device
         setTimeout(() => this.autoRestoreDevice(), 100);
         
         return true;
       } catch (fallbackError) {
-        console.error('[MIDI OUT] Failed to initialize MIDI even without SysEx:', fallbackError);
         this.stats.errors++;
         return false;
       }
@@ -193,8 +177,6 @@ class MidiOutManager {
     this.selectedDeviceId = targetDevice.id;
     this.isEnabled = true;
     
-    console.log(`[MIDI OUT] Connected to device: ${this.deviceName}`);
-    
     // Initialize all channels with default settings
     this.initializeChannels();
     
@@ -210,10 +192,7 @@ class MidiOutManager {
   autoRestoreDevice() {
     if (this.selectedDeviceId) {
       const success = this.selectDevice(this.selectedDeviceId);
-      if (success) {
-        console.log('[MIDI OUT] Auto-restored previous device');
-      } else {
-        console.log('[MIDI OUT] Could not restore previous device, it may be disconnected');
+      if (!success) {
         this.selectedDeviceId = null;
         this.saveSettings();
       }
@@ -242,8 +221,6 @@ class MidiOutManager {
       // Reset all controllers (CC 121)
       this.sendControlChange(channel, 121, 0);
     }
-    
-    console.log('[MIDI OUT] All channels initialized');
   }
   
   /**
@@ -284,21 +261,28 @@ class MidiOutManager {
       const midiNote = midiData.note;
       const pitchBend = midiData.bend;
       
-      // Choose microtonal method: MTS or pitch bend
+      // Choose microtonal method: MTS, pitch bend (non-microtonal), or polyphonic aftertouch (microtonal)
       if (this.mtsMode) {
         // Try to use MTS SysEx for precise frequency control
         const mtsSuccess = this.sendMTSSysEx(midiNote, frequency);
         
         if (!mtsSuccess) {
-          // Fall back to pitch bend if MTS failed
-          if (this.microtonalMode && Math.abs(pitchBend) > 10) {
-            this.sendPitchBend(channel, pitchBend);
+          // Fall back to polyphonic aftertouch if MTS failed and in microtonal mode
+          if (this.microtonalMode) {
+            // In microtonal mode, we only use polyphonic aftertouch, no pitch bend
+            // Pitch bend will be sent after note on
+          } else {
+            // In non-microtonal mode, use pitch bend as fallback
+            if (Math.abs(pitchBend) > 10) {
+              this.sendPitchBend(channel, pitchBend);
+            }
           }
         }
-      } else if (this.microtonalMode && Math.abs(pitchBend) > 10) {
-        // Use traditional pitch bend for microtonal accuracy
+      } else if (!this.microtonalMode && Math.abs(pitchBend) > 10) {
+        // Use pitch bend only when NOT in microtonal mode
         this.sendPitchBend(channel, pitchBend);
       }
+      // Note: In microtonal mode, we don't send pitch bend at all
       
       // Send note on
       this.sendNoteOn(channel, midiNote, velocity);
@@ -306,23 +290,27 @@ class MidiOutManager {
       // Track active note
       const noteKey = `${channel}-${midiNote}`;
       
-      // Stop any existing note on this channel/note combination
-      if (this.activeNotes.has(noteKey)) {
-        clearTimeout(this.activeNotes.get(noteKey).timeoutId);
-        this.sendNoteOff(channel, midiNote, 0);
-      }
-      
-      // Schedule note off
-      const timeoutId = setTimeout(() => {
-        this.sendNoteOff(channel, midiNote, velocity);
-        this.activeNotes.delete(noteKey);
-        this.stats.notesStopped++;
-        
-        // Reset pitch bend after note ends (if it was bent and not using MTS)
-        if (!this.mtsMode && this.microtonalMode && Math.abs(pitchBend) > 10) {
-          setTimeout(() => this.sendPitchBend(channel, 0), 10);
+      // Schedule note off (only if not in endless notes mode)
+      let timeoutId = null;
+      if (!this.endlessNotesMode) {
+        // Stop any existing note on this channel/note combination (only in timed mode)
+        if (this.activeNotes.has(noteKey)) {
+          const existingNote = this.activeNotes.get(noteKey);
+          clearTimeout(existingNote.timeoutId);
+          this.sendNoteOff(channel, midiNote, 0);
         }
-      }, duration);
+        
+        timeoutId = setTimeout(() => {
+          this.sendNoteOff(channel, midiNote, velocity);
+          this.activeNotes.delete(noteKey);
+          this.stats.notesStopped++;
+          
+          // Reset pitch bend after note ends (only if not in microtonal mode and not using MTS)
+          if (!this.mtsMode && !this.microtonalMode && Math.abs(pitchBend) > 10) {
+            setTimeout(() => this.sendPitchBend(channel, 0), 10);
+          }
+        }, duration);
+      }
       
       // Store note info
       this.activeNotes.set(noteKey, {
@@ -331,11 +319,12 @@ class MidiOutManager {
         startTime: performance.now(),
         frequency,
         layerId,
-        isLayerLink
+        isLayerLink,
+        isEndless: this.endlessNotesMode
       });
       
-      // Send polyphonic aftertouch for microtonal expression (only if not using MTS)
-      if (!this.mtsMode && this.microtonalMode) {
+      // Send polyphonic aftertouch for microtonal expression (only in microtonal mode)
+      if (this.microtonalMode) {
         const aftertouch = this.calculateAftertouch(frequency, note);
         if (aftertouch > 0) {
           setTimeout(() => {
@@ -350,7 +339,6 @@ class MidiOutManager {
       this.stats.lastNoteTime = performance.now();
       
     } catch (error) {
-      console.error('[MIDI OUT] Error playing note:', error);
       this.stats.errors++;
     }
   }
@@ -564,9 +552,6 @@ class MidiOutManager {
       return true;
       
     } catch (error) {
-      console.error('[MIDI OUT] Error sending MTS SysEx:', error);
-      console.warn('[MIDI OUT] SysEx not supported by browser/device - falling back to pitch bend');
-      
       // Disable MTS mode to prevent further errors
       this.mtsMode = false;
       this.mtsSysExSupported = false;
@@ -581,9 +566,12 @@ class MidiOutManager {
   stopAllNotes() {
     if (!this.outputDevice) return;
     
-    // Clear all scheduled note-offs
+    // Clear all scheduled note-offs and send note-off for all active notes
     for (const [noteKey, noteInfo] of this.activeNotes) {
-      clearTimeout(noteInfo.timeoutId);
+      // Clear timeout if it exists (for non-endless notes)
+      if (noteInfo.timeoutId) {
+        clearTimeout(noteInfo.timeoutId);
+      }
       
       const [channel, note] = noteKey.split('-').map(Number);
       this.sendNoteOff(channel, note, 0);
@@ -595,24 +583,32 @@ class MidiOutManager {
     for (let channel = 1; channel <= 16; channel++) {
       this.sendControlChange(channel, 123, 0); // All Notes Off
     }
-    
-    console.log('[MIDI OUT] All notes stopped');
   }
   
   /**
    * Set microtonal mode
-   * @param {boolean} enabled - Enable microtonal compensation
+   * @param {boolean} enabled - Enable microtonal compensation (polyphonic aftertouch only, no pitch bend)
    */
   setMicrotonalMode(enabled) {
     this.microtonalMode = enabled;
-    console.log(`[MIDI OUT] Microtonal mode ${enabled ? 'enabled' : 'disabled'}`);
     
-    if (!enabled) {
-      // Reset all pitch bends to center
+    if (enabled) {
+      // Reset all pitch bends to center when enabling microtonal mode
       for (let channel = 1; channel <= 16; channel++) {
         this.sendPitchBend(channel, 0);
       }
     }
+    
+    // Save settings
+    this.saveSettings();
+  }
+  
+  /**
+   * Set endless notes mode
+   * @param {boolean} enabled - Enable endless notes (no automatic note-off)
+   */
+  setEndlessNotesMode(enabled) {
+    this.endlessNotesMode = enabled;
     
     // Save settings
     this.saveSettings();
@@ -624,20 +620,14 @@ class MidiOutManager {
    */
   setMTSMode(enabled) {
     if (enabled && !this.mtsSysExSupported) {
-      console.warn('[MIDI OUT] Cannot enable MTS mode: SysEx not supported by browser/device');
-      console.warn('[MIDI OUT] MTS mode requires SysEx support. Will use pitch bend fallback instead.');
       this.mtsMode = false;
       this.saveSettings();
       return;
     }
     
     this.mtsMode = enabled;
-    console.log(`[MIDI OUT] MTS mode ${enabled ? 'enabled' : 'disabled'}`);
     
     if (enabled) {
-      console.log('[MIDI OUT] MTS mode enabled - using SysEx messages for precise frequency control');
-      console.log('[MIDI OUT] Note: MTS mode requires compatible hardware/software (e.g., Pianoteq)');
-    } else {
       // Reset all pitch bends to center when switching back to pitch bend mode
       for (let channel = 1; channel <= 16; channel++) {
         this.sendPitchBend(channel, 0);
@@ -654,7 +644,6 @@ class MidiOutManager {
    */
   setPitchBendRange(semitones) {
     this.pitchBendRange = Math.max(1, Math.min(12, semitones));
-    console.log(`[MIDI OUT] Pitch bend range set to ±${this.pitchBendRange} semitones`);
     
     // Update all channels
     if (this.outputDevice) {
@@ -679,6 +668,7 @@ class MidiOutManager {
       availableDevices: this.availableDevices,
       activeNotes: this.activeNotes.size,
       microtonalMode: this.microtonalMode,
+      endlessNotesMode: this.endlessNotesMode,
       mtsMode: this.mtsMode,
       mtsSysExSupported: this.mtsSysExSupported,
       pitchBendRange: this.pitchBendRange,
@@ -695,7 +685,6 @@ class MidiOutManager {
    */
   setDebugMode(enabled) {
     this.debug = enabled;
-    console.log(`[MIDI OUT] Debug mode ${enabled ? 'enabled' : 'disabled'}`);
     
     // Save settings
     this.saveSettings();
@@ -713,8 +702,6 @@ class MidiOutManager {
     
     // Save settings (clears selected device)
     this.saveSettings();
-    
-    console.log('[MIDI OUT] Disconnected');
   }
   
   /**
@@ -728,15 +715,14 @@ class MidiOutManager {
         
         // Restore settings with defaults
         this.microtonalMode = settings.microtonalMode !== undefined ? settings.microtonalMode : true;
+        this.endlessNotesMode = settings.endlessNotesMode !== undefined ? settings.endlessNotesMode : false;
         this.mtsMode = settings.mtsMode !== undefined ? settings.mtsMode : false;
         this.pitchBendRange = settings.pitchBendRange || 2;
         this.selectedDeviceId = settings.selectedDeviceId || null;
         this.debug = settings.debug !== undefined ? settings.debug : false;
-        
-        console.log('[MIDI OUT] Settings loaded from localStorage');
       }
     } catch (error) {
-      console.warn('[MIDI OUT] Error loading settings:', error);
+      // Silent error handling
     }
   }
   
@@ -747,6 +733,7 @@ class MidiOutManager {
     try {
       const settings = {
         microtonalMode: this.microtonalMode,
+        endlessNotesMode: this.endlessNotesMode,
         mtsMode: this.mtsMode,
         pitchBendRange: this.pitchBendRange,
         selectedDeviceId: this.selectedDeviceId,
@@ -755,7 +742,7 @@ class MidiOutManager {
       
       localStorage.setItem('geomusica-midi-settings', JSON.stringify(settings));
     } catch (error) {
-      console.warn('[MIDI OUT] Error saving settings:', error);
+      // Silent error handling
     }
   }
 }
@@ -788,6 +775,10 @@ export function setMidiMicrotonalMode(enabled) {
   midiOutManager.setMicrotonalMode(enabled);
 }
 
+export function setMidiEndlessNotesMode(enabled) {
+  midiOutManager.setEndlessNotesMode(enabled);
+}
+
 export function setMidiMTSMode(enabled) {
   midiOutManager.setMTSMode(enabled);
 }
@@ -815,6 +806,7 @@ if (typeof window !== 'undefined') {
   window.playMidiNote = playMidiNote;
   window.stopAllMidiNotes = stopAllMidiNotes;
   window.setMidiMicrotonalMode = setMidiMicrotonalMode;
+  window.setMidiEndlessNotesMode = setMidiEndlessNotesMode;
   window.setMidiMTSMode = setMidiMTSMode;
   window.setMidiPitchBendRange = setMidiPitchBendRange;
   window.setMidiDebugMode = setMidiDebugMode;

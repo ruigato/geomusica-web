@@ -7,8 +7,8 @@ import {
   selectMidiDevice, 
   getMidiStatus,
   setMidiMicrotonalMode,
+  setMidiEndlessNotesMode,
   setMidiMTSMode,
-  setMidiPitchBendRange,
   setMidiDebugMode,
   stopAllMidiNotes,
   disconnectMidi
@@ -20,15 +20,11 @@ import {
  * @returns {Object} References to UI elements
  */
 export function setupMidiUI(parentContainer) {
-  console.log('[MIDI UI] Setting up MIDI UI...');
-  
   // Create MIDI tab container
   const midiTab = document.createElement('div');
   midiTab.id = 'midi-tab';
   midiTab.className = 'tab-content';
   midiTab.style.display = 'none';
-  
-  console.log('[MIDI UI] Created MIDI tab element:', midiTab);
   
   // MIDI Enable/Disable Section
   const enableSection = createMidiEnableSection();
@@ -53,16 +49,13 @@ export function setupMidiUI(parentContainer) {
   // Add to the header-tabs container where other tabs are located
   const headerTabsContainer = document.getElementById('header-tabs');
   if (headerTabsContainer) {
-    console.log('[MIDI UI] Found header-tabs container, adding MIDI tab');
     headerTabsContainer.appendChild(midiTab);
   } else {
     // Fallback to parent container if header-tabs not found
-    console.warn('[MIDI UI] header-tabs container not found, using fallback');
     parentContainer.appendChild(midiTab);
   }
   
   // Add MIDI tab button to existing tab system
-  console.log('[MIDI UI] Adding MIDI tab button...');
   addMidiTabButton();
   
   // Initialize MIDI system
@@ -70,8 +63,6 @@ export function setupMidiUI(parentContainer) {
   
   // Setup periodic status updates
   setupStatusUpdates();
-  
-  console.log('[MIDI UI] MIDI UI setup complete');
   
   return {
     midiTab,
@@ -217,10 +208,33 @@ function createMicrotonalSection() {
   
   const modeHelp = document.createElement('div');
   modeHelp.className = 'help-text';
-  modeHelp.textContent = 'Uses pitch bend and aftertouch for microtonal accuracy';
+  modeHelp.textContent = 'Uses polyphonic aftertouch for microtonal accuracy (no pitch bend)';
   modeContainer.appendChild(modeHelp);
   
   section.appendChild(modeContainer);
+  
+  // Endless notes mode toggle
+  const endlessContainer = document.createElement('div');
+  endlessContainer.className = 'control';
+  
+  const endlessLabel = document.createElement('label');
+  endlessLabel.textContent = 'Endless Notes Mode:';
+  endlessLabel.setAttribute('for', 'midiEndlessNotesCheckbox');
+  endlessContainer.appendChild(endlessLabel);
+  
+  const endlessCheckbox = document.createElement('input');
+  endlessCheckbox.type = 'checkbox';
+  endlessCheckbox.id = 'midiEndlessNotesCheckbox';
+  endlessCheckbox.checked = false; // Default disabled
+  endlessCheckbox.addEventListener('change', handleEndlessNotesModeChange);
+  endlessContainer.appendChild(endlessCheckbox);
+  
+  const endlessHelp = document.createElement('div');
+  endlessHelp.className = 'help-text';
+  endlessHelp.textContent = 'Notes play indefinitely until manually stopped (prevents pitch reset on note end)';
+  endlessContainer.appendChild(endlessHelp);
+  
+  section.appendChild(endlessContainer);
   
   // MTS mode toggle
   const mtsContainer = document.createElement('div');
@@ -244,36 +258,6 @@ function createMicrotonalSection() {
   mtsContainer.appendChild(mtsHelp);
   
   section.appendChild(mtsContainer);
-  
-  // Pitch bend range
-  const bendContainer = document.createElement('div');
-  bendContainer.className = 'control';
-  
-  const bendLabel = document.createElement('label');
-  bendLabel.textContent = 'Pitch Bend Range:';
-  bendLabel.setAttribute('for', 'midiPitchBendRange');
-  bendContainer.appendChild(bendLabel);
-  
-  const bendRange = document.createElement('input');
-  bendRange.type = 'range';
-  bendRange.id = 'midiPitchBendRange';
-  bendRange.min = '1';
-  bendRange.max = '12';
-  bendRange.value = '2';
-  bendRange.addEventListener('input', handlePitchBendRangeChange);
-  bendContainer.appendChild(bendRange);
-  
-  const bendValue = document.createElement('span');
-  bendValue.id = 'midiPitchBendValue';
-  bendValue.textContent = '±2 semitones';
-  bendContainer.appendChild(bendValue);
-  
-  const bendHelp = document.createElement('div');
-  bendHelp.className = 'help-text';
-  bendHelp.textContent = 'Range for pitch bend microtonal compensation';
-  bendContainer.appendChild(bendHelp);
-  
-  section.appendChild(bendContainer);
   
   return section;
 }
@@ -371,7 +355,6 @@ function createDebugSection() {
   stopAllButton.textContent = 'Stop All Notes';
   stopAllButton.addEventListener('click', () => {
     stopAllMidiNotes();
-    console.log('[MIDI UI] All notes stopped');
   });
   buttonsContainer.appendChild(stopAllButton);
   
@@ -380,7 +363,6 @@ function createDebugSection() {
   disconnectButton.addEventListener('click', () => {
     disconnectMidi();
     updateMidiStatus();
-    console.log('[MIDI UI] MIDI disconnected');
   });
   buttonsContainer.appendChild(disconnectButton);
   
@@ -393,24 +375,17 @@ function createDebugSection() {
  * Add MIDI tab button to existing tab system
  */
 function addMidiTabButton() {
-  console.log('[MIDI UI] Looking for tab buttons container...');
   const tabContainer = document.querySelector('.tab-buttons-container');
   if (!tabContainer) {
-    console.warn('[MIDI UI] Tab buttons container not found');
     return;
   }
-  
-  console.log('[MIDI UI] Found tab buttons container:', tabContainer);
   
   const midiTabButton = document.createElement('button');
   midiTabButton.className = 'tab-button';
   midiTabButton.setAttribute('data-tab', 'midi');
   midiTabButton.textContent = 'MIDI';
   
-  console.log('[MIDI UI] Created MIDI tab button:', midiTabButton);
-  
   tabContainer.appendChild(midiTabButton);
-  console.log('[MIDI UI] MIDI tab button added to container');
   
   // Re-initialize the tab system to include the new MIDI tab
   // This ensures the existing tab system handles the MIDI tab properly
@@ -419,13 +394,12 @@ function addMidiTabButton() {
     import('../ui/headerTabs.js').then(module => {
       if (module.setupHeaderTabs) {
         module.setupHeaderTabs();
-        console.log('[MIDI UI] Tab system re-initialized to include MIDI tab');
       }
     }).catch(error => {
-      console.warn('[MIDI UI] Could not re-initialize tab system:', error);
+      // Silent error handling
     });
   } catch (error) {
-    console.warn('[MIDI UI] Error re-initializing tab system:', error);
+    // Silent error handling
   }
 }
 
@@ -481,14 +455,11 @@ async function handleMidiIntegrationChange(event) {
     if (enabled) {
       const { enableMidiIntegration } = await import('./index.js');
       await enableMidiIntegration();
-      console.log('[MIDI UI] MIDI integration enabled');
     } else {
       const { disableMidiIntegration } = await import('./index.js');
       await disableMidiIntegration();
-      console.log('[MIDI UI] MIDI integration disabled');
     }
   } catch (error) {
-    console.error('[MIDI UI] Error toggling MIDI integration:', error);
     // Revert checkbox state on error
     event.target.checked = !enabled;
   }
@@ -518,24 +489,19 @@ function handleMicrotonalModeChange(event) {
 }
 
 /**
+ * Handle endless notes mode change
+ */
+function handleEndlessNotesModeChange(event) {
+  const enabled = event.target.checked;
+  setMidiEndlessNotesMode(enabled);
+}
+
+/**
  * Handle MTS mode change
  */
 function handleMTSModeChange(event) {
   const enabled = event.target.checked;
   setMidiMTSMode(enabled);
-}
-
-/**
- * Handle pitch bend range change
- */
-function handlePitchBendRangeChange(event) {
-  const range = parseInt(event.target.value);
-  setMidiPitchBendRange(range);
-  
-  const valueDisplay = document.getElementById('midiPitchBendValue');
-  if (valueDisplay) {
-    valueDisplay.textContent = `±${range} semitones`;
-  }
 }
 
 /**
@@ -579,8 +545,6 @@ function refreshMidiDevices() {
     
     deviceSelect.appendChild(option);
   });
-  
-  console.log(`[MIDI UI] Found ${devices.length} MIDI devices`);
 }
 
 /**
@@ -616,6 +580,12 @@ function updateMidiStatus() {
     microtonalCheckbox.checked = status.microtonalMode;
   }
   
+  // Update endless notes mode checkbox (restore saved setting)
+  const endlessCheckbox = document.getElementById('midiEndlessNotesCheckbox');
+  if (endlessCheckbox) {
+    endlessCheckbox.checked = status.endlessNotesMode;
+  }
+  
   // Update MTS checkbox and disable if SysEx not supported (restore saved setting)
   const mtsCheckbox = document.getElementById('midiMTSCheckbox');
   if (mtsCheckbox) {
@@ -633,14 +603,6 @@ function updateMidiStatus() {
         mtsHelp.style.color = '#F44336';
       }
     }
-  }
-  
-  // Update pitch bend range (restore saved setting)
-  const pitchBendRange = document.getElementById('midiPitchBendRange');
-  const pitchBendValue = document.getElementById('midiPitchBendValue');
-  if (pitchBendRange && pitchBendValue) {
-    pitchBendRange.value = status.pitchBendRange;
-    pitchBendValue.textContent = `±${status.pitchBendRange} semitones`;
   }
   
   // Update debug checkbox (restore saved setting)

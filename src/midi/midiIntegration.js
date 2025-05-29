@@ -20,8 +20,6 @@ class MidiIntegrationManager {
       layerLinkNotes: 0,
       errors: 0
     };
-    
-    console.log('[MIDI INTEGRATION] MidiIntegrationManager initialized');
   }
   
   /**
@@ -32,8 +30,6 @@ class MidiIntegrationManager {
   initialize(originalAudioCallback, layerManager) {
     this.originalAudioCallback = originalAudioCallback;
     this.layerManager = layerManager;
-    
-    console.log('[MIDI INTEGRATION] Integration initialized');
   }
   
   /**
@@ -42,7 +38,6 @@ class MidiIntegrationManager {
    */
   enable() {
     this.isEnabled = true;
-    console.log('[MIDI INTEGRATION] MIDI integration enabled');
   }
   
   /**
@@ -51,7 +46,6 @@ class MidiIntegrationManager {
    */
   disable() {
     this.isEnabled = false;
-    console.log('[MIDI INTEGRATION] MIDI integration disabled');
   }
   
   /**
@@ -61,39 +55,21 @@ class MidiIntegrationManager {
    */
   enhancedAudioCallback(note) {
     try {
-      console.log('[MIDI INTEGRATION] Enhanced audio callback called with note:', {
-        frequency: note.frequency,
-        velocity: note.velocity,
-        duration: note.duration,
-        layerId: note.layerId,
-        isEnabled: this.isEnabled
-      });
-      
       // Always call original audio callback first
       let processedNote = note;
       if (this.originalAudioCallback) {
         processedNote = this.originalAudioCallback(note) || note;
-        console.log('[MIDI INTEGRATION] Original audio callback completed');
-      } else {
-        console.log('[MIDI INTEGRATION] No original audio callback');
       }
       
       // Route to MIDI if enabled and MIDI is available
       if (this.isEnabled && this.shouldRouteMidiNote(processedNote)) {
-        console.log('[MIDI INTEGRATION] Routing to MIDI...');
         this.routeNoteToMidi(processedNote);
-      } else {
-        console.log('[MIDI INTEGRATION] Not routing to MIDI:', {
-          isEnabled: this.isEnabled,
-          shouldRoute: this.shouldRouteMidiNote(processedNote)
-        });
       }
       
       this.stats.totalNotes++;
       return processedNote;
       
     } catch (error) {
-      console.error('[MIDI INTEGRATION] Error in enhanced audio callback:', error);
       this.stats.errors++;
       return note;
     }
@@ -143,7 +119,6 @@ class MidiIntegrationManager {
       }
       
     } catch (error) {
-      console.error('[MIDI INTEGRATION] Error routing note to MIDI:', error);
       this.stats.errors++;
     }
   }
@@ -219,7 +194,6 @@ class MidiIntegrationManager {
       layerLinkNotes: 0,
       errors: 0
     };
-    console.log('[MIDI INTEGRATION] Statistics reset');
   }
 }
 
@@ -292,7 +266,6 @@ export function patchTriggerSystem(options = {}) {
   } = options;
   
   if (!layerManager) {
-    console.warn('[MIDI INTEGRATION] Layer manager not found, MIDI integration may not work correctly');
     return false;
   }
   
@@ -307,7 +280,6 @@ export function patchTriggerSystem(options = {}) {
     window.enhancedAudioCallback = getEnhancedAudioCallback();
   }
   
-  console.log('[MIDI INTEGRATION] Trigger system patched for MIDI integration');
   return true;
 }
 
@@ -329,7 +301,6 @@ export function createEnhancedTriggerAudio(originalTriggerAudio) {
       
       return result;
     } catch (error) {
-      console.error('[MIDI INTEGRATION] Error in enhanced trigger audio:', error);
       return originalTriggerAudio(note);
     }
   };
@@ -345,44 +316,6 @@ if (typeof window !== 'undefined') {
   window.getMidiIntegrationStats = getMidiIntegrationStats;
   window.patchTriggerSystem = patchTriggerSystem;
   window.createEnhancedTriggerAudio = createEnhancedTriggerAudio;
-  
-  // Add debugging functions
-  window.debugMidiIntegration = () => {
-    const stats = getMidiIntegrationStats();
-    const midiStatus = getMidiStatus();
-    
-    console.log('[MIDI DEBUG] Integration Status:', {
-      isEnabled: stats.isEnabled,
-      hasOriginalCallback: stats.hasOriginalCallback,
-      hasLayerManager: stats.hasLayerManager,
-      stats: stats,
-      midiStatus: midiStatus
-    });
-    
-    return { stats, midiStatus };
-  };
-  
-  window.testMidiIntegration = () => {
-    const testNote = {
-      frequency: 440,
-      velocity: 0.7,
-      duration: 1.0,
-      layerId: 0
-    };
-    
-    console.log('[MIDI DEBUG] Testing MIDI integration with note:', testNote);
-    
-    if (window.enhancedAudioTrigger) {
-      window.enhancedAudioTrigger(testNote);
-    } else {
-      console.error('[MIDI DEBUG] Enhanced audio trigger not found');
-    }
-  };
-  
-  window.forceMidiEnable = () => {
-    enableMidiIntegration();
-    console.log('[MIDI DEBUG] MIDI integration force enabled');
-  };
 }
 
 export default midiIntegrationManager; 
