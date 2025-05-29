@@ -82,10 +82,43 @@ function createMidiEnableSection() {
   section.className = 'control-section';
   
   const title = document.createElement('h3');
-  title.textContent = 'MIDI Output';
+  title.textContent = 'MIDI Plugin Control';
   section.appendChild(title);
   
-  // Enable/Disable toggle
+  // Plugin Load/Unload controls
+  const pluginContainer = document.createElement('div');
+  pluginContainer.className = 'control';
+  
+  const pluginLabel = document.createElement('label');
+  pluginLabel.textContent = 'MIDI Plugin:';
+  pluginContainer.appendChild(pluginLabel);
+  
+  const pluginStatus = document.createElement('div');
+  pluginStatus.id = 'midiPluginStatus';
+  pluginStatus.className = 'status-display';
+  pluginStatus.textContent = 'Not loaded';
+  pluginContainer.appendChild(pluginStatus);
+  
+  const pluginButtonContainer = document.createElement('div');
+  pluginButtonContainer.style.cssText = 'margin-top: 8px; display: flex; gap: 8px;';
+  
+  const loadPluginButton = document.createElement('button');
+  loadPluginButton.id = 'loadMidiPlugin';
+  loadPluginButton.textContent = 'Load MIDI Plugin';
+  loadPluginButton.addEventListener('click', handleLoadMidiPlugin);
+  pluginButtonContainer.appendChild(loadPluginButton);
+  
+  const unloadPluginButton = document.createElement('button');
+  unloadPluginButton.id = 'unloadMidiPlugin';
+  unloadPluginButton.textContent = 'Unload Plugin';
+  unloadPluginButton.style.display = 'none';
+  unloadPluginButton.addEventListener('click', handleUnloadMidiPlugin);
+  pluginButtonContainer.appendChild(unloadPluginButton);
+  
+  pluginContainer.appendChild(pluginButtonContainer);
+  section.appendChild(pluginContainer);
+  
+  // Enable/Disable toggle (only works when plugin is loaded)
   const enableContainer = document.createElement('div');
   enableContainer.className = 'control';
   
@@ -97,45 +130,29 @@ function createMidiEnableSection() {
   const enableCheckbox = document.createElement('input');
   enableCheckbox.type = 'checkbox';
   enableCheckbox.id = 'midiEnableCheckbox';
+  enableCheckbox.disabled = true; // Disabled until plugin is loaded
   enableCheckbox.addEventListener('change', handleMidiEnableChange);
   enableContainer.appendChild(enableCheckbox);
   
-  // MIDI Integration toggle
-  const integrationContainer = document.createElement('div');
-  integrationContainer.className = 'control';
-  
-  const integrationLabel = document.createElement('label');
-  integrationLabel.textContent = 'Enable MIDI Integration:';
-  integrationLabel.setAttribute('for', 'midiIntegrationCheckbox');
-  integrationContainer.appendChild(integrationLabel);
-  
-  const integrationCheckbox = document.createElement('input');
-  integrationCheckbox.type = 'checkbox';
-  integrationCheckbox.id = 'midiIntegrationCheckbox';
-  integrationCheckbox.checked = true; // Default enabled
-  integrationCheckbox.addEventListener('change', handleMidiIntegrationChange);
-  integrationContainer.appendChild(integrationCheckbox);
-  
-  const integrationHelp = document.createElement('div');
-  integrationHelp.className = 'help-text';
-  integrationHelp.textContent = 'Routes triggered notes to MIDI output in addition to audio';
-  integrationContainer.appendChild(integrationHelp);
+  const enableHelp = document.createElement('div');
+  enableHelp.className = 'help-text';
+  enableHelp.textContent = 'Load the MIDI plugin first to enable MIDI output';
+  enableContainer.appendChild(enableHelp);
   
   section.appendChild(enableContainer);
-  section.appendChild(integrationContainer);
   
   // Status display
   const statusContainer = document.createElement('div');
   statusContainer.className = 'control';
   
   const statusLabel = document.createElement('label');
-  statusLabel.textContent = 'Status:';
+  statusLabel.textContent = 'MIDI Status:';
   statusContainer.appendChild(statusLabel);
   
   const statusDisplay = document.createElement('div');
   statusDisplay.id = 'midiStatusDisplay';
   statusDisplay.className = 'status-display';
-  statusDisplay.textContent = 'Initializing...';
+  statusDisplay.textContent = 'MIDI system ready - load plugin to use';
   statusContainer.appendChild(statusDisplay);
   
   section.appendChild(statusContainer);
@@ -370,6 +387,13 @@ function createAudioControlSection() {
  * Add MIDI tab button to existing tab system
  */
 function addMidiTabButton() {
+  // Check if MIDI tab already exists to prevent duplicates
+  const existingMidiTab = document.querySelector('.tab-button[data-tab="midi"]');
+  if (existingMidiTab) {
+    console.log('[MIDI UI] MIDI tab already exists, skipping creation');
+    return;
+  }
+  
   const tabContainer = document.querySelector('.tab-buttons-container');
   if (!tabContainer) {
     return;
@@ -422,22 +446,115 @@ async function initializeMidiSystem() {
 }
 
 /**
+ * Handle MIDI plugin loading
+ */
+async function handleLoadMidiPlugin() {
+  const loadButton = document.getElementById('loadMidiPlugin');
+  const unloadButton = document.getElementById('unloadMidiPlugin');
+  const pluginStatus = document.getElementById('midiPluginStatus');
+  const enableCheckbox = document.getElementById('midiEnableCheckbox');
+  const enableHelp = enableCheckbox.parentNode.querySelector('.help-text');
+  
+  try {
+    loadButton.disabled = true;
+    loadButton.textContent = 'Loading...';
+    pluginStatus.textContent = 'Loading MIDI plugin...';
+    pluginStatus.style.color = '#FF9800';
+    
+    // Load the MIDI plugin
+    const { initializeMidiPlugin } = await import('./midiPlugin.js');
+    const midiPlugin = await initializeMidiPlugin({
+      layerManager: window._layers,
+      autoEnable: false
+    });
+    
+    if (midiPlugin) {
+      // Plugin loaded successfully
+      pluginStatus.textContent = 'Plugin loaded';
+      pluginStatus.style.color = '#4CAF50';
+      
+      // Update UI
+      loadButton.style.display = 'none';
+      unloadButton.style.display = 'inline-block';
+      enableCheckbox.disabled = false;
+      enableHelp.textContent = 'Enable/disable MIDI output from triggers';
+      
+      // Store globally for access
+      window.midiPlugin = midiPlugin;
+      
+      // Update status
+      updateMidiStatus();
+      
+      console.log('[MIDI UI] Plugin loaded successfully');
+    } else {
+      throw new Error('Plugin initialization failed');
+    }
+    
+  } catch (error) {
+    // Plugin loading failed
+    pluginStatus.textContent = 'Plugin load failed';
+    pluginStatus.style.color = '#f44336';
+    loadButton.disabled = false;
+    loadButton.textContent = 'Load MIDI Plugin';
+    
+    console.error('[MIDI UI] Plugin load error:', error);
+  }
+}
+
+/**
+ * Handle MIDI plugin unloading
+ */
+async function handleUnloadMidiPlugin() {
+  const loadButton = document.getElementById('loadMidiPlugin');
+  const unloadButton = document.getElementById('unloadMidiPlugin');
+  const pluginStatus = document.getElementById('midiPluginStatus');
+  const enableCheckbox = document.getElementById('midiEnableCheckbox');
+  const enableHelp = enableCheckbox.parentNode.querySelector('.help-text');
+  
+  try {
+    // Unload the MIDI plugin
+    const { unloadMidiPlugin } = await import('./midiPlugin.js');
+    await unloadMidiPlugin();
+    
+    // Update UI
+    pluginStatus.textContent = 'Plugin unloaded';
+    pluginStatus.style.color = '#888';
+    loadButton.style.display = 'inline-block';
+    unloadButton.style.display = 'none';
+    enableCheckbox.disabled = true;
+    enableCheckbox.checked = false;
+    enableHelp.textContent = 'Load the MIDI plugin first to enable MIDI output';
+    
+    // Clear global reference
+    delete window.midiPlugin;
+    
+    // Update status
+    updateMidiStatus();
+    
+    console.log('[MIDI UI] Plugin unloaded successfully');
+    
+  } catch (error) {
+    console.error('[MIDI UI] Plugin unload error:', error);
+  }
+}
+
+/**
  * Handle MIDI enable/disable change
  */
-function handleMidiEnableChange(event) {
+async function handleMidiEnableChange(event) {
   const enabled = event.target.checked;
   
-  if (enabled) {
-    // Try to select first available device
-    const devices = getMidiDevices();
-    if (devices.length > 0) {
-      selectMidiDevice();
+  if (window.midiPlugin) {
+    if (enabled) {
+      await window.midiPlugin.enable();
+    } else {
+      await window.midiPlugin.disable();
     }
+    updateMidiStatus();
   } else {
-    disconnectMidi();
+    // Plugin not loaded, reset checkbox
+    event.target.checked = false;
   }
-  
-  updateMidiStatus();
 }
 
 /**
@@ -585,27 +702,63 @@ function refreshMidiDevices() {
  * Update MIDI status display and restore saved settings
  */
 function updateMidiStatus() {
-  const status = getMidiStatus();
+  // Update plugin status
+  const pluginStatus = document.getElementById('midiPluginStatus');
+  const enableCheckbox = document.getElementById('midiEnableCheckbox');
+  const loadButton = document.getElementById('loadMidiPlugin');
+  const unloadButton = document.getElementById('unloadMidiPlugin');
   
-  // Update status display
-  const statusDisplay = document.getElementById('midiStatusDisplay');
-  if (statusDisplay) {
-    if (status.isEnabled && status.deviceName) {
-      statusDisplay.textContent = `Connected to ${status.deviceName}`;
-      statusDisplay.style.color = '#4CAF50'; // Green
-    } else if (status.isInitialized) {
-      statusDisplay.textContent = 'MIDI ready - no device selected';
-      statusDisplay.style.color = '#FF9800'; // Orange
-    } else {
-      statusDisplay.textContent = 'MIDI not available';
-      statusDisplay.style.color = '#F44336'; // Red
+  if (window.midiPlugin) {
+    // Plugin is loaded
+    if (pluginStatus) {
+      pluginStatus.textContent = 'Plugin loaded';
+      pluginStatus.style.color = '#4CAF50';
+    }
+    
+    if (loadButton) loadButton.style.display = 'none';
+    if (unloadButton) unloadButton.style.display = 'inline-block';
+    if (enableCheckbox) {
+      enableCheckbox.disabled = false;
+      enableCheckbox.checked = window.midiPlugin.isEnabled;
+    }
+  } else {
+    // Plugin is not loaded
+    if (pluginStatus) {
+      pluginStatus.textContent = 'Not loaded';
+      pluginStatus.style.color = '#888';
+    }
+    
+    if (loadButton) loadButton.style.display = 'inline-block';
+    if (unloadButton) unloadButton.style.display = 'none';
+    if (enableCheckbox) {
+      enableCheckbox.disabled = true;
+      enableCheckbox.checked = false;
     }
   }
   
-  // Update enable checkbox
-  const enableCheckbox = document.getElementById('midiEnableCheckbox');
-  if (enableCheckbox) {
-    enableCheckbox.checked = status.isEnabled;
+  // Update MIDI hardware status
+  const status = getMidiStatus();
+  const statusDisplay = document.getElementById('midiStatusDisplay');
+  
+  if (statusDisplay) {
+    if (window.midiPlugin && window.midiPlugin.isEnabled) {
+      if (status.isEnabled && status.deviceName) {
+        statusDisplay.textContent = `Active - Connected to ${status.deviceName}`;
+        statusDisplay.style.color = '#4CAF50'; // Green
+      } else if (status.isInitialized) {
+        statusDisplay.textContent = 'Plugin enabled - no MIDI device selected';
+        statusDisplay.style.color = '#FF9800'; // Orange
+      } else {
+        statusDisplay.textContent = 'Plugin enabled - MIDI not available';
+        statusDisplay.style.color = '#F44336'; // Red
+      }
+    } else if (window.midiPlugin) {
+      statusDisplay.textContent = 'Plugin loaded but disabled';
+      statusDisplay.style.color = '#888'; // Gray
+    } else {
+      statusDisplay.textContent = 'MIDI system ready - load plugin to use';
+      statusDisplay.style.color = '#888'; // Gray
+    }
   }
   
   // Update microtonal mode checkbox (restore saved setting)
@@ -626,61 +779,18 @@ function updateMidiStatus() {
     mtsCheckbox.checked = status.mtsMode;
     mtsCheckbox.disabled = !status.mtsSysExSupported;
     
-    // Update help text to show SysEx status
-    const mtsHelp = mtsCheckbox.parentElement.querySelector('.help-text');
-    if (mtsHelp) {
-      if (status.mtsSysExSupported) {
-        mtsHelp.textContent = 'Uses MTS Real-time Single Note Tuning SysEx for precise frequency control (requires MTS-compatible hardware/software like Pianoteq, Kontakt, etc.)';
-        mtsHelp.style.color = '#888';
-      } else {
-        mtsHelp.textContent = 'SysEx not supported by browser/device - MTS mode unavailable (will use pitch bend fallback)';
-        mtsHelp.style.color = '#F44336';
-      }
+    // Update help text if SysEx not supported
+    const mtsHelp = mtsCheckbox.parentNode.querySelector('.help-text');
+    if (mtsHelp && !status.mtsSysExSupported) {
+      mtsHelp.textContent = 'MTS mode requires SysEx support (not available in this browser/device)';
+      mtsHelp.style.color = '#F44336';
     }
   }
   
-  // Update debug checkbox (restore saved setting)
+  // Update debug mode checkbox (restore saved setting)
   const debugCheckbox = document.getElementById('midiDebugCheckbox');
   if (debugCheckbox) {
-    debugCheckbox.checked = status.debug || false;
-  }
-  
-  // Update integration checkbox
-  const integrationCheckbox = document.getElementById('midiIntegrationCheckbox');
-  if (integrationCheckbox) {
-    // Check integration status
-    try {
-      if (typeof window.getMidiIntegrationStats === 'function') {
-        const integrationStats = window.getMidiIntegrationStats();
-        integrationCheckbox.checked = integrationStats.isEnabled;
-      }
-    } catch (error) {
-      // Integration not available
-      integrationCheckbox.checked = false;
-    }
-  }
-  
-  // Update audio mode checkbox and status
-  const audioCheckbox = document.getElementById('audioCheckbox');
-  if (audioCheckbox) {
-    // Only update checkbox if user hasn't explicitly set it
-    if (!window._userSetAudioMode) {
-      // Check if audio is currently enabled using the simplified audio module
-      try {
-        import('../audio/audio.js').then(audioModule => {
-          const isAudioEnabled = audioModule.isAudioEnabled();
-          audioCheckbox.checked = isAudioEnabled;
-          updateAudioModeStatus(isAudioEnabled);
-        });
-      } catch (error) {
-        // Fallback to enabled
-        audioCheckbox.checked = true;
-        updateAudioModeStatus(true);
-      }
-    } else {
-      // User has explicitly set the mode, just update the status display
-      updateAudioModeStatus(audioCheckbox.checked);
-    }
+    debugCheckbox.checked = status.debug;
   }
 }
 

@@ -863,52 +863,67 @@ async function initializeApplication() {
             });
         }
         
-        // Handling audio triggers - SIMPLIFIED
+        // Handling audio triggers - CLEAN TRIGGER DISPATCH
         const handleAudioTrigger = async (note) => {
-          // Import and use the simplified audio module
-          const { triggerAudio } = await import('./audio/audio.js');
-          triggerAudio(note);
+          // Import and use the trigger dispatcher
+          const { dispatchTrigger } = await import('./triggers/triggerDispatcher.js');
+          return dispatchTrigger(note);
         };
         
-        // Initialize MIDI system after audio is set up
-        try {
-          const { initializeCompleteMidiSystem, createMidiEnhancedTriggerAudio, enableMidiIntegration } = await import('./midi/index.js');
-          
-          // Initialize complete MIDI system with UI integration
-          const midiResult = await initializeCompleteMidiSystem({
-            uiContainer: document.body,
-            layerManager: layerManager,
-            globalState: globalState,
-            originalAudioCallback: handleAudioTrigger,
-            autoEnable: false // Don't auto-enable, let user choose
-          });
-          
-          if (midiResult.success) {
-            console.log('[MAIN] MIDI system initialized successfully');
-            
-            // Create enhanced audio trigger that supports both audio and MIDI
-            const enhancedAudioTrigger = await createMidiEnhancedTriggerAudio(handleAudioTrigger);
-            
-            // Replace the original trigger with the enhanced one
-            window.enhancedAudioTrigger = enhancedAudioTrigger;
-            
-            // Automatically enable MIDI integration
-            await enableMidiIntegration();
-            console.log('[MAIN] MIDI integration enabled automatically');
-            
-            // Make MIDI functions available globally for debugging
-            window.testMidi = async (freq = 440, dur = 1) => {
-              const { testMidiOutput } = await import('./midi/index.js');
-              testMidiOutput(1, freq, dur);
-            };
-            
-          } else {
-            console.warn('[MAIN] MIDI system initialization failed:', midiResult.error);
+        // Always create MIDI tab for user access
+        const initializeMidiTab = async () => {
+          try {
+            console.log('[MAIN] Setting up MIDI tab...');
+            const { setupMidiUI } = await import('./midi/midiUI.js');
+            setupMidiUI(document.body);
+            console.log('[MAIN] MIDI tab created successfully');
+          } catch (error) {
+            console.warn('[MAIN] MIDI tab setup failed:', error.message);
           }
+        };
+        
+        // Initialize MIDI tab (always available)
+        await initializeMidiTab();
+        
+        // Initialize MIDI plugin if requested
+        const initializeMidiIfRequested = async () => {
+          // Check if MIDI should be enabled (could be from settings, URL params, etc.)
+          const enableMidi = new URLSearchParams(window.location.search).has('midi') || 
+                            localStorage.getItem('enableMidi') === 'true';
+          
+          if (enableMidi) {
+            try {
+              console.log('[MAIN] Loading optional MIDI plugin...');
+              const { initializeMidiPlugin } = await import('./midi/midiPlugin.js');
+              const midiPlugin = await initializeMidiPlugin({
+                layerManager: window._layers,
+                autoEnable: true
+              });
+              
+              if (midiPlugin) {
+                console.log('[MAIN] MIDI plugin loaded and enabled');
+                window.midiPlugin = midiPlugin; // Store globally for UI access
+              } else {
+                console.warn('[MAIN] MIDI plugin failed to load');
+              }
+            } catch (error) {
+              console.warn('[MAIN] MIDI plugin not available:', error.message);
+            }
+          }
+        };
+        
+        // Initialize MIDI plugin if requested
+        await initializeMidiIfRequested();
+        
+        // Add MIDI toggle UI for easy plugin management
+        try {
+          const { initializeMidiToggleUI } = await import('./ui/midiToggle.js');
+          initializeMidiToggleUI();
+          console.log('[MAIN] MIDI toggle UI initialized');
         } catch (error) {
-          console.warn('[MAIN] MIDI system not available:', error.message);
+          console.warn('[MAIN] MIDI toggle UI not available:', error.message);
         }
-
+        
         // Initialize OSC system after MIDI is set up
         try {
           const { initializeOSC } = await import('./osc/oscManager.js');
@@ -967,7 +982,7 @@ async function initializeApplication() {
             set lastAngle(value) { globalState.lastAngle = value; }
           },
           globalState,
-          triggerAudioCallback: window.enhancedAudioTrigger || handleAudioTrigger // Use enhanced trigger if available
+          triggerAudioCallback: handleAudioTrigger // Use clean audio trigger (MIDI handled via plugin)
         });
         
         // Silent trigger function for UI previews
