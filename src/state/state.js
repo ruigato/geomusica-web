@@ -270,7 +270,8 @@ export function createAppState() {
       return Math.abs(this.radius - this.targetRadius) > 0.1 ||
              Math.abs(this.stepScale - this.targetStepScale) > 0.001 ||
              Math.abs(this.angle - this.targetAngle) > 0.1 ||
-             Math.abs(this.startingAngle - this.targetStartingAngle) > 0.1;
+             Math.abs(this.startingAngle - this.targetStartingAngle) > 0.1 ||
+             Math.abs(this.altScale - this.targetAltScale) > 0.001;
     },
     
     /**
@@ -539,17 +540,13 @@ export function createAppState() {
           this.altScale = newValue;
         }
         
-        // Always mark for intersection update when alt scale is being used
-        if (this.useAltScale) {
-          // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
-          
-          // Mark that geometry needs to be recreated
-          this.segmentsChanged = true;
-          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
-          
-          // Log the change for debugging
-          
-        }
+        // Always mark geometry for recreation when alt scale changes
+        // DEPRECATED: needsIntersectionUpdate removed
+        // this.needsIntersectionUpdate = true;
+        
+        // Mark that geometry needs to be recreated
+        this.segmentsChanged = true;
+        this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
       }
     },
     
@@ -562,17 +559,12 @@ export function createAppState() {
       if (this.altStepN !== newValue) {
         this.altStepN = newValue;
         this.parameterChanges.altStepN = true;
-        if (this.useAltScale) {
-          // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
-          
-          // Force recreation of base geometry when available
-          if (this.baseGeo) {
-            
-            
-            // Set flags to signal that geometry needs recreation
-            this.segmentsChanged = true;
-            this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
-          }
+        
+        // Force recreation of base geometry when available
+        if (this.baseGeo) {
+          // Set flags to signal that geometry needs recreation
+          this.segmentsChanged = true;
+          this.currentGeometryRadius = null; // Invalidate cached radius to force redraw
         }
       }
     },
@@ -773,7 +765,7 @@ export function createAppState() {
       }
       
       // Apply alt scale if enabled
-      if (this.useAltScale && this.altStepN > 0) {
+      if (this.altStepN > 0) {
         // Check if this copy index matches the alt step pattern
         if ((copyIndex + 1) % this.altStepN === 0) {
           baseFactor *= this.altScale;
@@ -971,8 +963,9 @@ export function createAppState() {
       }
       
       // Check for significant alt scale changes and mark parameter as changed
-      if (Math.abs(oldAltScale - this.altScale) > 0.001 && this.useAltScale) {
-        // DEPRECATED: needsIntersectionUpdate removed`n    // this.needsIntersectionUpdate = true;
+      if (Math.abs(oldAltScale - this.altScale) > 0.001) {
+        // DEPRECATED: needsIntersectionUpdate removed
+        // this.needsIntersectionUpdate = true;
         this.parameterChanges.altScale = true;
       }
     },

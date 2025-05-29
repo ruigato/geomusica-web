@@ -503,8 +503,6 @@ export function setupUI(state) {
   const altStepNNumber = document.getElementById('altStepNNumber');
   const altStepNValue = document.getElementById('altStepNValue');
 
-  const useAltScaleCheckbox = document.getElementById('useAltScaleCheckbox');
-  
   // DEPRECATED: Intersections control - functionality removed
   const useIntersectionsCheckbox = document.getElementById('useIntersectionsCheckbox');
 
@@ -602,9 +600,6 @@ export function setupUI(state) {
     showAxisFreqLabelsCheckbox.checked = activeState.showAxisFreqLabels !== false;
   }
   if (showPointsFreqLabelsCheckbox) showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels;
-  if (useAltScaleCheckbox) useAltScaleCheckbox.checked = state.useAltScale;
-  // Time subdivision checkbox removed
-  // Equal temperament checkbox initialization is now handled in setupGlobalUI in main.js
   if (useQuantizationCheckbox) useQuantizationCheckbox.checked = state.useQuantization;
   if (useFractalCheckbox) useFractalCheckbox.checked = state.useFractal;
   if (useStarsCheckbox) useStarsCheckbox.checked = state.useStars;
@@ -692,23 +687,11 @@ export function setupUI(state) {
     setupModulusRadioButtons(velocityModuloRadioGroup, state, 'velocity');
   }
   
-  // Modulus checkbox is removed - now automatically handled by radio button selection
-  
-  // Time subdivision checkbox is removed - now automatically handled by radio button selection
-  
   // Setup quantization checkbox with null check
   if (useQuantizationCheckbox) {
     useQuantizationCheckbox.checked = state.useQuantization;
     useQuantizationCheckbox.addEventListener('change', e => {
       handleCheckboxChange('setUseQuantization', e.target.checked);
-    });
-  }
-  
-  // Setup alt scale checkbox with null check
-  if (useAltScaleCheckbox) {
-    useAltScaleCheckbox.checked = state.useAltScale;
-    useAltScaleCheckbox.addEventListener('change', e => {
-      handleCheckboxChange('setUseAltScale', e.target.checked);
     });
   }
   
@@ -1398,8 +1381,9 @@ export function setupUI(state) {
       useQuantizationCheckbox, quantizationRadioGroup,
       altScaleRange, altScaleNumber, altScaleValue,
       altStepNRange, altStepNNumber, altStepNValue,
-      useAltScaleCheckbox, useIntersectionsCheckbox, 
-      showAxisFreqLabelsCheckbox, showPointsFreqLabelsCheckbox,
+      useIntersectionsCheckbox, 
+      showAxisFreqLabelsCheckbox,
+      showPointsFreqLabelsCheckbox,
       useEqualTemperamentCheckbox,
       referenceFreqRange, referenceFreqNumber, referenceFreqValue,
       fractalRange, fractalNumber, fractalValue,
@@ -1442,8 +1426,9 @@ export function setupUI(state) {
       useQuantizationCheckbox, quantizationRadioGroup,
       altScaleRange, altScaleNumber, altScaleValue,
       altStepNRange, altStepNNumber, altStepNValue,
-      useAltScaleCheckbox, useIntersectionsCheckbox, 
-      showAxisFreqLabelsCheckbox, showPointsFreqLabelsCheckbox,
+      useIntersectionsCheckbox, 
+      showAxisFreqLabelsCheckbox,
+      showPointsFreqLabelsCheckbox,
       useEqualTemperamentCheckbox,
       referenceFreqRange, referenceFreqNumber, referenceFreqValue,
       fractalRange, fractalNumber, fractalValue,
@@ -1482,7 +1467,6 @@ export function setupUI(state) {
     useQuantizationCheckbox, quantizationRadioGroup,
     altScaleRange, altScaleNumber, altScaleValue,
     altStepNRange, altStepNNumber, altStepNValue,
-    useAltScaleCheckbox,
     useIntersectionsCheckbox, 
     showAxisFreqLabelsCheckbox,
     showPointsFreqLabelsCheckbox,

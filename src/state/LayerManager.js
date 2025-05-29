@@ -1407,7 +1407,7 @@ export class LayerManager {
     state.useModulus = false;
     state.useTimeSubdivision = false;
     state.useQuantization = false;
-    state.useAltScale = false;
+    state.useAltScale = true; // Always true since checkbox was removed
     state.useLerp = false;
     state.useIntersections = false;
     state.usePlainIntersections = false;

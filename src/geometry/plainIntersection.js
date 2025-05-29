@@ -246,8 +246,8 @@ export function calculateCopyIntersections(baseGeo, state) {
       const modulusScale = state.getScaleFactorForCopy(i);
       finalScale = modulusScale * stepScaleFactor;
     }
-    // Apply alt scale if enabled
-    else if (state.useAltScale && ((i + 1) % state.altStepN === 0)) {
+    // Apply alt scale if applicable
+    else if (state && state.altStepN > 0 && (i + 1) % state.altStepN === 0) {
       finalScale = stepScaleFactor * state.altScale;
     }
     

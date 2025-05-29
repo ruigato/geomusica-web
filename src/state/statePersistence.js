@@ -111,7 +111,6 @@ function extractSerializableState(state) {
     // Scale mod parameters
     altScale: state.altScale,
     altStepN: state.altStepN,
-    useAltScale: state.useAltScale,
     
     // Fractal parameters
     fractalValue: state.fractalValue,
@@ -290,7 +289,6 @@ export function applyPropertiesToState(targetState, sourceState) {
     // Scale mod parameters
     { name: 'altScale', setter: 'setAltScale' },
     { name: 'altStepN', setter: 'setAltStepN' },
-    { name: 'useAltScale', setter: 'setUseAltScale' },
     
     // Fractal parameters
     { name: 'fractalValue', setter: 'setFractalValue' },
@@ -780,10 +778,6 @@ export function updateUIFromState(state, uiElements) {
     
     if (uiElements.useQuantizationCheckbox && state.useQuantization !== undefined) {
       uiElements.useQuantizationCheckbox.checked = state.useQuantization;
-    }
-    
-    if (uiElements.useAltScaleCheckbox && state.useAltScale !== undefined) {
-      uiElements.useAltScaleCheckbox.checked = state.useAltScale;
     }
     
     if (uiElements.useFractalCheckbox && state.useFractal !== undefined) {

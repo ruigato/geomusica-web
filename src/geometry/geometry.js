@@ -869,22 +869,18 @@ export function calculateBoundingSphere(group, state) {
         maxScale = Math.max(maxScale, totalScale);
       }
       maxDistance = maxDistance * maxScale * 1.2; // Add 20% margin
-    } else if (state.useAltScale) {
-      // Consider alt scale pattern
+    } else {
+      // Consider alt scale pattern or simple step scale
       let maxScale = 1.0;
       for (let i = 0; i < state.copies; i++) {
         let scale = Math.pow(state.stepScale, i);
         // Apply alt scale if needed
-        if ((i + 1) % state.altStepN === 0) {
+        if (state && state.altStepN > 0 && (i + 1) % state.altStepN === 0) {
           scale *= state.altScale;
         }
         maxScale = Math.max(maxScale, scale);
       }
       maxDistance = maxDistance * maxScale * 1.2;
-    } else {
-      // Simple step scale formula
-      const maxScale = Math.pow(state.stepScale, state.copies - 1);
-      maxDistance = maxDistance * maxScale * 1.2; // Add 20% margin
     }
   }
   
@@ -1332,8 +1328,8 @@ export function updateGroup(group, copies, stepScale, baseGeo, mat, segments, an
       const modulusScale = state.getScaleFactorForCopy(i);
       finalScale = modulusScale * stepScaleFactor;
     }
-    // Apply alt scale if enabled
-    else if (state && state.useAltScale && ((i + 1) % state.altStepN === 0)) {
+    // Apply alt scale if applicable
+    else if (state && state.altStepN > 0 && (i + 1) % state.altStepN === 0) {
       finalScale = stepScaleFactor * state.altScale;
     }
       
@@ -2080,7 +2076,7 @@ function getCopyTransformation(copyIndex, state) {
     finalScale = modulusScale * stepScaleFactor;
   }
   // Apply alt scale if enabled
-  else if (state.useAltScale && ((copyIndex + 1) % state.altStepN === 0)) {
+  else if (state && state.altStepN > 0 && (copyIndex + 1) % state.altStepN === 0) {
     finalScale = stepScaleFactor * state.altScale;
   }
   

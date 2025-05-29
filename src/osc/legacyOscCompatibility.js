@@ -172,9 +172,9 @@ const LEGACY_PARAMETER_MAPPING = {
     type: 'mode'
   },
   'Altstep': { 
-    current: 'AltStepN', 
-    range: { min: 0, max: 22.0 },
-    currentRange: { min: 1, max: 32 },
+    current: 'AltScale', // Altstep in legacy = AltScale in modern (direct 1:1 mapping)
+    range: { min: 0, max: 10.0 },
+    currentRange: { min: 0, max: 10.0 },
     type: 'number'
   },
 
@@ -317,12 +317,12 @@ const LEGACY_PARAMETER_MAPPING = {
     currentRange: { min: false, max: true },
     type: 'boolean'
   },
-  'Mirror': { 
-    current: 'UseAltScale', // Map to alt scale as closest equivalent
-    range: { min: 0, max: 1 },
-    currentRange: { min: false, max: true },
-    type: 'boolean'
-  },
+  // 'Mirror': { 
+  //   current: 'AltScale', // DISABLED - Mirror parameter not implemented yet
+  //   range: { min: 0, max: 2.0 },
+  //   currentRange: { min: 0.5, max: 5.0 },
+  //   type: 'number'
+  // },
   'Lag': { 
     current: 'UseLerp', 
     range: { min: 0, max: 1 },

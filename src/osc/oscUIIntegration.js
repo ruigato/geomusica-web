@@ -32,7 +32,6 @@ class OSCUIIntegration {
       // Scale mod parameters
       'altScale': 'AltScale',
       'altStepN': 'AltStepN',
-      'useAltScale': 'UseAltScale',
       
       // Fractal parameters
       'fractal': 'FractalValue',

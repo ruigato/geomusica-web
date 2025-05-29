@@ -48,7 +48,7 @@ export const DEFAULT_VALUES = {
   STEP_SCALE: 1,
   ANGLE: 15,
   STARTING_ANGLE: 0,
-  LERP_TIME: 1.0,
+  LERP_TIME: 5.0,
   
   // Audio engine parameters
   ATTACK: 0.01,
@@ -64,9 +64,9 @@ export const DEFAULT_VALUES = {
   USE_INTERSECTIONS: false, // DEPRECATED: Intersection feature removed
   SHOW_AXIS_FREQ_LABELS: true, // Default for axis crossing frequency labels
   SHOW_POINTS_FREQ_LABELS: false, // Default for point frequency labels
-  ALT_SCALE: 1.2, // Default alt scale value
-  ALT_STEP_N: 2, // Default apply alt scale every N copies
-  USE_ALT_SCALE: false, // Default for alt scale feature
+  USE_ALT_SCALE: true, // Default for alt scale feature - always enabled since there's no checkbox
+  ALT_SCALE: 1.0, // Default alt scale value (1.0 = no scaling effect)
+  ALT_STEP_N: 2, // Default alt step N value (apply alt scale every 2nd copy)
   TIME_SUBDIVISION_VALUE: 1, // Default time subdivision value (1x normal speed)
   USE_TIME_SUBDIVISION: false, // Default for time subdivision feature (disabled)
   USE_EQUAL_TEMPERAMENT: false, // Default for equal temperament feature (disabled)
