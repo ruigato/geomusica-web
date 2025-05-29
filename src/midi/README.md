@@ -14,10 +14,11 @@ A comprehensive MIDI output system for GeoMusica that provides multi-channel out
 - **Device management**: Automatic device enumeration and connection handling
 
 ### Microtonal Support
-- **Pitch bend compensation**: Configurable ±1 to ±12 semitone range
-- **Polyphonic aftertouch**: Expresses microtonal deviations for compatible synths
-- **Equal temperament detection**: Automatically adjusts for temperament mode
-- **High precision**: 14-bit pitch bend for accurate microtonal intervals
+- **Pitch bend compensation**: Configurable ±1 to ±12 semitone range (only when microtonal features are enabled)
+- **Polyphonic aftertouch**: Expresses microtonal deviations for compatible synths (microtonal mode only)
+- **MTS (MIDI Tuning Standard)**: SysEx messages for precise frequency control (MTS mode only)
+- **Plain MIDI mode**: When both microtonal and MTS modes are disabled, sends standard MIDI notes without pitch bend
+- **High precision**: 14-bit pitch bend for accurate microtonal intervals when enabled
 
 ### Layer Integration
 - **Automatic channel mapping**: Layer 0 → Channel 1, Layer 1 → Channel 2, etc.
@@ -120,10 +121,13 @@ const microtonalNote = {
   duration: 1.0
 };
 
-// Will automatically:
-// 1. Calculate nearest MIDI note (A4 = 69)
-// 2. Apply pitch bend for +50 cents
-// 3. Send polyphonic aftertouch for expression
+// Behavior depends on mode settings:
+
+// 1. MTS Mode enabled: Uses MTS SysEx for precise frequency control
+// 2. Microtonal Mode enabled (MTS disabled): Uses polyphonic aftertouch only, no pitch bend
+// 3. Both modes disabled: Sends plain MIDI note (A4 = 69) without pitch bend or aftertouch
+// 4. MTS Mode enabled but fails: Falls back to polyphonic aftertouch if microtonal mode is on
+
 playMidiNote(microtonalNote, 0);
 ```
 
@@ -140,7 +144,16 @@ setMidiPitchBendRange(4); // ±4 semitones for wider microtonal range
 ```javascript
 import { setMidiMicrotonalMode } from './midi/index.js';
 
-setMidiMicrotonalMode(false); // Disable microtonal features
+setMidiMicrotonalMode(false); // Disable microtonal features - sends plain MIDI without pitch bend
+setMidiMicrotonalMode(true);  // Enable microtonal mode - uses polyphonic aftertouch for expression
+```
+
+### MTS Mode
+```javascript
+import { setMidiMTSMode } from './midi/index.js';
+
+setMidiMTSMode(false); // Disable MTS - uses microtonal mode if enabled, otherwise plain MIDI
+setMidiMTSMode(true);  // Enable MTS - uses SysEx for precise frequency control
 ```
 
 ### Debug Mode

@@ -457,34 +457,19 @@ export function updateAudioEngineFromState(state, audioModule) {
   if (!state || !audioModule) return false;
   
   try {
-    // Apply all parameters at once using the new function
-    const params = {
-      attack: state.attack,
-      decay: state.decay,
-      sustain: state.sustain,
-      release: state.release,
-      brightness: state.brightness,
-      volume: state.volume
-    };
+    // Use individual parameter setting functions
+    const { setEnvelope, setBrightness, setMasterVolume } = audioModule;
     
-    // Use the new applySynthParameters function
-    if (audioModule.applySynthParameters) {
-      audioModule.applySynthParameters(params);
-    } else {
-      // Fallback to individual parameter setting
-      const { setEnvelope, setBrightness, setMasterVolume } = audioModule;
-      
-      if (setEnvelope) {
-        setEnvelope(state.attack, state.decay, state.sustain, state.release);
-      }
-      
-      if (setBrightness) {
-        setBrightness(state.brightness);
-      }
-      
-      if (setMasterVolume) {
-        setMasterVolume(state.volume);
-      }
+    if (setEnvelope) {
+      setEnvelope(state.attack, state.decay, state.sustain, state.release);
+    }
+    
+    if (setBrightness) {
+      setBrightness(state.brightness);
+    }
+    
+    if (setMasterVolume) {
+      setMasterVolume(state.volume);
     }
     
     

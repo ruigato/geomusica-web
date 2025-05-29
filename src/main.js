@@ -17,8 +17,7 @@ import {
   triggerAudio, 
   setEnvelope, 
   setBrightness, 
-  setMasterVolume,
-  applySynthParameters
+  setMasterVolume
 } from './audio/audio.js';
 import { createPolygonGeometry, createAxis } from './geometry/geometry.js';
 import { animate } from './animation/animation.js';
@@ -60,21 +59,17 @@ stats.dom.style.left = 'auto';
 stats.dom.style.right = '10px';
 stats.dom.style.top = '10px';
 
-// Store UI references globally
+// Global references for UI and state management
 let uiReferences = null;
 let synthUIReferences = null;
 let layerUIReferences = null;
 let globalUIReferences = null;
-
-// References to core components
-let audioInstance = null;
 let sceneInstance = null;
 let layerManager = null;
+
+// Global state objects
 let appState = null;
 let globalState = null;
-
-// Store Csound instance globally for consistent access
-let csoundInstance = null;
 
 /**
  * Ensure state is synchronized across all systems
@@ -162,14 +157,14 @@ function performStateSync(isLayerSwitch = false) {
       }
     }
     
-    if (audioInstance) {
+    if (layerManager) {
       // Update audio state with validation
-      if (!audioInstance.userData) {
-        audioInstance.userData = {};
+      if (!layerManager.userData) {
+        layerManager.userData = {};
       }
       // Use stateId instead of direct state reference
-      audioInstance.userData.stateId = activeLayerId;
-      audioInstance.userData.globalState = globalState;
+      layerManager.userData.stateId = activeLayerId;
+      layerManager.userData.globalState = globalState;
     }
     
     // FIXED: More robust UI synchronization
@@ -370,15 +365,14 @@ function addStateControlsToUI(state) {
             syncStateAcrossSystems();
             
             // Update audio engine with imported state values
-            applySynthParameters({
-              attack: state.attack,
-              decay: state.decay,
-              sustain: state.sustain,
-              release: state.release,
-              brightness: state.brightness,
-              volume: state.volume
-            }).then(result => {
-              
+            Promise.all([
+              setEnvelope(state.attack, state.decay, state.sustain, state.release),
+              setBrightness(state.brightness),
+              setMasterVolume(state.volume)
+            ]).then(results => {
+              console.log('[MAIN] Audio parameters updated after import');
+            }).catch(error => {
+              console.error('[MAIN] Error updating audio parameters:', error);
             });
           } else {
             alert('Failed to import settings');
@@ -832,11 +826,6 @@ async function initializeApplication() {
     // Now initialize audio system after scene is setup
     setupAudio({ audioContext })
       .then(async (csound) => {
-        audioInstance = csound;
-        
-        // Store Csound instance globally
-        csoundInstance = csound;
-        
         // Ensure timing is properly initialized before starting animation
         try {
           const { isTimingInitialized } = await import('./time/time.js');
@@ -874,9 +863,11 @@ async function initializeApplication() {
             });
         }
         
-        // Handling audio triggers
-        const handleAudioTrigger = (note) => {
-          triggerAudio(note, csound);
+        // Handling audio triggers - SIMPLIFIED
+        const handleAudioTrigger = async (note) => {
+          // Import and use the simplified audio module
+          const { triggerAudio } = await import('./audio/audio.js');
+          triggerAudio(note);
         };
         
         // Initialize MIDI system after audio is set up
@@ -965,7 +956,6 @@ async function initializeApplication() {
           baseGeo: activeLayer.baseGeo,
           mat: activeLayer.material,
           stats,
-          csound,
           renderer,
           cam: camera,
           state: {
@@ -1129,7 +1119,6 @@ async function initializeApplication() {
           baseGeo: activeLayer.baseGeo,
           mat: activeLayer.material,
           stats,
-          csound: null,
           renderer,
           cam: camera,
           state: {
@@ -1416,7 +1405,7 @@ function setupGlobalUI(globalState) {
   // Initialize UI controls with global state values
   try {
     // Create a references object with global UI elements
-    const globalUIReferences = {
+    globalUIReferences = {
       bpmRange, bpmNumber, bpmValue,
       useEqualTemperamentCheckbox,
       referenceFreqRange, referenceFreqNumber, referenceFreqValue
@@ -1495,17 +1484,6 @@ function setupGlobalUI(globalState) {
   if (referenceFreqValue) {
     referenceFreqValue.textContent = globalState.referenceFrequency;
   }
-  
-  // Store references to global UI controls
-  globalUIReferences = {
-    bpmRange,
-    bpmNumber,
-    bpmValue,
-    useEqualTemperamentCheckbox,
-    referenceFreqRange,
-    referenceFreqNumber,
-    referenceFreqValue
-  };
   
   console.log('[TIMING] Using RockSolidTiming - ultra-simple, bulletproof timing system');
 }

@@ -38,13 +38,13 @@ export function setupMidiUI(parentContainer) {
   const microtonalSection = createMicrotonalSection();
   midiTab.appendChild(microtonalSection);
   
-  // Channel Monitoring Section
-  const monitoringSection = createChannelMonitoringSection();
-  midiTab.appendChild(monitoringSection);
-  
   // Debug and Status Section
   const debugSection = createDebugSection();
   midiTab.appendChild(debugSection);
+  
+  // Audio Control Section
+  const audioSection = createAudioControlSection();
+  midiTab.appendChild(audioSection);
   
   // Add to the header-tabs container where other tabs are located
   const headerTabsContainer = document.getElementById('header-tabs');
@@ -69,8 +69,8 @@ export function setupMidiUI(parentContainer) {
     enableSection,
     deviceSection,
     microtonalSection,
-    monitoringSection,
-    debugSection
+    debugSection,
+    audioSection
   };
 }
 
@@ -208,7 +208,7 @@ function createMicrotonalSection() {
   
   const modeHelp = document.createElement('div');
   modeHelp.className = 'help-text';
-  modeHelp.textContent = 'Uses polyphonic aftertouch for microtonal accuracy (no pitch bend)';
+  modeHelp.textContent = 'Uses polyphonic aftertouch for microtonal accuracy. When disabled, sends plain MIDI without pitch bend.';
   modeContainer.appendChild(modeHelp);
   
   section.appendChild(modeContainer);
@@ -263,63 +263,6 @@ function createMicrotonalSection() {
 }
 
 /**
- * Create channel monitoring section
- */
-function createChannelMonitoringSection() {
-  const section = document.createElement('div');
-  section.className = 'control-section';
-  
-  const title = document.createElement('h3');
-  title.textContent = 'Channel Monitoring';
-  section.appendChild(title);
-  
-  // Channel mapping info
-  const mappingInfo = document.createElement('div');
-  mappingInfo.className = 'control';
-  mappingInfo.innerHTML = `
-    <div class="help-text">
-      <strong>Channel Mapping:</strong><br>
-      • Layers 0-14 → MIDI Channels 1-15<br>
-      • LayerLink → MIDI Channel 16<br>
-      • Each layer outputs to its own channel for independent control
-    </div>
-  `;
-  section.appendChild(mappingInfo);
-  
-  // Active channels display
-  const channelsContainer = document.createElement('div');
-  channelsContainer.className = 'control';
-  
-  const channelsLabel = document.createElement('label');
-  channelsLabel.textContent = 'Active Channels:';
-  channelsContainer.appendChild(channelsLabel);
-  
-  const channelsDisplay = document.createElement('div');
-  channelsDisplay.id = 'midiActiveChannels';
-  channelsDisplay.className = 'channels-display';
-  channelsContainer.appendChild(channelsDisplay);
-  
-  section.appendChild(channelsContainer);
-  
-  // Statistics display
-  const statsContainer = document.createElement('div');
-  statsContainer.className = 'control';
-  
-  const statsLabel = document.createElement('label');
-  statsLabel.textContent = 'Statistics:';
-  statsContainer.appendChild(statsLabel);
-  
-  const statsDisplay = document.createElement('div');
-  statsDisplay.id = 'midiStatsDisplay';
-  statsDisplay.className = 'stats-display';
-  statsContainer.appendChild(statsDisplay);
-  
-  section.appendChild(statsContainer);
-  
-  return section;
-}
-
-/**
  * Create debug and control section
  */
 function createDebugSection() {
@@ -367,6 +310,58 @@ function createDebugSection() {
   buttonsContainer.appendChild(disconnectButton);
   
   section.appendChild(buttonsContainer);
+  
+  return section;
+}
+
+/**
+ * Create audio control section
+ */
+function createAudioControlSection() {
+  const section = document.createElement('div');
+  section.className = 'control-section';
+  
+  const title = document.createElement('h3');
+  title.textContent = 'Audio Control';
+  section.appendChild(title);
+  
+  // Audio control toggle
+  const audioContainer = document.createElement('div');
+  audioContainer.className = 'control';
+  
+  const audioLabel = document.createElement('label');
+  audioLabel.textContent = 'Enable Internal Audio Processing:';
+  audioLabel.setAttribute('for', 'audioCheckbox');
+  audioContainer.appendChild(audioLabel);
+  
+  const audioCheckbox = document.createElement('input');
+  audioCheckbox.type = 'checkbox';
+  audioCheckbox.id = 'audioCheckbox';
+  audioCheckbox.checked = true; // Default enabled
+  audioCheckbox.addEventListener('change', handleAudioModeChange);
+  audioContainer.appendChild(audioCheckbox);
+  
+  const audioHelp = document.createElement('div');
+  audioHelp.className = 'help-text';
+  audioHelp.textContent = 'Disables internal Csound audio synthesis. When unchecked, only MIDI output is used (no internal sounds).';
+  audioContainer.appendChild(audioHelp);
+  
+  // Audio mode status display
+  const audioStatusContainer = document.createElement('div');
+  audioStatusContainer.className = 'control';
+  
+  const audioStatusLabel = document.createElement('label');
+  audioStatusLabel.textContent = 'Audio Mode:';
+  audioStatusContainer.appendChild(audioStatusLabel);
+  
+  const audioStatusDisplay = document.createElement('div');
+  audioStatusDisplay.id = 'audioModeStatus';
+  audioStatusDisplay.className = 'status-display';
+  audioStatusDisplay.textContent = 'Audio + MIDI';
+  audioStatusContainer.appendChild(audioStatusDisplay);
+  
+  section.appendChild(audioContainer);
+  section.appendChild(audioStatusContainer);
   
   return section;
 }
@@ -513,6 +508,45 @@ function handleDebugModeChange(event) {
 }
 
 /**
+ * Handle audio mode change - SIMPLIFIED
+ */
+async function handleAudioModeChange(event) {
+  const enabled = event.target.checked;
+  
+  // Mark that user has explicitly set the audio mode
+  window._userSetAudioMode = true;
+  
+  try {
+    // Import the simplified audio module
+    const audioModule = await import('../audio/audio.js');
+    
+    // Simply enable/disable audio using the new function
+    audioModule.setAudioEnabled(enabled);
+    
+    updateAudioModeStatus(enabled);
+    
+  } catch (error) {
+    console.error('[MIDI UI] Error changing audio mode:', error);
+  }
+}
+
+/**
+ * Update audio mode status display
+ */
+function updateAudioModeStatus(enabled) {
+  const statusDisplay = document.getElementById('audioModeStatus');
+  if (statusDisplay) {
+    if (enabled) {
+      statusDisplay.textContent = 'Audio + MIDI';
+      statusDisplay.style.color = '#4CAF50'; // Green
+    } else {
+      statusDisplay.textContent = 'MIDI Only';
+      statusDisplay.style.color = '#FF9800'; // Orange
+    }
+  }
+}
+
+/**
  * Refresh MIDI devices list
  */
 function refreshMidiDevices() {
@@ -626,26 +660,27 @@ function updateMidiStatus() {
     }
   }
   
-  // Update active channels display
-  const channelsDisplay = document.getElementById('midiActiveChannels');
-  if (channelsDisplay) {
-    if (status.stats.channelsUsed.length > 0) {
-      channelsDisplay.textContent = `Channels: ${status.stats.channelsUsed.join(', ')}`;
+  // Update audio mode checkbox and status
+  const audioCheckbox = document.getElementById('audioCheckbox');
+  if (audioCheckbox) {
+    // Only update checkbox if user hasn't explicitly set it
+    if (!window._userSetAudioMode) {
+      // Check if audio is currently enabled using the simplified audio module
+      try {
+        import('../audio/audio.js').then(audioModule => {
+          const isAudioEnabled = audioModule.isAudioEnabled();
+          audioCheckbox.checked = isAudioEnabled;
+          updateAudioModeStatus(isAudioEnabled);
+        });
+      } catch (error) {
+        // Fallback to enabled
+        audioCheckbox.checked = true;
+        updateAudioModeStatus(true);
+      }
     } else {
-      channelsDisplay.textContent = 'No active channels';
+      // User has explicitly set the mode, just update the status display
+      updateAudioModeStatus(audioCheckbox.checked);
     }
-  }
-  
-  // Update statistics display
-  const statsDisplay = document.getElementById('midiStatsDisplay');
-  if (statsDisplay) {
-    statsDisplay.innerHTML = `
-      Notes Played: ${status.stats.notesPlayed}<br>
-      Notes Stopped: ${status.stats.notesStopped}<br>
-      Active Notes: ${status.activeNotes}<br>
-      Errors: ${status.stats.errors}<br>
-      SysEx Support: ${status.mtsSysExSupported ? 'Yes' : 'No'}
-    `;
   }
 }
 
@@ -708,25 +743,6 @@ function addMidiUIStyles() {
       color: #888;
       font-style: italic;
       margin-top: 5px;
-    }
-    
-    .channels-display {
-      font-family: monospace;
-      background: #333333;
-      padding: 8px;
-      border-radius: 4px;
-      margin-top: 4px;
-      border: 1px solid #555;
-    }
-    
-    .stats-display {
-      font-family: monospace;
-      background: #333333;
-      padding: 8px;
-      border-radius: 4px;
-      margin-top: 4px;
-      font-size: 12px;
-      border: 1px solid #555;
     }
     
     .status-display {

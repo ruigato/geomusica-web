@@ -39,15 +39,6 @@ class MidiOutManager {
     this.availableDevices = [];
     this.selectedDeviceId = null; // Store device ID for persistence
     
-    // Performance tracking
-    this.stats = {
-      notesPlayed: 0,
-      notesStopped: 0,
-      channelsUsed: new Set(),
-      lastNoteTime: 0,
-      errors: 0
-    };
-    
     // Debugging
     this.debug = false;
     
@@ -117,7 +108,6 @@ class MidiOutManager {
         
         return true;
       } catch (fallbackError) {
-        this.stats.errors++;
         return false;
       }
     }
@@ -272,17 +262,17 @@ class MidiOutManager {
             // In microtonal mode, we only use polyphonic aftertouch, no pitch bend
             // Pitch bend will be sent after note on
           } else {
-            // In non-microtonal mode, use pitch bend as fallback
+            // In non-microtonal mode, use pitch bend as fallback only if MTS was attempted
             if (Math.abs(pitchBend) > 10) {
               this.sendPitchBend(channel, pitchBend);
             }
           }
         }
-      } else if (!this.microtonalMode && Math.abs(pitchBend) > 10) {
-        // Use pitch bend only when NOT in microtonal mode
-        this.sendPitchBend(channel, pitchBend);
+      } else if (this.microtonalMode) {
+        // In microtonal mode without MTS, we don't send pitch bend at all
+        // Only polyphonic aftertouch will be used for microtonal expression
       }
-      // Note: In microtonal mode, we don't send pitch bend at all
+      // Note: When both microtonalMode and mtsMode are false, no pitch bend is sent (plain MIDI)
       
       // Send note on
       this.sendNoteOn(channel, midiNote, velocity);
@@ -303,12 +293,6 @@ class MidiOutManager {
         timeoutId = setTimeout(() => {
           this.sendNoteOff(channel, midiNote, velocity);
           this.activeNotes.delete(noteKey);
-          this.stats.notesStopped++;
-          
-          // Reset pitch bend after note ends (only if not in microtonal mode and not using MTS)
-          if (!this.mtsMode && !this.microtonalMode && Math.abs(pitchBend) > 10) {
-            setTimeout(() => this.sendPitchBend(channel, 0), 10);
-          }
         }, duration);
       }
       
@@ -332,14 +316,8 @@ class MidiOutManager {
           }, 50); // Slight delay for expression
         }
       }
-      
-      // Update stats
-      this.stats.notesPlayed++;
-      this.stats.channelsUsed.add(channel);
-      this.stats.lastNoteTime = performance.now();
-      
     } catch (error) {
-      this.stats.errors++;
+      // Silent error handling
     }
   }
   
@@ -672,10 +650,6 @@ class MidiOutManager {
       mtsMode: this.mtsMode,
       mtsSysExSupported: this.mtsSysExSupported,
       pitchBendRange: this.pitchBendRange,
-      stats: {
-        ...this.stats,
-        channelsUsed: Array.from(this.stats.channelsUsed)
-      }
     };
   }
   
