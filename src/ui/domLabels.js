@@ -513,7 +513,12 @@ export function updateAllLayersRotatingLabels(camera, renderer) {
   // Update rotating labels for all layers that have showPointsFreqLabels enabled
   for (const layer of layerManager.layers) {
     if (layer && layer.state && layer.state.showPointsFreqLabels && layer.group) {
-      updateRotatingLabels(layer.group, camera, renderer);
+      // FIXED: Clear labels if copies is 0 (no geometry to label)
+      if (layer.state.copies === 0) {
+        clearLayerPointLabels(layer.id);
+      } else {
+        updateRotatingLabels(layer.group, camera, renderer);
+      }
     }
   }
 }
