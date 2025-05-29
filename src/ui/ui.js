@@ -340,6 +340,12 @@ function setupTimeSubdivisionRadioButtons(container, state) {
         ];
         handleRadioButtonChange('setTimeSubdivisionValue', parseFloat(value), additionalSetters);
         
+        // Trigger OSC OUT for time subdivision change
+        if (window.triggerOSCParameterChange) {
+          const layerId = window._layers ? window._layers.activeLayerId : 0;
+          window.triggerOSCParameterChange('TimeSubdivisionValue', parseFloat(value), false, layerId);
+        }
+        
         if (DEBUG_LOGGING) {
           
         }

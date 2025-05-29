@@ -74,7 +74,7 @@ const LEGACY_PARAMETER_MAPPING = {
   'Number': { 
     current: 'Segments', 
     range: { min: 0, max: 10 },
-    currentRange: { min: 2, max: 32 },
+    currentRange: { min: 2, max: 12 },
     type: 'number'
   },
   'Copies': { 
@@ -112,8 +112,9 @@ const LEGACY_PARAMETER_MAPPING = {
   'Speed': { 
     current: 'TimeSubdivisionValue', 
     range: { min: 0, max: 7 },
-    currentRange: { min: 0.125, max: 8 },
-    type: 'number'
+    currentRange: { min: 1, max: 7 },
+    type: 'number',
+    discrete: [1, 1.5, 2, 3, 4, 5, 6, 7]
   },
   'Freespeed': { 
     current: 'LerpTime', // Map to closest equivalent
@@ -491,6 +492,12 @@ class LegacyOscCompatibility {
           const numValue = parseFloat(value);
           if (isNaN(numValue)) return null;
 
+          // Handle discrete value mapping (like Speed -> TimeSubdivisionValue)
+          if (paramMapping.discrete && Array.isArray(paramMapping.discrete)) {
+            const index = Math.floor(Math.max(0, Math.min(paramMapping.discrete.length - 1, numValue)));
+            return paramMapping.discrete[index].toString();
+          }
+
           // Scale from legacy range to current range
           const scaledValue = this.scaleValue(
             numValue, 
@@ -623,6 +630,25 @@ class LegacyOscCompatibility {
         case 'number':
           const numValue = parseFloat(value);
           if (isNaN(numValue)) return null;
+
+          // Handle discrete value reverse mapping (like TimeSubdivisionValue -> Speed)
+          if (paramMapping.discrete && Array.isArray(paramMapping.discrete)) {
+            const index = paramMapping.discrete.indexOf(numValue);
+            if (index >= 0) {
+              return index.toString();
+            }
+            // If exact match not found, find closest value
+            let closestIndex = 0;
+            let closestDiff = Math.abs(paramMapping.discrete[0] - numValue);
+            for (let i = 1; i < paramMapping.discrete.length; i++) {
+              const diff = Math.abs(paramMapping.discrete[i] - numValue);
+              if (diff < closestDiff) {
+                closestDiff = diff;
+                closestIndex = i;
+              }
+            }
+            return closestIndex.toString();
+          }
 
           // Scale from current range back to legacy range
           const scaledValue = this.scaleValue(

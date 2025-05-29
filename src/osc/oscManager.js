@@ -438,7 +438,7 @@ class OSCManager {
         if (parameterName === 'ModulusValue') {
           radioGroupName = 'modulus';
         } else if (parameterName === 'TimeSubdivisionValue') {
-          radioGroupName = 'timeSubdivisionValue';
+          radioGroupName = 'timeSubdivision';
         } else if (parameterName === 'QuantizationValue') {
           radioGroupName = 'quantizationValue';
         } else if (parameterName === 'DurationModulo') {

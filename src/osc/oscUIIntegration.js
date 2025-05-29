@@ -76,7 +76,15 @@ class OSCUIIntegration {
       'brightness': 'Brightness',
       'volume': 'Volume',
       'useEqualTemperament': 'UseEqualTemperament',
-      'referenceFreq': 'ReferenceFreq'
+      'referenceFreq': 'ReferenceFreq',
+      
+      // Radio button parameters
+      'modulus': 'ModulusValue',
+      'timeSubdivision': 'TimeSubdivisionValue',
+      'quantization': 'QuantizationValue',
+      'durationModulo': 'DurationModulo',
+      'velocityModulo': 'VelocityModulo',
+      'starSkip': 'StarSkip'
     };
     
     // Global parameters (not layer-specific)
