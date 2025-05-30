@@ -333,8 +333,16 @@ function addStateControlsToUI(state) {
   exportButton.className = 'state-control-button export';
   
   // Add export click handler
-  exportButton.addEventListener('click', () => {
-    exportStateToFile(state);
+  exportButton.addEventListener('click', async () => {
+    try {
+      const success = await exportStateToFile(state);
+      if (!success) {
+        alert('Failed to export settings');
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Error exporting settings');
+    }
   });
   
   // Create import button and file input
@@ -1227,7 +1235,18 @@ async function initializeApplication() {
     // Add export button
     const exportButton = document.createElement('button');
     exportButton.textContent = 'Export State';
-    exportButton.onclick = () => exportStateToFile();
+    exportButton.onclick = async () => {
+      try {
+        const currentState = window.getActiveState ? window.getActiveState() : appState;
+        const success = await exportStateToFile(currentState);
+        if (!success) {
+          alert('Failed to export settings');
+        }
+      } catch (error) {
+        console.error('Export error:', error);
+        alert('Error exporting settings');
+      }
+    };
     debugContainer.appendChild(exportButton);
     
     // Add import button

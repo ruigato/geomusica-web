@@ -499,10 +499,10 @@ export function setupAutoSave(state, interval = 5000) {
 }
 
 /**
- * Export current state to a downloadable JSON file
+ * Export current state to a JSON file in the presets folder
  * @param {Object} state - The application state
  */
-export function exportStateToFile(state) {
+export async function exportStateToFile(state) {
   try {
     // Use the same format as saveState for consistency
     const layerManager = window._layers;
@@ -560,14 +560,104 @@ export function exportStateToFile(state) {
     // Convert to JSON string
     const jsonString = JSON.stringify(exportData, null, 2);
     
-    // Create a blob
+    // Generate filename
+    const filename = `geomusica_settings_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;
+    
+    // Try to use File System Access API to save to presets folder
+    if ('showDirectoryPicker' in window) {
+      try {
+        // Check if user previously selected to always use the File System API
+        const alwaysUseFileSystem = localStorage.getItem('geomusica-use-filesystem') === 'true';
+        const skipDirectoryPicker = localStorage.getItem('geomusica-skip-directory-picker') === 'true';
+        
+        if (alwaysUseFileSystem || confirm('Would you like to save the preset directly to the presets folder on your computer?\n\nClick "OK" to select the presets folder, or "Cancel" to download the file normally.')) {
+          let rootHandle;
+          
+          if (skipDirectoryPicker) {
+            // Try to use a previously verified presets directory
+            const cachedDirectoryName = localStorage.getItem('geomusica-presets-path');
+            if (cachedDirectoryName) {
+              try {
+                // For now, we still need to ask for directory selection each time
+                // as FileSystemDirectoryHandle can't be persisted
+                rootHandle = await window.showDirectoryPicker({
+                  mode: 'readwrite',
+                  startIn: 'documents'
+                });
+              } catch (error) {
+                console.warn('Failed to use cached directory, asking user to select:', error);
+                localStorage.removeItem('geomusica-presets-path');
+                localStorage.removeItem('geomusica-skip-directory-picker');
+              }
+            }
+          }
+          
+          if (!rootHandle) {
+            // Ask user to select the project root directory or presets directory
+            rootHandle = await window.showDirectoryPicker({
+              mode: 'readwrite',
+              startIn: 'documents'
+            });
+          }
+          
+          // Try to find or create the presets directory
+          let presetsHandle;
+          if (rootHandle.name === 'presets') {
+            presetsHandle = rootHandle;
+          } else {
+            try {
+              presetsHandle = await rootHandle.getDirectoryHandle('presets');
+            } catch (error) {
+              // Create presets folder if it doesn't exist
+              presetsHandle = await rootHandle.getDirectoryHandle('presets', { create: true });
+            }
+          }
+          
+          if (presetsHandle) {
+            // Create the file in the presets directory
+            const fileHandle = await presetsHandle.getFileHandle(filename, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(jsonString);
+            await writable.close();
+            
+            console.log(`Settings exported to presets/${filename}`);
+            
+            // Cache the directory choice
+            localStorage.setItem('geomusica-use-filesystem', 'true');
+            localStorage.setItem('geomusica-presets-path', presetsHandle.name);
+            
+            // Ask if user wants to skip the directory picker next time
+            if (!skipDirectoryPicker && confirm('Settings saved successfully!\n\nWould you like to skip the directory selection dialog for future exports?\n\n(You can reset this in browser settings if needed)')) {
+              localStorage.setItem('geomusica-skip-directory-picker', 'true');
+            }
+            
+            // Show success message to user
+            if (typeof showNotification === 'function') {
+              showNotification(`Settings exported to presets/${filename}`, 'success');
+            } else {
+              alert(`Settings exported to presets/${filename}`);
+            }
+            
+            return true;
+          }
+        } else {
+          // User chose to use download method
+          localStorage.setItem('geomusica-use-filesystem', 'false');
+        }
+      } catch (fsError) {
+        console.warn('File System Access API failed, falling back to download:', fsError);
+        // Fall through to download method
+      }
+    }
+    
+    // Fallback: Use the original download method
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     
     // Create download link
     const link = document.createElement('a');
     link.href = url;
-    link.download = `geomusica_settings_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;
+    link.download = filename;
     
     // Append to document, click, and remove
     document.body.appendChild(link);
@@ -577,6 +667,7 @@ export function exportStateToFile(state) {
     // Clean up URL object
     URL.revokeObjectURL(url);
     
+    console.log('Settings exported as download:', filename);
     return true;
   } catch (error) {
     console.error('Error exporting state:', error);
