@@ -36,6 +36,169 @@ const QUANTIZATION_VALUES_FOR_RADIO_BUTTONS = [
   '1/4T', '1/8T', '1/16T', '1/32T',
 ];
 
+// ==================================================================================
+// SYNC PAIR FUNCTION - Synchronizes slider and number inputs
+// ==================================================================================
+
+/**
+ * Synchronize a range slider with a number input and display value
+ * @param {HTMLInputElement} rangeInput - Range slider element
+ * @param {HTMLInputElement} numberInput - Number input element  
+ * @param {HTMLElement} valueDisplay - Display element for current value
+ * @param {Function} setterFunction - Function to call when value changes
+ * @param {number} minValue - Minimum allowed value
+ * @param {number} maxValue - Maximum allowed value
+ * @param {Function} typeConverter - Type conversion function (e.g., Number, parseInt)
+ */
+function syncPair(rangeInput, numberInput, valueDisplay, setterFunction, minValue, maxValue, typeConverter = Number) {
+  if (!rangeInput || !numberInput || !valueDisplay || !setterFunction) {
+    console.warn('[UI] syncPair: Missing required elements or setter function');
+    return;
+  }
+
+  // Set initial values from range input
+  const initialValue = typeConverter(rangeInput.value);
+  numberInput.value = initialValue;
+  
+  // Format display value based on type
+  if (typeConverter === Number) {
+    // Check if it's an integer or decimal
+    if (Number.isInteger(initialValue)) {
+      valueDisplay.textContent = initialValue.toString();
+    } else {
+      valueDisplay.textContent = initialValue.toFixed(2);
+    }
+  } else {
+    valueDisplay.textContent = initialValue.toString();
+  }
+
+  // Function to update all elements and call setter
+  const updateValue = (newValue, source = 'range') => {
+    try {
+      const convertedValue = typeConverter(newValue);
+      
+      // Clamp value to valid range
+      const clampedValue = Math.max(minValue, Math.min(maxValue, convertedValue));
+      
+      // Update all inputs
+      rangeInput.value = clampedValue;
+      numberInput.value = clampedValue;
+      
+      // Update display with appropriate formatting
+      if (typeConverter === Number) {
+        if (Number.isInteger(clampedValue)) {
+          valueDisplay.textContent = clampedValue.toString();
+        } else {
+          valueDisplay.textContent = clampedValue.toFixed(2);
+        }
+      } else {
+        valueDisplay.textContent = clampedValue.toString();
+      }
+      
+      // Call the setter function
+      setterFunction(clampedValue);
+      
+    } catch (error) {
+      console.warn('[UI] syncPair: Error updating value:', error);
+    }
+  };
+
+  // Range input event listeners
+  rangeInput.addEventListener('input', (e) => {
+    updateValue(e.target.value, 'range');
+  });
+
+  rangeInput.addEventListener('change', (e) => {
+    updateValue(e.target.value, 'range');
+  });
+
+  // Number input event listeners
+  numberInput.addEventListener('input', (e) => {
+    updateValue(e.target.value, 'number');
+  });
+
+  numberInput.addEventListener('change', (e) => {
+    updateValue(e.target.value, 'number');
+  });
+
+  // Handle blur to ensure value is within range
+  numberInput.addEventListener('blur', (e) => {
+    updateValue(e.target.value, 'number');
+  });
+}
+
+// ==================================================================================
+// UI UPDATE FUNCTION
+// ==================================================================================
+
+/**
+ * Update UI elements from state values
+ * @param {Object} state - State object containing current values
+ * @param {Object} elements - Object containing UI element references
+ */
+function updateUIFromState(state, elements) {
+  if (!state || !elements) return;
+
+  try {
+    // Update range/number/display triplets
+    const updateTriplet = (rangeEl, numberEl, displayEl, stateValue, formatter = null) => {
+      if (rangeEl && numberEl && displayEl && stateValue !== undefined) {
+        rangeEl.value = stateValue;
+        numberEl.value = stateValue;
+        displayEl.textContent = formatter ? formatter(stateValue) : stateValue.toString();
+      }
+    };
+
+    // Update all slider controls
+    updateTriplet(elements.bpmRange, elements.bpmNumber, elements.bpmValue, 
+                 state.bpm || 120);
+    updateTriplet(elements.radiusRange, elements.radiusNumber, elements.radiusValue, 
+                 state.radius, val => val.toString());
+    updateTriplet(elements.copiesRange, elements.copiesNumber, elements.copiesValue, 
+                 state.copies, val => val.toString());
+    updateTriplet(elements.stepScaleRange, elements.stepScaleNumber, elements.stepScaleValue, 
+                 state.stepScale, val => val.toFixed(2));
+    updateTriplet(elements.angleRange, elements.angleNumber, elements.angleValue, 
+                 state.angle, val => val.toString());
+    updateTriplet(elements.startingAngleRange, elements.startingAngleNumber, elements.startingAngleValue, 
+                 state.startingAngle, val => val.toString());
+    updateTriplet(elements.numberRange, elements.numberNumber, elements.numberValue, 
+                 state.segments, val => val.toString());
+    updateTriplet(elements.lerpTimeRange, elements.lerpTimeNumber, elements.lerpTimeValue, 
+                 state.lerpTime, val => val.toFixed(1));
+    updateTriplet(elements.altScaleRange, elements.altScaleNumber, elements.altScaleValue, 
+                 state.altScale, val => val.toFixed(2));
+    updateTriplet(elements.altStepNRange, elements.altStepNNumber, elements.altStepNValue, 
+                 state.altStepN, val => val.toString());
+
+    // Update checkboxes
+    if (elements.useLerpCheckbox) elements.useLerpCheckbox.checked = state.useLerp || false;
+    if (elements.useQuantizationCheckbox) elements.useQuantizationCheckbox.checked = state.useQuantization || false;
+    if (elements.useFractalCheckbox) elements.useFractalCheckbox.checked = state.useFractal || false;
+    if (elements.useStarsCheckbox) elements.useStarsCheckbox.checked = state.useStars || false;
+    if (elements.useCutsCheckbox) elements.useCutsCheckbox.checked = state.useCuts || false;
+    if (elements.useTesselationCheckbox) elements.useTesselationCheckbox.checked = state.useTesselation || false;
+    if (elements.useEuclidCheckbox) elements.useEuclidCheckbox.checked = state.useEuclid || false;
+    if (elements.useDeleteCheckbox) elements.useDeleteCheckbox.checked = state.useDelete || false;
+    if (elements.showAxisFreqLabelsCheckbox) elements.showAxisFreqLabelsCheckbox.checked = state.showAxisFreqLabels !== false;
+    if (elements.showPointsFreqLabelsCheckbox) elements.showPointsFreqLabelsCheckbox.checked = state.showPointsFreqLabels || false;
+
+    // Update radio button groups
+    if (elements.modulusRadioGroup && state.modulusValue !== undefined) {
+      setupModulusRadioButtons(elements.modulusRadioGroup, state);
+    }
+    if (elements.timeSubdivisionRadioGroup && state.timeSubdivisionValue !== undefined) {
+      setupTimeSubdivisionRadioButtons(elements.timeSubdivisionRadioGroup, state);
+    }
+    if (elements.quantizationRadioGroup && state.quantizationValue !== undefined) {
+      setupQuantizationRadioButtons(elements.quantizationRadioGroup, state);
+    }
+
+  } catch (error) {
+    console.warn('[UI] Error updating UI from state:', error);
+  }
+}
+
 // Helper function for checkbox UNISON handling
 const handleCheckboxChange = (setterName, value) => {
   // Check if UNISON mode is enabled and apply to all layers
@@ -773,273 +936,374 @@ export function setupUI(state) {
     });
   }
   
-  // Equal temperament checkbox is now handled in setupGlobalUI in main.js
+  // ==================================================================================
+  // SEQUENCER MODE UI CONTROLS
+  // ==================================================================================
   
-  // Setup fractal checkbox with null check
-  if (useFractalCheckbox) {
-    useFractalCheckbox.checked = state.useFractal;
-    useFractalCheckbox.addEventListener('change', e => {
-      handleCheckboxChange('setUseFractal', e.target.checked);
-    });
-  }
+  // Get sequencer UI elements
+  const useSequencerModeCheckbox = document.getElementById('useSequencerModeCheckbox');
+  const sequencerConfigSection = document.getElementById('sequencerConfigSection');
+  const sequencerLookAheadRange = document.getElementById('sequencerLookAheadRange');
+  const sequencerLookAheadNumber = document.getElementById('sequencerLookAheadNumber');
+  const sequencerLookAheadValue = document.getElementById('sequencerLookAheadValue');
+  const sequencerPrecisionRange = document.getElementById('sequencerPrecisionRange');
+  const sequencerPrecisionNumber = document.getElementById('sequencerPrecisionNumber');
+  const sequencerPrecisionValue = document.getElementById('sequencerPrecisionValue');
+  const sequencerMaxQueueRange = document.getElementById('sequencerMaxQueueRange');
+  const sequencerMaxQueueNumber = document.getElementById('sequencerMaxQueueNumber');
+  const sequencerMaxQueueValue = document.getElementById('sequencerMaxQueueValue');
+  const sequencerDebugCheckbox = document.getElementById('sequencerDebugCheckbox');
+  const refreshMetricsBtn = document.getElementById('refreshMetricsBtn');
   
-  // Setup stars checkbox with null check
-  if (useStarsCheckbox) {
-    useStarsCheckbox.checked = state.useStars;
-    useStarsCheckbox.addEventListener('change', e => {
-      handleCheckboxChange('setUseStars', e.target.checked);
-    });
-  }
+  // Metrics display elements
+  const sequencerStatus = document.getElementById('sequencerStatus');
+  const sequencerEventsPerSec = document.getElementById('sequencerEventsPerSec');
+  const sequencerQueueSize = document.getElementById('sequencerQueueSize');
+  const sequencerTimingAccuracy = document.getElementById('sequencerTimingAccuracy');
+  const sequencerCacheHitRate = document.getElementById('sequencerCacheHitRate');
+  const sequencerCpuUsage = document.getElementById('sequencerCpuUsage');
+  const sequencerCpuTime = document.getElementById('sequencerCpuTime');
+  const realTimeCpuTime = document.getElementById('realTimeCpuTime');
+  const performanceGain = document.getElementById('performanceGain');
+
+  // Variables to hold imported functions
+  let setSequencerMode, isSequencerMode, getGlobalSequencer;
+  let functionsReady = false;
+
+  // ==================================================================================
+  // IMPORT SEQUENCER FUNCTIONS ASYNCHRONOUSLY
+  // ==================================================================================
   
-  // Setup cuts checkbox with null check
-  if (useCutsCheckbox) {
-    useCutsCheckbox.checked = state.useCuts;
-    useCutsCheckbox.addEventListener('change', e => {
-      handleCheckboxChange('setUseCuts', e.target.checked);
-    });
-  }
-  
-  // Setup tesselation checkbox with null check
-  if (useTesselationCheckbox) {
-    useTesselationCheckbox.checked = state.useTesselation;
-    useTesselationCheckbox.addEventListener('change', e => {
-      handleCheckboxChange('setUseTesselation', e.target.checked);
-    });
-  }
-  
-  // Setup Euclidean rhythm checkbox with null check
-  if (useEuclidCheckbox) {
-    useEuclidCheckbox.checked = state.useEuclid;
-    useEuclidCheckbox.addEventListener('change', e => {
-      handleCheckboxChange('setUseEuclid', e.target.checked);
-    });
-  }
-  
-  // Setup Delete checkbox with null check
-  if (useDeleteCheckbox) {
-    useDeleteCheckbox.checked = state.useDelete;
-    useDeleteCheckbox.addEventListener('change', e => {
-      handleCheckboxChange('setUseDelete', e.target.checked);
-    });
-  }
-  
-  // Setup plain intersections checkbox
-  if (useIntersectionsCheckbox) {
-    useIntersectionsCheckbox.addEventListener('change', e => {
-      handleCheckboxChange('setUsePlainIntersections', e.target.checked);
-    });
+  // Import animation and geometry functions and set up UI when ready
+  async function initializeSequencerUI() {
+    try {
+      // Import animation functions
+      const animationModule = await import('../animation/animation.js');
+      setSequencerMode = animationModule.setSequencerMode;
+      isSequencerMode = animationModule.isSequencerMode;
+      
+      // Import geometry functions  
+      const geometryModule = await import('../geometry/geometry.js');
+      getGlobalSequencer = geometryModule.getGlobalSequencer;
+      
+      // Make functions globally available
+      if (typeof window !== 'undefined') {
+        window.setSequencerMode = setSequencerMode;
+        window.isSequencerMode = isSequencerMode;
+        window.getGlobalSequencer = getGlobalSequencer;
+      }
+      
+      functionsReady = true;
+      console.log('[UI] Sequencer functions imported successfully');
+      
+      // Set up the UI now that functions are available
+      setupSequencerUIControls();
+      
+    } catch (error) {
+      console.error('[UI] Failed to import sequencer functions:', error);
+      // Disable sequencer UI if import failed
+      if (useSequencerModeCheckbox) {
+        useSequencerModeCheckbox.disabled = true;
+        useSequencerModeCheckbox.parentElement.title = 'Sequencer functions not available';
+      }
+    }
   }
 
-  // Setup duration mode radio buttons with null check
-  if (durationModeRadios && durationModeRadios.length > 0) {
-    durationModeRadios.forEach(radio => {
-      // Check the one that matches the current state
-      if (radio.value === state.durationMode) {
-        radio.checked = true;
-      }
-      
-      // Add event listener
-      radio.addEventListener('change', e => {
-        if (e.target.checked) {
-          handleRadioButtonChange('setDurationMode', e.target.value);
-        }
-      });
-    });
-  }
-  
-  // Setup velocity mode radio buttons with null check
-  if (velocityModeRadios && velocityModeRadios.length > 0) {
-    velocityModeRadios.forEach(radio => {
-      // Check the one that matches the current state
-      if (radio.value === state.velocityMode) {
-        radio.checked = true;
-      }
-      
-      // Add event listener
-      radio.addEventListener('change', e => {
-        if (e.target.checked) {
-          handleRadioButtonChange('setVelocityMode', e.target.value);
-        }
-      });
-    });
-  }
+  // ==================================================================================
+  // SEQUENCER UI SETUP FUNCTION
+  // ==================================================================================
 
-  // Setup Delete mode radio buttons with null check
-  if (deleteModeRadios && deleteModeRadios.length > 0) {
-    deleteModeRadios.forEach(radio => {
-      // Check the one that matches the current state
-      if (radio.value === state.deleteMode) {
-        radio.checked = true;
-      }
-      
-      // Add event listener
-      radio.addEventListener('change', e => {
-        if (e.target.checked) {
-          handleRadioButtonChange('setDeleteMode', e.target.value);
-        }
-      });
-    });
-  }
-  
-  // Setup Delete target radio buttons with null check
-  if (deleteTargetRadios && deleteTargetRadios.length > 0) {
-    deleteTargetRadios.forEach(radio => {
-      // Check the one that matches the current state
-      if (radio.value === state.deleteTarget) {
-        radio.checked = true;
-      }
-      
-      // Add event listener
-      radio.addEventListener('change', e => {
-        if (e.target.checked) {
-          handleRadioButtonChange('setDeleteTarget', e.target.value);
-        }
-      });
-    });
-  }
+  function setupSequencerUIControls() {
+    if (!functionsReady) {
+      console.warn('[UI] Sequencer functions not ready yet');
+      return;
+    }
 
-  // Sync control values with the UI
-  const syncPair = (rangeEl, numEl, spanEl, setter, min, max, parser = v => parseFloat(v)) => {
-    // Setup initial values
-    const initialValue = typeof spanEl.textContent === 'string' ? 
-      parseFloat(spanEl.textContent) : 
-      parseInt(spanEl.textContent);
-    
-    // Setup event listeners
-    rangeEl.addEventListener('input', e => {
-      let v = parser(e.target.value);
-      
-      // Special case for Number parameter - always round to integers
-      if (rangeEl.id === 'numberRange') {
-        v = Math.round(v);
-      }
-      
-      v = Math.min(Math.max(v, min), max);
-      
-      // Get the setter name from the setter function
-      const setterName = setter.name;
-      
-      // FIXED: Get the target state with improved error handling
-      const { state: targetState, isGlobal, id, valid } = getTargetState(setterName);
-      
-      // FIXED: Enhanced validation and error handling
-      if (!targetState) {
-        console.error(`[UI] No target state found for ${setterName}, skipping update`);
-        return;
-      }
-      
-      // Log state routing for debugging (only if not valid to avoid spam)
-      if (!valid) {
-        
-      }
-      
+    // Update metrics display
+    function updateSequencerMetrics() {
       try {
-        if (isGlobal) {
-          // Find the setter name by removing 'Range' from the ID
-          const paramName = rangeEl.id.replace('Range', '');
-          // Convert to camelCase setter name (e.g., 'bpm' -> 'setBpm')
-          const globalSetterName = 'set' + paramName.charAt(0).toUpperCase() + paramName.slice(1);
+        if (isSequencerMode && getGlobalSequencer) {
+          const isActive = isSequencerMode();
+          const sequencer = getGlobalSequencer();
           
-          // Call the setter on globalState if it exists
-          if (typeof targetState[globalSetterName] === 'function') {
-            targetState[globalSetterName](v);
-            
-          } else {
-            
+          if (sequencerStatus) {
+            sequencerStatus.textContent = isActive ? 'Active' : 'Disabled';
+            sequencerStatus.style.color = isActive ? '#90ee90' : '#ff9999';
           }
-        } else {
-          // Check if UNISON mode is enabled and apply to all layers
-          const unisonApplied = getUnisonMode() && applyUnisonParameterChange(setterName, v, window._layers);
           
-          if (!unisonApplied) {
-            // Call the setter on the layer state (normal mode)
-            if (typeof setter === 'function') {
-              setter.call(targetState, v);
-              
-            } else {
-              
+          // Debug logging
+          if (isActive) {
+            console.log(`[UI] Sequencer active, sequencer instance:`, sequencer);
+            if (sequencer) {
+              const status = sequencer.getStatus();
+              console.log(`[UI] Sequencer status:`, status);
             }
           }
-        }
-      } catch (error) {
-        console.error(`[UI] Error calling setter ${setterName}:`, error);
-      }
-      
-      spanEl.textContent = parser === parseFloat ? v.toFixed(1) : v;
-      numEl.value = v;
-    });
-    
-    // Setup event listeners for number inputs
-    numEl.addEventListener('input', e => {
-      let v = parser(e.target.value);
-      
-      // Special case for Number parameter - always round to integers
-      if (numEl.id === 'numberNumber') {
-        v = Math.round(v);
-      }
-      
-      v = Math.min(Math.max(v || min, min), max);
-      
-      // Get the setter name from the setter function
-      const setterName = setter.name;
-      
-      // FIXED: Get the target state with improved error handling
-      const { state: targetState, isGlobal, id, valid } = getTargetState(setterName);
-      
-      // FIXED: Enhanced validation and error handling
-      if (!targetState) {
-        console.error(`[UI] No target state found for ${setterName}, skipping update`);
-        return;
-      }
-      
-      // Log state routing for debugging (only if not valid to avoid spam)
-      if (!valid) {
-        
-      }
-      
-      try {
-        if (isGlobal) {
-          // Find the setter name by removing 'Number' from the ID
-          const paramName = numEl.id.replace('Number', '');
-          // Convert to camelCase setter name (e.g., 'bpm' -> 'setBpm')
-          const globalSetterName = 'set' + paramName.charAt(0).toUpperCase() + paramName.slice(1);
           
-          // Call the setter on globalState if it exists
-          if (typeof targetState[globalSetterName] === 'function') {
-            targetState[globalSetterName](v);
+          if (isActive && sequencer) {
+            const metrics = sequencer.getPerformanceMetrics();
+            console.log(`[UI] Sequencer metrics:`, metrics);
             
+            if (sequencerEventsPerSec) {
+              sequencerEventsPerSec.textContent = metrics.eventsScheduledPerSecond || 0;
+            }
+            if (sequencerQueueSize) {
+              sequencerQueueSize.textContent = metrics.currentQueueSize || 0;
+            }
+            if (sequencerTimingAccuracy) {
+              const accuracy = metrics.timingAccuracy;
+              if (accuracy && accuracy.total > 0) {
+                const accuratePercent = ((accuracy.accurate / accuracy.total) * 100).toFixed(1);
+                const avgError = (accuracy.averageError * 1000).toFixed(2);
+                sequencerTimingAccuracy.textContent = `${accuratePercent}% (${avgError}ms avg error)`;
+              } else {
+                sequencerTimingAccuracy.textContent = 'N/A';
+              }
+            }
+            if (sequencerCacheHitRate) {
+              const hitRate = metrics.cacheStats?.hitRate;
+              if (hitRate !== undefined) {
+                sequencerCacheHitRate.textContent = `${(hitRate * 100).toFixed(1)}%`;
+              } else {
+                sequencerCacheHitRate.textContent = 'N/A';
+              }
+            }
+            if (sequencerCpuUsage) {
+              const cpuUsage = metrics.cpuUsage;
+              if (cpuUsage) {
+                sequencerCpuUsage.textContent = `${cpuUsage.sequencerTime.toFixed(2)}ms`;
+              } else {
+                sequencerCpuUsage.textContent = 'N/A';
+              }
+            }
+            
+            // Performance comparison
+            if (sequencerCpuTime && realTimeCpuTime && performanceGain) {
+              const cpuUsage = metrics.cpuUsage;
+              if (cpuUsage && cpuUsage.sequencerTime > 0 && cpuUsage.realTimeDetectionTime > 0) {
+                sequencerCpuTime.textContent = `${cpuUsage.sequencerTime.toFixed(2)}ms`;
+                realTimeCpuTime.textContent = `${cpuUsage.realTimeDetectionTime.toFixed(2)}ms`;
+                
+                const gain = cpuUsage.realTimeDetectionTime / cpuUsage.sequencerTime;
+                performanceGain.textContent = `${gain.toFixed(1)}x faster`;
+                performanceGain.style.color = gain > 1 ? '#90ee90' : '#ff9999';
+              } else {
+                sequencerCpuTime.textContent = '0.0ms';
+                realTimeCpuTime.textContent = '0.0ms';
+                performanceGain.textContent = 'N/A';
+              }
+            }
           } else {
-            
+            // Reset metrics when disabled
+            if (sequencerEventsPerSec) sequencerEventsPerSec.textContent = '0';
+            if (sequencerQueueSize) sequencerQueueSize.textContent = '0';
+            if (sequencerTimingAccuracy) sequencerTimingAccuracy.textContent = 'N/A';
+            if (sequencerCacheHitRate) sequencerCacheHitRate.textContent = 'N/A';
+            if (sequencerCpuUsage) sequencerCpuUsage.textContent = 'N/A';
+            if (sequencerCpuTime) sequencerCpuTime.textContent = '0.0ms';
+            if (realTimeCpuTime) realTimeCpuTime.textContent = '0.0ms';
+            if (performanceGain) performanceGain.textContent = 'N/A';
           }
         } else {
-          // Check if UNISON mode is enabled and apply to all layers
-          const unisonApplied = getUnisonMode() && applyUnisonParameterChange(setterName, v, window._layers);
-          
-          if (!unisonApplied) {
-            // Call the setter on the layer state (normal mode)
-            if (typeof setter === 'function') {
-              setter.call(targetState, v);
-              
-            } else {
-              
-            }
-          }
+          console.log(`[UI] Sequencer functions not available: isSequencerMode=${!!isSequencerMode}, getGlobalSequencer=${!!getGlobalSequencer}`);
         }
       } catch (error) {
-        console.error(`[UI] Error calling setter ${setterName}:`, error);
+        console.warn('[UI] Error updating sequencer metrics:', error);
+      }
+    }
+    
+    // Setup sequencer mode checkbox
+    if (useSequencerModeCheckbox) {
+      // Initialize state
+      try {
+        useSequencerModeCheckbox.checked = isSequencerMode();
+        console.log('[UI] Initial sequencer mode state:', isSequencerMode());
+      } catch (error) {
+        console.warn('[UI] Could not get initial sequencer state:', error);
+        useSequencerModeCheckbox.checked = false;
       }
       
-      spanEl.textContent = parser === parseFloat ? v.toFixed(1) : v;
-      rangeEl.value = v;
-    });
-  };
-
-  // Setup checkbox event listener for lerp toggle with null check
-  if (useLerpCheckbox) {
-    useLerpCheckbox.addEventListener('change', e => {
-      handleCheckboxChange('setUseLerp', e.target.checked);
-    });
+      // Show/hide config section based on initial state
+      if (sequencerConfigSection) {
+        sequencerConfigSection.style.display = useSequencerModeCheckbox.checked ? 'block' : 'none';
+      }
+      
+      // Handle checkbox change
+      useSequencerModeCheckbox.addEventListener('change', async (e) => {
+        const enabled = e.target.checked;
+        
+        try {
+          // Toggle sequencer mode
+          setSequencerMode(enabled);
+          console.log(`[UI] Sequencer mode ${enabled ? 'enabled' : 'disabled'}`);
+          
+          // If enabling sequencer mode, make sure it's initialized and has data
+          if (enabled) {
+            // Force initialization of the global sequencer
+            const { initializeGlobalSequencer } = await import('../geometry/geometry.js');
+            initializeGlobalSequencer();
+            
+            // Get the sequencer and set up some basic test data
+            const sequencer = getGlobalSequencer();
+            if (sequencer) {
+              console.log('[UI] Sequencer initialized, checking for geometry...');
+              
+              // Enable debug mode by default when first enabling sequencer
+              sequencer.setDebugMode(true);
+              if (sequencerDebugCheckbox) {
+                sequencerDebugCheckbox.checked = true;
+              }
+              
+              // Check if we have any layers with geometry
+              if (window._layers && window._layers.layers) {
+                console.log(`[UI] Found ${window._layers.layers.length} layers`);
+                let hasGeometry = false;
+                
+                for (const layer of window._layers.layers) {
+                  if (layer && layer.visible && layer.geometry) {
+                    hasGeometry = true;
+                    console.log(`[UI] Layer ${layer.id} has geometry with ${layer.geometry.getAttribute('position')?.count || 0} vertices`);
+                  }
+                }
+                
+                if (!hasGeometry) {
+                  console.warn('[UI] No visible layers with geometry found. Try creating some geometry first.');
+                }
+              }
+            } else {
+              console.error('[UI] Failed to get global sequencer instance');
+            }
+          }
+          
+          // Show/hide config section
+          if (sequencerConfigSection) {
+            sequencerConfigSection.style.display = enabled ? 'block' : 'none';
+          }
+          
+          // Update metrics immediately
+          updateSequencerMetrics();
+          
+        } catch (error) {
+          console.error('[UI] Error toggling sequencer mode:', error);
+          // Revert checkbox state on error
+          useSequencerModeCheckbox.checked = !enabled;
+        }
+      });
+    }
+    
+    // Setup sequencer configuration controls
+    if (sequencerLookAheadRange && sequencerLookAheadNumber && sequencerLookAheadValue) {
+      const syncLookAhead = () => {
+        const value = parseFloat(sequencerLookAheadRange.value);
+        sequencerLookAheadNumber.value = value;
+        sequencerLookAheadValue.textContent = value;
+        
+        // Update sequencer config
+        try {
+          const sequencer = getGlobalSequencer();
+          if (sequencer) {
+            sequencer.config.lookAheadTime = value / 1000; // Convert ms to seconds
+            console.log(`[UI] Updated look-ahead time to ${value}ms`);
+          }
+        } catch (error) {
+          console.warn('[UI] Error updating look-ahead time:', error);
+        }
+      };
+      
+      sequencerLookAheadRange.addEventListener('input', syncLookAhead);
+      sequencerLookAheadNumber.addEventListener('input', e => {
+        sequencerLookAheadRange.value = e.target.value;
+        syncLookAhead();
+      });
+    }
+    
+    if (sequencerPrecisionRange && sequencerPrecisionNumber && sequencerPrecisionValue) {
+      const syncPrecision = () => {
+        const value = parseFloat(sequencerPrecisionRange.value);
+        sequencerPrecisionNumber.value = value;
+        sequencerPrecisionValue.textContent = value.toFixed(1);
+        
+        // Update sequencer config
+        try {
+          const sequencer = getGlobalSequencer();
+          if (sequencer) {
+            sequencer.config.timingPrecision = value / 1000; // Convert ms to seconds
+            console.log(`[UI] Updated timing precision to ${value}ms`);
+          }
+        } catch (error) {
+          console.warn('[UI] Error updating timing precision:', error);
+        }
+      };
+      
+      sequencerPrecisionRange.addEventListener('input', syncPrecision);
+      sequencerPrecisionNumber.addEventListener('input', e => {
+        sequencerPrecisionRange.value = e.target.value;
+        syncPrecision();
+      });
+    }
+    
+    if (sequencerMaxQueueRange && sequencerMaxQueueNumber && sequencerMaxQueueValue) {
+      const syncMaxQueue = () => {
+        const value = parseInt(sequencerMaxQueueRange.value);
+        sequencerMaxQueueNumber.value = value;
+        sequencerMaxQueueValue.textContent = value;
+        
+        // Update sequencer config
+        try {
+          const sequencer = getGlobalSequencer();
+          if (sequencer) {
+            sequencer.config.maxQueueSize = value;
+            console.log(`[UI] Updated max queue size to ${value}`);
+          }
+        } catch (error) {
+          console.warn('[UI] Error updating max queue size:', error);
+        }
+      };
+      
+      sequencerMaxQueueRange.addEventListener('input', syncMaxQueue);
+      sequencerMaxQueueNumber.addEventListener('input', e => {
+        sequencerMaxQueueRange.value = e.target.value;
+        syncMaxQueue();
+      });
+    }
+    
+    // Setup debug mode checkbox
+    if (sequencerDebugCheckbox) {
+      sequencerDebugCheckbox.addEventListener('change', e => {
+        const enabled = e.target.checked;
+        
+        try {
+          const sequencer = getGlobalSequencer();
+          if (sequencer && typeof sequencer.setDebugMode === 'function') {
+            sequencer.setDebugMode(enabled);
+            console.log(`[UI] Sequencer debug mode ${enabled ? 'enabled' : 'disabled'}`);
+          }
+        } catch (error) {
+          console.warn('[UI] Error setting debug mode:', error);
+        }
+      });
+    }
+    
+    // Setup refresh metrics button
+    if (refreshMetricsBtn) {
+      refreshMetricsBtn.addEventListener('click', updateSequencerMetrics);
+    }
+    
+    // Update metrics periodically when sequencer is active
+    setInterval(() => {
+      if (useSequencerModeCheckbox && useSequencerModeCheckbox.checked) {
+        updateSequencerMetrics();
+      }
+    }, 1000); // Update every second
+    
+    // Initial metrics update
+    updateSequencerMetrics();
+    
+    console.log('[UI] Sequencer UI controls initialized successfully');
   }
+
+  // Start the async initialization
+  initializeSequencerUI();
 
   // Link UI controls to state with specific Number type conversions and null checks
   if (bpmRange && bpmNumber && bpmValue) {

@@ -65,6 +65,14 @@ export function getRegisteredHandlers() {
  * @param {Object} note - The note/trigger data
  */
 export function dispatchTrigger(note) {
+  // Log the trigger source for debugging
+  if (note.isSequencerTrigger) {
+    // This was already logged in the sequencer callback, no need to duplicate
+  } else {
+    // This is from real-time detection
+    console.log(`🎵 [REAL-TIME TRIGGER] MIDI from real-time detection - Layer ${note.layerId}, Vertex ${note.vertexIndex || 'N/A'}, Freq: ${note.frequency?.toFixed(1) || 'N/A'}Hz`);
+  }
+  
   // Get handlers sorted by priority (higher priority first)
   const sortedHandlers = Array.from(triggerHandlers.entries())
     .filter(([name, handler]) => handler.enabled)

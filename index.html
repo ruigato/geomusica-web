@@ -225,6 +225,86 @@
           <input type="checkbox" id="useQuantizationCheckbox">
           <div class="help-text">When enabled, sound triggers will snap to the selected grid</div>
         </div>
+
+        <!-- SEQUENCER Section -->
+        <div class="control" style="background: #2d4a2d; padding: 12px; border-radius: 5px; margin: 15px 0; border: 1px solid #4a6b4a;">
+          <label style="font-weight: bold; font-size: 16px; margin-bottom: 8px; display: block; color: #90ee90;">🎯 SEQUENCER</label>
+          
+          <!-- Enable Sequencer Mode -->
+          <div class="control" style="margin-bottom: 12px;">
+            <label for="useSequencerModeCheckbox" style="font-weight: bold;">Enable Sequencer Mode:</label>
+            <input type="checkbox" id="useSequencerModeCheckbox">
+            <div class="help-text">Switch from real-time detection to pre-calculated schedule timing for improved performance</div>
+          </div>
+
+          <!-- Sequencer Configuration -->
+          <div id="sequencerConfigSection" style="display: none;">
+            <div class="control">
+              <label for="sequencerLookAheadRange">Look-ahead Time (ms):</label>
+              <div class="slider-container">
+                <input type="range" id="sequencerLookAheadRange" min="10" max="200" step="5" value="50">
+                <span id="sequencerLookAheadValue" class="slider-value">50</span>
+                <input type="number" id="sequencerLookAheadNumber" min="10" max="200" step="5" value="50">
+              </div>
+              <div class="help-text">Buffer time for event scheduling (lower = more precise, higher = more stable)</div>
+            </div>
+
+            <div class="control">
+              <label for="sequencerPrecisionRange">Timing Precision (ms):</label>
+              <div class="slider-container">
+                <input type="range" id="sequencerPrecisionRange" min="0.1" max="10" step="0.1" value="1">
+                <span id="sequencerPrecisionValue" class="slider-value">1.0</span>
+                <input type="number" id="sequencerPrecisionNumber" min="0.1" max="10" step="0.1" value="1.0">
+              </div>
+              <div class="help-text">Acceptable timing error threshold (smaller = more accurate)</div>
+            </div>
+
+            <div class="control">
+              <label for="sequencerMaxQueueRange">Max Queue Size:</label>
+              <div class="slider-container">
+                <input type="range" id="sequencerMaxQueueRange" min="1000" max="50000" step="1000" value="10000">
+                <span id="sequencerMaxQueueValue" class="slider-value">10000</span>
+                <input type="number" id="sequencerMaxQueueNumber" min="1000" max="50000" step="1000" value="10000">
+              </div>
+              <div class="help-text">Maximum events in queue (prevents memory bloat)</div>
+            </div>
+
+            <div class="control">
+              <label for="sequencerDebugCheckbox">Debug Mode:</label>
+              <input type="checkbox" id="sequencerDebugCheckbox">
+              <div class="help-text">Enable detailed logging for troubleshooting</div>
+            </div>
+
+            <!-- Performance Metrics Display -->
+            <div class="control" style="background: #1a1a1a; padding: 8px; border-radius: 3px; margin-top: 12px;">
+              <label style="font-weight: bold; color: #ffcc00;">📊 Performance Metrics:</label>
+              <div id="sequencerMetrics" style="font-family: monospace; font-size: 11px; line-height: 1.4; color: #ccc;">
+                <div>Status: <span id="sequencerStatus">Disabled</span></div>
+                <div>Events/sec: <span id="sequencerEventsPerSec">0</span></div>
+                <div>Queue size: <span id="sequencerQueueSize">0</span></div>
+                <div>Timing accuracy: <span id="sequencerTimingAccuracy">N/A</span></div>
+                <div>Cache hit rate: <span id="sequencerCacheHitRate">N/A</span></div>
+                <div>CPU usage: <span id="sequencerCpuUsage">N/A</span></div>
+              </div>
+              <button id="refreshMetricsBtn" style="margin-top: 8px; padding: 4px 8px; background: #444; border: 1px solid #666; color: #fff; border-radius: 3px; cursor: pointer;">Refresh Metrics</button>
+            </div>
+
+            <!-- Performance Comparison -->
+            <div class="control" style="background: #2a2a2a; padding: 8px; border-radius: 3px; margin-top: 8px;">
+              <label style="font-weight: bold; color: #ff9999;">⚡ Real-time vs Sequencer:</label>
+              <div id="performanceComparison" style="font-family: monospace; font-size: 11px; line-height: 1.4; color: #ccc;">
+                <div>Sequencer CPU: <span id="sequencerCpuTime">0.0ms</span></div>
+                <div>Real-time CPU: <span id="realTimeCpuTime">0.0ms</span></div>
+                <div>Performance gain: <span id="performanceGain">N/A</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="help-text" style="margin-top: 8px; color: #b8d4b8;">
+            <strong>Sequencer Mode:</strong> Pre-calculates all trigger times for sample-accurate timing with lower CPU usage. 
+            Best for complex geometries with many points.
+          </div>
+        </div>
       </div>
       
       <div class="tab-content hidden" id="main-tab">

@@ -166,7 +166,12 @@ function hasVisibilityChanged(layer) {
  */
 function updateSequencerSchedules(scene, currentBPM, currentAngle) {
   const sequencer = getGlobalSequencer();
-  if (!sequencer || !scene._layerManager) return;
+  if (!sequencer || !scene._layerManager) {
+    console.log('[ANIMATION] updateSequencerSchedules: No sequencer or layer manager');
+    return;
+  }
+  
+  console.log(`[ANIMATION] updateSequencerSchedules: Starting with ${scene._layerManager.layers.length} layers, global useSequencerMode=${useSequencerMode}`);
   
   // Update global sequencer parameters
   updateGlobalSequencer(currentBPM, currentAngle);
@@ -174,25 +179,53 @@ function updateSequencerSchedules(scene, currentBPM, currentAngle) {
   // Clear existing schedule
   sequencer.clear();
   
-  // Collect all points from all visible layers that use sequencer mode
+  // Collect all points from all visible layers when sequencer mode is enabled
   const allPoints = [];
+  let layersProcessed = 0;
+  let layersWithGeometry = 0;
   
   for (const layer of scene._layerManager.layers) {
-    if (!layer || !layer.visible || !layer.state) continue;
+    layersProcessed++;
     
-    // Check if this layer should use sequencer mode
-    const layerUseSequencer = layer.state.useSequencerMode !== undefined 
-      ? layer.state.useSequencerMode 
-      : useSequencerMode;
-      
-    if (!layerUseSequencer) continue;
+    if (!layer || !layer.visible || !layer.state) {
+      console.log(`[ANIMATION] Layer ${layersProcessed-1}: Skipping - layer=${!!layer}, visible=${layer?.visible}, state=${!!layer?.state}`);
+      continue;
+    }
     
-    // Get geometry points from the layer
+    // Get geometry points from the layer - check both direct geometry and group children
+    let geometryFound = null;
+    let geometrySource = 'none';
+    
+    // First check direct geometry
     if (layer.geometry) {
-      const positions = layer.geometry.getAttribute('position');
+      geometryFound = layer.geometry;
+      geometrySource = 'layer.geometry';
+    } else if (layer.group && layer.group.children) {
+      // Check group children for mesh with geometry
+      for (const child of layer.group.children) {
+        if (child.type === 'Mesh' && child.geometry) {
+          geometryFound = child.geometry;
+          geometrySource = `group.child.${child.uuid}`;
+          break;
+        }
+      }
+    }
+    
+    console.log(`[ANIMATION] Layer ${layer.state.layerId || layersProcessed-1}: visible=${layer.visible}, copies=${layer.state.copies}, hasGeometry=${!!geometryFound}`);
+    
+    // Minimal debug info only when geometry changes are detected
+    if (layersProcessed === 1 && geometryFound) {
+      console.log(`[ANIMATION] Layer geometry source: ${geometrySource}`);
+    }
+    
+    if (geometryFound) {
+      layersWithGeometry++;
+      const positions = geometryFound.getAttribute('position');
       if (positions) {
         const posArray = positions.array;
         const count = positions.count;
+        
+        console.log(`[ANIMATION] Layer ${layer.state.layerId || layersProcessed-1}: Processing ${count} vertices from ${geometrySource}`);
         
         for (let i = 0; i < count; i++) {
           const x = posArray[i * 3];
@@ -216,9 +249,15 @@ function updateSequencerSchedules(scene, currentBPM, currentAngle) {
             vertexIndex: i
           });
         }
+      } else {
+        console.log(`[ANIMATION] Layer ${layer.state.layerId || layersProcessed-1}: Geometry found at ${geometrySource} but no position attribute`);
       }
+    } else {
+      console.log(`[ANIMATION] Layer ${layer.state.layerId || layersProcessed-1}: No geometry found`);
     }
   }
+  
+  console.log(`[ANIMATION] Summary: ${layersProcessed} layers processed, ${layersWithGeometry} with geometry, ${allPoints.length} total points`);
   
   if (allPoints.length > 0) {
     // Calculate rotation speed from BPM (matching existing calculation)
@@ -227,7 +266,9 @@ function updateSequencerSchedules(scene, currentBPM, currentAngle) {
     // Schedule all points
     sequencer.scheduleGeometry(allPoints, rotationSpeed);
     
-    console.log(`[ANIMATION] Sequencer updated: ${allPoints.length} points scheduled at ${currentBPM} BPM`);
+    console.log(`[ANIMATION] Sequencer updated: ${allPoints.length} points scheduled at ${currentBPM} BPM (${rotationSpeed.toFixed(6)} rps)`);
+  } else {
+    console.log(`[ANIMATION] No points to schedule - allPoints.length=${allPoints.length}`);
   }
 }
 
@@ -250,6 +291,9 @@ function setupSequencerCallback(triggerAudioCallback) {
       isSequencerTrigger: true,
       sequencerId: eventData.id
     };
+    
+    // Clear logging to show sequencer-generated MIDI
+    console.log(`🎵 [SEQUENCER TRIGGER] MIDI from sequencer - Layer ${triggerInfo.layerId}, Point ${triggerInfo.vertexIndex}, Time: ${triggerInfo.triggerTime.toFixed(3)}s`);
     
     // Call the existing trigger callback
     try {
@@ -619,8 +663,6 @@ function animateFrame(props) {
     // Check for geometry and visibility changes
     let geometryChanged = false;
     let visibilityChanged = false;
-    let hasSequencerLayers = false;
-    let hasRealTimeLayers = false;
     
     for (const layer of scene._layerManager.layers) {
       if (hasGeometryChanged(layer)) {
@@ -630,25 +672,20 @@ function animateFrame(props) {
       if (hasVisibilityChanged(layer)) {
         visibilityChanged = true;
       }
-      
-      // Determine which layers use which mode
-      if (layer && layer.visible && layer.state && layer.state.copies > 0) {
-        const layerUseSequencer = layer.state.useSequencerMode !== undefined 
-          ? layer.state.useSequencerMode 
-          : useSequencerMode;
-          
-        if (layerUseSequencer) {
-          hasSequencerLayers = true;
-        } else {
-          hasRealTimeLayers = true;
-        }
-      }
     }
     
     // ==================================================================================
     // SEQUENCER MODE: Handle layers using pre-calculated schedules
     // ==================================================================================
-    if (hasSequencerLayers || useSequencerMode) {
+    if (useSequencerMode) {
+      // Only log frequently when there are actual changes
+      if (bpmChanged || geometryChanged || visibilityChanged) {
+        console.log(`[ANIMATION] Sequencer mode active: bpmChanged=${bpmChanged}, geometryChanged=${geometryChanged}, visibilityChanged=${visibilityChanged}`);
+      } else if (frameCount % 600 === 0) {
+        // Only log "no changes" every 10 seconds (600 frames at 60fps)
+        console.log(`[ANIMATION] Sequencer mode active (no recent changes)`);
+      }
+      
       // Update sequencer schedules if anything changed
       if (bpmChanged || geometryChanged || visibilityChanged) {
         updateSequencerSchedules(scene, currentBPM, currentAngle);
@@ -661,29 +698,28 @@ function animateFrame(props) {
         if (visibilityChanged) {
           console.log('[ANIMATION] Layer visibility changed, sequencer updated');
         }
+      } else if (frameCount % 1800 === 0) {
+        // Only log "no changes detected" every 30 seconds
+        console.log(`[ANIMATION] Sequencer active but no changes detected, not updating schedules`);
       }
       
       // Update the sequencer with current time (processes events with look-ahead)
       const sequencer = getGlobalSequencer();
       if (sequencer) {
         sequencer.update(currentAudioTime);
+      } else if (frameCount % 600 === 0) {
+        // Only log missing sequencer occasionally
+        console.log('[ANIMATION] No global sequencer found during update');
       }
     }
     
     // ==================================================================================
     // REAL-TIME MODE: Handle layers using traditional trigger detection
     // ==================================================================================
-    if (hasRealTimeLayers || !useSequencerMode) {
+    if (!useSequencerMode) {
       for (const layer of scene._layerManager.layers) {
         if (layer && layer.visible && layer.state && layer.state.copies > 0) {
-          // Only process layers that are NOT using sequencer mode
-          const layerUseSequencer = layer.state.useSequencerMode !== undefined 
-            ? layer.state.useSequencerMode 
-            : useSequencerMode;
-            
-          if (!layerUseSequencer) {
-            detectLayerTriggers(layer, currentAudioTime);
-          }
+          detectLayerTriggers(layer, currentAudioTime);
         }
       }
     }
