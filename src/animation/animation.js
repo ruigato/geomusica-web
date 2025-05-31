@@ -6,6 +6,8 @@ import { ANIMATION_STATES, MAX_VELOCITY } from '../config/constants.js';
 // DEPRECATED: Removed import from intersections.js - functionality deprecated
 // import { detectIntersections, applyVelocityToMarkers } from '../geometry/intersections.js';
 import { updateLabelPositions, updateAxisLabels, updateAllLayersRotatingLabels } from '../ui/domLabels.js';
+// NEW: Import GeometricSequencer for sequencer mode
+import { initializeGlobalSequencer, getGlobalSequencer, updateGlobalSequencer } from '../geometry/geometry.js';
 
 // Frame counter and timing stats
 let frameCount = 0;
@@ -24,6 +26,239 @@ let isAnimating = false;
 // Background detection for fallback timing
 let useVSync = true;
 let backgroundFallbackWorker = null;
+
+// ==================================================================================
+// NEW: Sequencer Mode Management
+// ==================================================================================
+
+// Global flag to control trigger detection mode
+let useSequencerMode = false;
+
+// State tracking for detecting changes that require schedule recalculation
+let lastBPM = null;
+let lastGeometryParams = new Map(); // layerId -> geometry parameters hash
+let lastLayerVisibility = new Map(); // layerId -> visibility state
+
+/**
+ * Set the trigger detection mode
+ * @param {boolean} enableSequencer - Whether to use sequencer mode
+ */
+export function setSequencerMode(enableSequencer) {
+  const wasSequencerMode = useSequencerMode;
+  useSequencerMode = enableSequencer;
+  
+  if (enableSequencer && !wasSequencerMode) {
+    // Switching to sequencer mode - initialize the global sequencer
+    initializeGlobalSequencer();
+    
+    // Set up sequencer callback if we have animation props with trigger callback
+    if (animationProps && animationProps.triggerAudioCallback) {
+      setupSequencerCallback(animationProps.triggerAudioCallback);
+    }
+    
+    console.log('[ANIMATION] Switched to sequencer mode');
+    
+    // Force geometry recalculation for all layers
+    lastGeometryParams.clear();
+    
+  } else if (!enableSequencer && wasSequencerMode) {
+    // Switching back to real-time mode
+    console.log('[ANIMATION] Switched to real-time detection mode');
+    
+    // Clear the sequencer
+    const sequencer = getGlobalSequencer();
+    if (sequencer) {
+      sequencer.clear();
+    }
+  }
+}
+
+/**
+ * Get current trigger detection mode
+ * @returns {boolean} True if using sequencer mode
+ */
+export function isSequencerMode() {
+  return useSequencerMode;
+}
+
+/**
+ * Calculate a hash for geometry parameters to detect changes
+ * @param {Object} state - Layer state object
+ * @returns {string} Hash representing the geometry parameters
+ */
+function calculateGeometryHash(state) {
+  if (!state) return '';
+  
+  const params = {
+    radius: state.radius,
+    segments: state.segments,
+    useStars: state.useStars,
+    starSkip: state.starSkip,
+    useCuts: state.useCuts,
+    useEuclidean: state.useEuclidean,
+    euclidValue: state.euclidValue,
+    useFractal: state.useFractal,
+    fractalValue: state.fractalValue,
+    copies: state.copies,
+    stepScale: state.stepScale,
+    angle: state.angle,
+    startingAngle: state.startingAngle,
+    useModulus: state.useModulus,
+    altStepN: state.altStepN,
+    altScale: state.altScale,
+    useTesselation: state.useTesselation,
+    useDelete: state.useDelete,
+    deleteTarget: state.deleteTarget,
+    deleteMin: state.deleteMin,
+    deleteMax: state.deleteMax,
+    deleteMode: state.deleteMode,
+    deleteSeed: state.deleteSeed
+  };
+  
+  return JSON.stringify(params);
+}
+
+/**
+ * Check if geometry parameters have changed for a layer
+ * @param {Object} layer - Layer object
+ * @returns {boolean} True if geometry has changed
+ */
+function hasGeometryChanged(layer) {
+  if (!layer || !layer.state) return false;
+  
+  const layerId = layer.state.layerId || layer.id || 0;
+  const currentHash = calculateGeometryHash(layer.state);
+  const lastHash = lastGeometryParams.get(layerId);
+  
+  if (currentHash !== lastHash) {
+    lastGeometryParams.set(layerId, currentHash);
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Check if layer visibility has changed
+ * @param {Object} layer - Layer object  
+ * @returns {boolean} True if visibility has changed
+ */
+function hasVisibilityChanged(layer) {
+  if (!layer) return false;
+  
+  const layerId = layer.state?.layerId || layer.id || 0;
+  const currentVisibility = layer.visible;
+  const lastVisibility = lastLayerVisibility.get(layerId);
+  
+  if (currentVisibility !== lastVisibility) {
+    lastLayerVisibility.set(layerId, currentVisibility);
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Update sequencer schedules for all visible layers
+ * @param {Object} scene - Scene object containing layer manager
+ * @param {number} currentBPM - Current BPM value
+ * @param {number} currentAngle - Current rotation angle
+ */
+function updateSequencerSchedules(scene, currentBPM, currentAngle) {
+  const sequencer = getGlobalSequencer();
+  if (!sequencer || !scene._layerManager) return;
+  
+  // Update global sequencer parameters
+  updateGlobalSequencer(currentBPM, currentAngle);
+  
+  // Clear existing schedule
+  sequencer.clear();
+  
+  // Collect all points from all visible layers that use sequencer mode
+  const allPoints = [];
+  
+  for (const layer of scene._layerManager.layers) {
+    if (!layer || !layer.visible || !layer.state) continue;
+    
+    // Check if this layer should use sequencer mode
+    const layerUseSequencer = layer.state.useSequencerMode !== undefined 
+      ? layer.state.useSequencerMode 
+      : useSequencerMode;
+      
+    if (!layerUseSequencer) continue;
+    
+    // Get geometry points from the layer
+    if (layer.geometry) {
+      const positions = layer.geometry.getAttribute('position');
+      if (positions) {
+        const posArray = positions.array;
+        const count = positions.count;
+        
+        for (let i = 0; i < count; i++) {
+          const x = posArray[i * 3];
+          const y = posArray[i * 3 + 1];
+          
+          // Apply layer transformations if needed
+          let finalX = x;
+          let finalY = y;
+          
+          // Apply any layer-specific scaling or transformations
+          if (layer.state.radius) {
+            const scale = layer.state.radius / 300; // Normalize to base radius
+            finalX *= scale;
+            finalY *= scale;
+          }
+          
+          allPoints.push({
+            x: finalX,
+            y: finalY,
+            layerId: layer.state.layerId || layer.id || 0,
+            vertexIndex: i
+          });
+        }
+      }
+    }
+  }
+  
+  if (allPoints.length > 0) {
+    // Calculate rotation speed from BPM (matching existing calculation)
+    const rotationSpeed = currentBPM / 960; // rotations per second
+    
+    // Schedule all points
+    sequencer.scheduleGeometry(allPoints, rotationSpeed);
+    
+    console.log(`[ANIMATION] Sequencer updated: ${allPoints.length} points scheduled at ${currentBPM} BPM`);
+  }
+}
+
+/**
+ * Set up the sequencer trigger callback to integrate with existing trigger system
+ * @param {Function} triggerAudioCallback - The existing trigger audio callback
+ */
+function setupSequencerCallback(triggerAudioCallback) {
+  const sequencer = getGlobalSequencer();
+  if (!sequencer || !triggerAudioCallback) return;
+  
+  sequencer.setTriggerCallback((eventData) => {
+    // Convert sequencer event data to format expected by existing trigger system
+    const triggerInfo = {
+      x: eventData.point.x,
+      y: eventData.point.y,
+      layerId: eventData.point.layerId || 0,
+      vertexIndex: eventData.point.vertexIndex || 0,
+      triggerTime: eventData.triggerTime,
+      isSequencerTrigger: true,
+      sequencerId: eventData.id
+    };
+    
+    // Call the existing trigger callback
+    try {
+      triggerAudioCallback(triggerInfo);
+    } catch (error) {
+      console.error('[ANIMATION] Error in sequencer trigger callback:', error);
+    }
+  });
+}
 
 /**
  * Initialize background fallback worker for when tab is not visible
@@ -174,6 +409,16 @@ export function animate(props) {
   resetTriggerSystem();
   lastAudioTime = getSafeTime();
   
+  // NEW: Initialize sequencer mode if enabled
+  if (useSequencerMode) {
+    initializeGlobalSequencer();
+    // Set up sequencer callback to integrate with existing trigger system
+    if (props.triggerAudioCallback) {
+      setupSequencerCallback(props.triggerAudioCallback);
+    }
+    console.log('[ANIMATION] Sequencer mode enabled for animation start');
+  }
+  
   // Start with VSync if tab is visible, otherwise use background timing
   if (document.hidden) {
     useVSync = false;
@@ -187,6 +432,7 @@ export function animate(props) {
   
   console.log('[ANIMATION] VSync-optimized animation system started');
   console.log('[ANIMATION] Using', useVSync ? 'VSync (requestAnimationFrame)' : 'Background timing (30 FPS)');
+  console.log('[ANIMATION] Trigger mode:', useSequencerMode ? 'Sequencer' : 'Real-time detection');
 }
 
 /**
@@ -357,9 +603,88 @@ function animateFrame(props) {
   // CRITICAL: Detect triggers on ALL visible layers with audio-synchronized timing
   // This maintains audio trigger priority (unchanged)
   if (scene._layerManager && scene._layerManager.layers) {
+    // ==================================================================================
+    // NEW: Hybrid trigger detection system supporting both sequencer and real-time modes
+    // ==================================================================================
+    
+    const currentBPM = globalState?.bpm || 120;
+    const currentAngle = globalState?.lastAngle || 0;
+    
+    // Check if BPM has changed
+    const bpmChanged = lastBPM !== currentBPM;
+    if (bpmChanged) {
+      lastBPM = currentBPM;
+    }
+    
+    // Check for geometry and visibility changes
+    let geometryChanged = false;
+    let visibilityChanged = false;
+    let hasSequencerLayers = false;
+    let hasRealTimeLayers = false;
+    
     for (const layer of scene._layerManager.layers) {
+      if (hasGeometryChanged(layer)) {
+        geometryChanged = true;
+      }
+      
+      if (hasVisibilityChanged(layer)) {
+        visibilityChanged = true;
+      }
+      
+      // Determine which layers use which mode
       if (layer && layer.visible && layer.state && layer.state.copies > 0) {
-        detectLayerTriggers(layer, currentAudioTime);
+        const layerUseSequencer = layer.state.useSequencerMode !== undefined 
+          ? layer.state.useSequencerMode 
+          : useSequencerMode;
+          
+        if (layerUseSequencer) {
+          hasSequencerLayers = true;
+        } else {
+          hasRealTimeLayers = true;
+        }
+      }
+    }
+    
+    // ==================================================================================
+    // SEQUENCER MODE: Handle layers using pre-calculated schedules
+    // ==================================================================================
+    if (hasSequencerLayers || useSequencerMode) {
+      // Update sequencer schedules if anything changed
+      if (bpmChanged || geometryChanged || visibilityChanged) {
+        updateSequencerSchedules(scene, currentBPM, currentAngle);
+        if (bpmChanged) {
+          console.log(`[ANIMATION] BPM changed to ${currentBPM}, sequencer updated`);
+        }
+        if (geometryChanged) {
+          console.log('[ANIMATION] Geometry changed, sequencer schedules recalculated');
+        }
+        if (visibilityChanged) {
+          console.log('[ANIMATION] Layer visibility changed, sequencer updated');
+        }
+      }
+      
+      // Update the sequencer with current time (processes events with look-ahead)
+      const sequencer = getGlobalSequencer();
+      if (sequencer) {
+        sequencer.update(currentAudioTime);
+      }
+    }
+    
+    // ==================================================================================
+    // REAL-TIME MODE: Handle layers using traditional trigger detection
+    // ==================================================================================
+    if (hasRealTimeLayers || !useSequencerMode) {
+      for (const layer of scene._layerManager.layers) {
+        if (layer && layer.visible && layer.state && layer.state.copies > 0) {
+          // Only process layers that are NOT using sequencer mode
+          const layerUseSequencer = layer.state.useSequencerMode !== undefined 
+            ? layer.state.useSequencerMode 
+            : useSequencerMode;
+            
+          if (!layerUseSequencer) {
+            detectLayerTriggers(layer, currentAudioTime);
+          }
+        }
       }
     }
   }
@@ -476,12 +801,17 @@ export function setVSyncEnabled(enableVSync) {
 if (typeof window !== 'undefined') {
   window.stopAnimation = stopAnimation;
   window.setVSyncEnabled = setVSyncEnabled;
+  window.setSequencerMode = setSequencerMode;
+  window.isSequencerMode = isSequencerMode;
   window.getAnimationStats = () => ({
     frameCount,
     fpsStats,
     vsyncActive: useVSync,
     isAnimating,
     lastAudioTime,
-    backgroundWorkerActive: !!backgroundFallbackWorker
+    backgroundWorkerActive: !!backgroundFallbackWorker,
+    sequencerMode: useSequencerMode,
+    lastBPM,
+    trackedLayers: lastGeometryParams.size
   });
 }

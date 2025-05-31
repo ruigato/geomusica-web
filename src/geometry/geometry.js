@@ -33,6 +33,10 @@ import { createNote } from '../notes/notes.js';
 import { calculateStarCutsVertices, hasStarSelfIntersections, createStarPolygonPoints, createRegularStarPolygonPoints } from './starCuts.js';
 // Import the new plain intersection system
 import { processPlainIntersections, calculateCopyIntersections } from './plainIntersection.js';
+// Import the GeometricSequencer for trigger scheduling
+import { GeometricSequencer } from '../triggers/GeometricSequencer.js';
+// Import timing utilities for BPM calculations
+import { getCurrentTime, calculateRotation } from '../time/time.js';
 
 // Debug flag to control logging
 const DEBUG_LOGGING = false;
@@ -520,6 +524,9 @@ export function createPolygonGeometry(radius, segments, state = null) {
   // Get the specific shape type from state if available
   const shapeType = state?.shapeType || 'regular';
   
+  // Check if we should use sequencer mode (default: false, uses real-time detection)
+  const useSequencerMode = state?.useSequencerMode || false;
+  
   // Step 1: Create base geometry points
   let points = [];
   let lineSegments = [];
@@ -586,6 +593,129 @@ export function createPolygonGeometry(radius, segments, state = null) {
   // Convert final line segments to indices for geometry creation
   let finalIndices = convertLineSegmentsToIndices(points, lineSegments);
 
+  // ==================================================================================
+  // NEW: Calculate trigger schedule data if using sequencer mode
+  // ==================================================================================
+  let triggerScheduleData = null;
+  
+  if (useSequencerMode && points.length > 0) {
+    try {
+      // Get current BPM from state
+      const bpm = state?.globalState?.bpm || state?.bpm || 120;
+      
+      // Calculate rotation speed (matching animation.js calculation)
+      const rotationSpeed = bpm / 960; // rotations per second
+      
+      // Get current rotation angle if available
+      const currentAngle = state?.globalState?.lastAngle || 0;
+      
+      // Calculate trigger data for each point
+      const pointTriggerData = points.map((point, index) => {
+        // Calculate angle from center for this point
+        const pointAngle = Math.atan2(point.y, point.x);
+        
+        // Calculate initial crossing time (time until first Y-axis crossing)
+        const normalizedAngle = ((pointAngle - currentAngle) % (2 * Math.PI) + (2 * Math.PI)) % (2 * Math.PI);
+        const targetAngle = Math.PI / 2; // Y-axis crossing (positive Y)
+        
+        let timeToTarget;
+        if (normalizedAngle <= targetAngle) {
+          timeToTarget = (targetAngle - normalizedAngle) / (2 * Math.PI * rotationSpeed);
+        } else {
+          timeToTarget = (2 * Math.PI - normalizedAngle + targetAngle) / (2 * Math.PI * rotationSpeed);
+        }
+        
+        // Calculate time between successive crossings
+        const crossingInterval = 1 / rotationSpeed; // Time for one full rotation
+        
+        return {
+          index,
+          position: { x: point.x, y: point.y },
+          angle: pointAngle,
+          initialCrossingTime: timeToTarget,
+          crossingInterval,
+          nextTriggerTime: getCurrentTime() + timeToTarget
+        };
+      });
+      
+      // Create trigger schedule data for copies (will be used when geometry is copied)
+      triggerScheduleData = {
+        basePoints: pointTriggerData,
+        rotationSpeed,
+        bpm,
+        currentAngle,
+        calculatedAt: getCurrentTime(),
+        useSequencerMode: true,
+        
+        // Function to calculate schedule for a specific copy with transforms
+        calculateCopySchedule: function(copyIndex, scale, rotation, position) {
+          return this.basePoints.map(pointData => {
+            // Apply copy transformations to point position
+            const transformedX = pointData.position.x * scale;
+            const transformedY = pointData.position.y * scale;
+            
+            // Apply rotation if needed
+            let finalX = transformedX;
+            let finalY = transformedY;
+            if (rotation !== 0) {
+              finalX = transformedX * Math.cos(rotation) - transformedY * Math.sin(rotation);
+              finalY = transformedX * Math.sin(rotation) + transformedY * Math.cos(rotation);
+            }
+            
+            // Apply position offset if needed
+            if (position) {
+              finalX += position.x;
+              finalY += position.y;
+            }
+            
+            // Recalculate angle and timing for transformed point
+            const transformedAngle = Math.atan2(finalY, finalX);
+            const normalizedAngle = ((transformedAngle - this.currentAngle) % (2 * Math.PI) + (2 * Math.PI)) % (2 * Math.PI);
+            const targetAngle = Math.PI / 2;
+            
+            let timeToTarget;
+            if (normalizedAngle <= targetAngle) {
+              timeToTarget = (targetAngle - normalizedAngle) / (2 * Math.PI * this.rotationSpeed);
+            } else {
+              timeToTarget = (2 * Math.PI - normalizedAngle + targetAngle) / (2 * Math.PI * this.rotationSpeed);
+            }
+            
+            return {
+              ...pointData,
+              copyIndex,
+              transformedPosition: { x: finalX, y: finalY },
+              transformedAngle,
+              scale,
+              rotation,
+              copyPosition: position,
+              initialCrossingTime: timeToTarget,
+              nextTriggerTime: getCurrentTime() + timeToTarget
+            };
+          });
+        }
+      };
+      
+      // If we have access to a global sequencer instance, schedule these events
+      if (typeof window !== 'undefined' && window._geometricSequencer) {
+        const sequencer = window._geometricSequencer;
+        
+        // Set up the sequencer with current parameters
+        sequencer.setRotationSpeed(bpm);
+        sequencer.setRotationOffset(currentAngle);
+        
+        // Schedule the base geometry points
+        const basePointsForScheduling = points.map(point => ({ x: point.x, y: point.y }));
+        sequencer.scheduleGeometry(basePointsForScheduling, rotationSpeed);
+        
+        console.log(`[GEOMETRY] Scheduled ${points.length} points for sequencer mode (BPM: ${bpm}, rotation speed: ${rotationSpeed.toFixed(4)} rps)`);
+      }
+      
+    } catch (error) {
+      console.warn('[GEOMETRY] Error calculating trigger schedule data:', error);
+      triggerScheduleData = null;
+    }
+  }
+
   // Create geometry from final points and line segment indices
   const geometry = createGeometryFromPoints(points, state, finalIndices);
 
@@ -608,7 +738,11 @@ export function createPolygonGeometry(radius, segments, state = null) {
     starSkip: state?.starSkip,
     fractalLevel: (state?.useFractal || shapeType === 'fractal') ? (state?.fractalValue || 2) : 1,
     isUsingEuclidean: isUsingEuclidean,
-    lineIndices: finalIndices // Store final line indices after all pipeline steps
+    lineIndices: finalIndices, // Store final line indices after all pipeline steps
+    
+    // NEW: Sequencer mode data
+    useSequencerMode,
+    triggerScheduleData
   };
 
   return geometry;
@@ -2272,35 +2406,94 @@ function addIntersectionVertexCircles(parentGroup, intersectionPoints, copyIndex
  * @returns {Array<Array<number>>} Array of index pairs
  */
 function convertLineSegmentsToIndices(points, lineSegments) {
-  if (!lineSegments || lineSegments.length === 0) {
-    return null;
-  }
-  
   const indices = [];
+  
+  // Create a map of point coordinates to indices for fast lookup
   const pointMap = new Map();
+  points.forEach((point, index) => {
+    const key = `${point.x.toFixed(6)},${point.y.toFixed(6)}`;
+    pointMap.set(key, index);
+  });
   
-  // Create a map from point coordinates to indices for fast lookup
-  for (let i = 0; i < points.length; i++) {
-    const key = `${points[i].x.toFixed(6)},${points[i].y.toFixed(6)}`;
-    pointMap.set(key, i);
-  }
-  
-  // Convert each line segment to index pairs
+  // Convert each line segment to indices
   for (const segment of lineSegments) {
-    if (segment.length >= 2) {
-      const startKey = `${segment[0].x.toFixed(6)},${segment[0].y.toFixed(6)}`;
-      const endKey = `${segment[1].x.toFixed(6)},${segment[1].y.toFixed(6)}`;
-      
-      const startIdx = pointMap.get(startKey);
-      const endIdx = pointMap.get(endKey);
-      
-      if (startIdx !== undefined && endIdx !== undefined) {
-        indices.push([startIdx, endIdx]);
-      }
+    const [start, end] = segment;
+    const startKey = `${start.x.toFixed(6)},${start.y.toFixed(6)}`;
+    const endKey = `${end.x.toFixed(6)},${end.y.toFixed(6)}`;
+    
+    const startIdx = pointMap.get(startKey);
+    const endIdx = pointMap.get(endKey);
+    
+    if (startIdx !== undefined && endIdx !== undefined) {
+      indices.push([startIdx, endIdx]);
     }
   }
   
-  return indices.length > 0 ? indices : null;
+  return indices;
 }
 
 // Check if we should delete entire copies (primitives mode)
+
+// ==================================================================================
+// NEW: GeometricSequencer Integration Functions
+// ==================================================================================
+
+/**
+ * Initialize and expose the global GeometricSequencer instance
+ * @returns {GeometricSequencer} The global sequencer instance
+ */
+export function initializeGlobalSequencer() {
+  if (typeof window !== 'undefined') {
+    if (!window._geometricSequencer) {
+      window._geometricSequencer = new GeometricSequencer();
+      
+      // Set up default trigger callback for debugging
+      window._geometricSequencer.setTriggerCallback((eventData) => {
+        console.log('[GEOMETRIC_SEQUENCER] Trigger event:', {
+          point: eventData.point,
+          angle: eventData.angle,
+          triggerTime: eventData.triggerTime,
+          id: eventData.id
+        });
+        
+        // Dispatch custom event for other systems to listen to
+        if (typeof window.dispatchEvent === 'function') {
+          const customEvent = new CustomEvent('geometricTrigger', {
+            detail: eventData
+          });
+          window.dispatchEvent(customEvent);
+        }
+      });
+      
+      console.log('[GEOMETRY] Global GeometricSequencer initialized');
+    }
+    
+    return window._geometricSequencer;
+  }
+  
+  return null;
+}
+
+/**
+ * Get the global GeometricSequencer instance
+ * @returns {GeometricSequencer|null} The global sequencer instance or null if not available
+ */
+export function getGlobalSequencer() {
+  if (typeof window !== 'undefined' && window._geometricSequencer) {
+    return window._geometricSequencer;
+  }
+  return null;
+}
+
+/**
+ * Update the global sequencer with new BPM and rotation settings
+ * @param {number} bpm - Current BPM
+ * @param {number} rotationAngle - Current rotation angle in radians
+ */
+export function updateGlobalSequencer(bpm, rotationAngle = 0) {
+  const sequencer = getGlobalSequencer();
+  if (sequencer) {
+    sequencer.setRotationSpeed(bpm);
+    sequencer.setRotationOffset(rotationAngle);
+  }
+}
