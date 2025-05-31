@@ -1,4 +1,4 @@
-// src/animation/animation.js - Enhanced for high framerate trigger detection with subframe precision
+// src/animation/animation.js - VSync-optimized rendering with maintained audio trigger stability
 import * as THREE from 'three';
 import { getCurrentTime } from '../time/time.js';
 import { processPendingTriggers, clearLayerMarkers, detectLayerTriggers, resetTriggerSystem } from '../triggers/triggers.js';
@@ -12,116 +12,134 @@ let frameCount = 0;
 let lastAudioTime = 0;
 let fpsStats = { min: Infinity, max: 0, avg: 0, frames: 0, total: 0 };
 
-// Enhanced timing controls for high BPM support
-const TARGET_FPS = 120; // Target 120 FPS for better trigger detection
-const MIN_FRAME_TIME = 1 / TARGET_FPS;
-const MAX_FRAME_TIME = MIN_FRAME_TIME * 2;
+// VSync-optimized timing controls - now using monitor refresh rate
+const MAX_FRAME_TIME = 1 / 30; // 30 FPS minimum (33.33ms max frame time)
+const MIN_FRAME_TIME = 1 / 240; // 240 FPS maximum (4.17ms min frame time)
 
-// Animation Worker for background-resistant timing
-let animationWorker = null;
+// Animation state management
+let animationId = null;
 let animationProps = null;
+let isAnimating = false;
+
+// Background detection for fallback timing
+let useVSync = true;
+let backgroundFallbackWorker = null;
 
 /**
- * Initialize the animation worker for background-resistant animation
+ * Initialize background fallback worker for when tab is not visible
+ * Only used when document.hidden === true
  */
-function initializeAnimationWorker() {
-  if (animationWorker) {
-    animationWorker.terminate();
+function initializeBackgroundFallback() {
+  if (backgroundFallbackWorker) {
+    backgroundFallbackWorker.terminate();
   }
   
-  // Create a Web Worker for animation timing that won't be throttled
   const workerCode = `
     let intervalId = null;
-    const TARGET_FPS = 120;
-    const frameTime = 1000 / TARGET_FPS; // ~8.33ms for 120 FPS
+    const BACKGROUND_FPS = 30; // Lower FPS when backgrounded to save resources
+    const frameTime = 1000 / BACKGROUND_FPS;
     
-    function startAnimation() {
+    function startBackgroundTiming() {
       if (intervalId) {
         clearInterval(intervalId);
       }
       
       intervalId = setInterval(() => {
         self.postMessage({
-          type: 'animationFrame',
+          type: 'backgroundFrame',
           timestamp: performance.now()
         });
       }, frameTime);
-      
-      console.log('[ANIMATION WORKER] Started at', TARGET_FPS, 'FPS');
     }
     
-    function stopAnimation() {
+    function stopBackgroundTiming() {
       if (intervalId) {
         clearInterval(intervalId);
         intervalId = null;
       }
-      console.log('[ANIMATION WORKER] Stopped');
     }
     
     self.onmessage = function(e) {
       switch(e.data.type) {
         case 'start':
-          startAnimation();
+          startBackgroundTiming();
           break;
         case 'stop':
-          stopAnimation();
-          break;
-        case 'setFPS':
-          const newFPS = e.data.fps || TARGET_FPS;
-          const newFrameTime = 1000 / newFPS;
-          if (intervalId) {
-            stopAnimation();
-            setTimeout(startAnimation, 0);
-          }
+          stopBackgroundTiming();
           break;
       }
     };
-    
-    // Start immediately
-    startAnimation();
   `;
   
   try {
     const blob = new Blob([workerCode], { type: 'application/javascript' });
-    animationWorker = new Worker(URL.createObjectURL(blob));
+    backgroundFallbackWorker = new Worker(URL.createObjectURL(blob));
     
-    animationWorker.onmessage = (e) => {
-      if (e.data.type === 'animationFrame' && animationProps) {
-        // Trigger the actual animation frame
+    backgroundFallbackWorker.onmessage = (e) => {
+      if (e.data.type === 'backgroundFrame' && animationProps && !useVSync) {
         animateFrame(animationProps);
       }
     };
     
-    animationWorker.onerror = (error) => {
-      console.error('[ANIMATION WORKER] Error:', error);
-      // Fallback to setTimeout if worker fails
-      fallbackToSetTimeout();
+    backgroundFallbackWorker.onerror = (error) => {
+      console.error('[ANIMATION BACKGROUND] Worker error:', error);
+      backgroundFallbackWorker = null;
     };
     
-    console.log('[ANIMATION] Using Web Worker for background-resistant animation');
+    console.log('[ANIMATION] Background fallback worker initialized');
     return true;
   } catch (error) {
-    console.error('[ANIMATION WORKER] Failed to create:', error);
-    fallbackToSetTimeout();
+    console.error('[ANIMATION BACKGROUND] Failed to create worker:', error);
     return false;
   }
 }
 
 /**
- * Fallback to setTimeout-based animation if Web Worker fails
+ * Handle visibility change to switch between VSync and background timing
  */
-function fallbackToSetTimeout() {
-  console.warn('[ANIMATION] Falling back to setTimeout-based animation');
+function handleVisibilityChange() {
+  if (document.hidden) {
+    // Tab became hidden - switch to background worker
+    useVSync = false;
+    if (animationId) {
+      cancelAnimationFrame(animationId);
+      animationId = null;
+    }
+    
+    if (backgroundFallbackWorker) {
+      backgroundFallbackWorker.postMessage({ type: 'start' });
+      console.log('[ANIMATION] Switched to background timing (30 FPS)');
+    }
+  } else {
+    // Tab became visible - switch back to VSync
+    useVSync = true;
+    if (backgroundFallbackWorker) {
+      backgroundFallbackWorker.postMessage({ type: 'stop' });
+    }
+    
+    if (animationProps && isAnimating) {
+      startVSyncLoop();
+      console.log('[ANIMATION] Switched back to VSync timing');
+    }
+  }
+}
+
+/**
+ * Start the VSync-based animation loop
+ */
+function startVSyncLoop() {
+  if (animationId) {
+    cancelAnimationFrame(animationId);
+  }
   
-  function timeoutLoop() {
-    if (animationProps) {
+  function vsyncFrame() {
+    if (animationProps && isAnimating && useVSync) {
       animateFrame(animationProps);
-      const targetFrameTime = 1000 / TARGET_FPS;
-      setTimeout(timeoutLoop, targetFrameTime);
+      animationId = requestAnimationFrame(vsyncFrame);
     }
   }
   
-  timeoutLoop();
+  animationId = requestAnimationFrame(vsyncFrame);
 }
 
 /**
@@ -137,29 +155,42 @@ function getSafeTime() {
 }
 
 /**
- * Main animation function with enhanced subframe timing for high BPM support
+ * Main animation function with VSync optimization for smooth rendering
+ * Audio triggers remain highest priority and unaffected
  * @param {Object} props Animation properties and dependencies
  */
 export function animate(props) {
-  // Store props for the worker to use
+  // Store props for the animation loop
   animationProps = props;
+  isAnimating = true;
   
-  // Initialize the animation worker for background-resistant timing
-  const workerInitialized = initializeAnimationWorker();
+  // Initialize background fallback worker
+  initializeBackgroundFallback();
   
-  if (!workerInitialized) {
-    console.warn('[ANIMATION] Worker initialization failed, using fallback');
-  }
+  // Set up visibility change handler for background/foreground switching
+  document.addEventListener('visibilitychange', handleVisibilityChange);
   
-  // Initialize trigger system
+  // Initialize trigger system (unchanged - maintains audio priority)
   resetTriggerSystem();
   lastAudioTime = getSafeTime();
   
-  console.log('[ANIMATION] Animation system started with background-resistant timing');
+  // Start with VSync if tab is visible, otherwise use background timing
+  if (document.hidden) {
+    useVSync = false;
+    if (backgroundFallbackWorker) {
+      backgroundFallbackWorker.postMessage({ type: 'start' });
+    }
+  } else {
+    useVSync = true;
+    startVSyncLoop();
+  }
+  
+  console.log('[ANIMATION] VSync-optimized animation system started');
+  console.log('[ANIMATION] Using', useVSync ? 'VSync (requestAnimationFrame)' : 'Background timing (30 FPS)');
 }
 
 /**
- * Core animation frame logic - called by either worker or setTimeout
+ * Core animation frame logic - now optimized for VSync while maintaining audio trigger priority
  * @param {Object} props Animation properties and dependencies
  */
 function animateFrame(props) {
@@ -191,21 +222,21 @@ function animateFrame(props) {
     }
   }
   
-  // CRITICAL FIX: Increment frameCount BEFORE any early returns
+  // CRITICAL: Increment frameCount BEFORE any early returns
   frameCount++;
   
-  // Get current time from audio-synchronized timing system
+  // Get current time from audio-synchronized timing system (unchanged)
   const currentAudioTime = getSafeTime();
   
   // Calculate time delta using audio time
   let timeDelta = currentAudioTime - lastAudioTime;
   
-  // Clamp delta time for stability and precision
-  timeDelta = Math.max(0, Math.min(timeDelta, MAX_FRAME_TIME));
+  // Clamp delta time for stability and precision - now with VSync-appropriate limits
+  timeDelta = Math.max(MIN_FRAME_TIME, Math.min(timeDelta, MAX_FRAME_TIME));
   
   // Skip frame if delta is too small (prevents unnecessary processing)
   // But allow first few frames to pass through to get animation started
-  if (timeDelta < MIN_FRAME_TIME * 0.5 && frameCount > 5) {
+  if (timeDelta < MIN_FRAME_TIME * 0.8 && frameCount > 5) {
     return;
   }
   
@@ -219,7 +250,7 @@ function animateFrame(props) {
     fpsStats.min = Math.min(fpsStats.min, fps);
     fpsStats.max = Math.max(fpsStats.max, fps);
     
-    // Track high-speed performance using audio timing
+    // Track VSync performance using audio timing
     if (frameCount % 600 === 0) { // Log every 10 seconds at 60fps
       const performanceInfo = {
         currentFPS: fps.toFixed(1),
@@ -227,7 +258,7 @@ function animateFrame(props) {
         minFPS: fpsStats.min.toFixed(1),
         maxFPS: fpsStats.max.toFixed(1),
         timeDelta: (timeDelta * 1000).toFixed(2) + 'ms',
-        targetFPS: TARGET_FPS,
+        timingMode: useVSync ? 'VSync' : 'Background',
         audioTime: currentAudioTime.toFixed(3)
       };
       
@@ -248,7 +279,8 @@ function animateFrame(props) {
     state.lastTime = currentAudioTime;
   }
   
-  // Process any pending quantized triggers with audio-synchronized timing
+  // CRITICAL: Process any pending quantized triggers with audio-synchronized timing
+  // This maintains the highest priority for audio triggers (unchanged)
   processPendingTriggers(currentAudioTime, scene);
   
   // Log timing info with enhanced frequency for debugging high BPM issues
@@ -281,23 +313,6 @@ function animateFrame(props) {
     
     // Update markers (dots) based on intersections
     // DEPRECATED: needsIntersectionUpdate functionality removed
-    // if (activeLayer.state.needsIntersectionUpdate) {
-    //   // Only detect intersections if they're enabled
-    //   const useIntersections = activeLayer.state.useIntersections === true;
-    //   const useStarCuts = activeLayer.state.useStars === true && activeLayer.state.useCuts === true;
-    //   
-    //   // DEPRECATED: detectIntersections functionality removed
-    //   // if (useIntersections || useStarCuts) {
-    //   //   detectIntersections(activeLayer);
-    //   // }
-    //   
-    //   // Always reset the flag regardless
-    //   activeLayer.state.needsIntersectionUpdate = false;
-    // }
-    
-    // DEPRECATED: applyVelocityToMarkers functionality removed
-    // Apply velocity updates to markers with audio-synchronized timing
-    // applyVelocityToMarkers(activeLayer, timeDelta);
     
     // Ensure camera and renderer are set in the layer's group before updating
     if (activeLayer.group && cam && renderer) {
@@ -323,23 +338,24 @@ function animateFrame(props) {
       globalState.updateAngle(currentAudioTime * 1000); // Convert to ms for compatibility
     }
     
-    // Update DOM label positions if the function is available
+    // KEPT SYNCHRONOUS: Update DOM label positions (as requested)
     if (typeof updateLabelPositions === 'function') {
       updateLabelPositions(activeLayer, cam, renderer);
     }
     
-    // Update and fade out axis labels
+    // KEPT SYNCHRONOUS: Update and fade out axis labels (as requested)
     if (typeof updateAxisLabels === 'function') {
       updateAxisLabels();
     }
     
-    // FIXED: Update point frequency labels for all layers (Phase 1 fix)
+    // KEPT SYNCHRONOUS: Update point frequency labels for all layers (as requested)
     if (typeof updateAllLayersRotatingLabels === 'function') {
       updateAllLayersRotatingLabels(cam, renderer);
     }
   }
   
-  // FIXED: Detect triggers on ALL visible layers with audio-synchronized timing
+  // CRITICAL: Detect triggers on ALL visible layers with audio-synchronized timing
+  // This maintains audio trigger priority (unchanged)
   if (scene._layerManager && scene._layerManager.layers) {
     for (const layer of scene._layerManager.layers) {
       if (layer && layer.visible && layer.state && layer.state.copies > 0) {
@@ -362,9 +378,9 @@ function animateFrame(props) {
       camera: cam,
       renderer: renderer,
       frameTime: timeDelta,
-      targetFPS: TARGET_FPS,
       currentFPS: 1 / timeDelta,
-      audioTime: currentAudioTime
+      audioTime: currentAudioTime,
+      vsyncEnabled: useVSync
     };
     
     scene._layerManager.updateLayers(animationParams);
@@ -406,35 +422,66 @@ function animateFrame(props) {
  * Stop the animation system and clean up resources
  */
 export function stopAnimation() {
-  if (animationWorker) {
-    animationWorker.postMessage({ type: 'stop' });
-    animationWorker.terminate();
-    animationWorker = null;
+  isAnimating = false;
+  
+  // Cancel VSync animation frame
+  if (animationId) {
+    cancelAnimationFrame(animationId);
+    animationId = null;
   }
   
+  // Stop background worker
+  if (backgroundFallbackWorker) {
+    backgroundFallbackWorker.postMessage({ type: 'stop' });
+    backgroundFallbackWorker.terminate();
+    backgroundFallbackWorker = null;
+  }
+  
+  // Remove event listeners
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
+  
   animationProps = null;
-  console.log('[ANIMATION] Animation system stopped');
+  useVSync = true;
+  console.log('[ANIMATION] VSync animation system stopped');
 }
 
 /**
- * Set animation FPS (for testing purposes)
- * @param {number} fps Target frames per second
+ * Set animation to use VSync or background mode (for testing purposes)
+ * @param {boolean} enableVSync Whether to use VSync timing
  */
-export function setAnimationFPS(fps) {
-  if (animationWorker) {
-    animationWorker.postMessage({ type: 'setFPS', fps: fps });
-    console.log(`[ANIMATION] FPS set to ${fps}`);
+export function setVSyncEnabled(enableVSync) {
+  if (enableVSync && !useVSync && !document.hidden) {
+    useVSync = true;
+    if (backgroundFallbackWorker) {
+      backgroundFallbackWorker.postMessage({ type: 'stop' });
+    }
+    if (animationProps && isAnimating) {
+      startVSyncLoop();
+    }
+    console.log('[ANIMATION] VSync enabled');
+  } else if (!enableVSync && useVSync) {
+    useVSync = false;
+    if (animationId) {
+      cancelAnimationFrame(animationId);
+      animationId = null;
+    }
+    if (backgroundFallbackWorker && animationProps && isAnimating) {
+      backgroundFallbackWorker.postMessage({ type: 'start' });
+    }
+    console.log('[ANIMATION] VSync disabled, using background timing');
   }
 }
 
 // Make functions available globally for debugging
 if (typeof window !== 'undefined') {
   window.stopAnimation = stopAnimation;
-  window.setAnimationFPS = setAnimationFPS;
+  window.setVSyncEnabled = setVSyncEnabled;
   window.getAnimationStats = () => ({
     frameCount,
     fpsStats,
-    workerActive: !!animationWorker,
-    lastAudioTime
+    vsyncActive: useVSync,
+    isAnimating,
+    lastAudioTime,
+    backgroundWorkerActive: !!backgroundFallbackWorker
   });
 }
