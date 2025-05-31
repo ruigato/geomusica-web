@@ -294,7 +294,7 @@ const LEGACY_PARAMETER_MAPPING = {
   },
   'K': { 
     current: 'EuclidValue', 
-    range: { min: 0, max: 12.0 },
+    range: { min: 1, max: 12.0 },
     currentRange: { min: 1, max: 12 },
     type: 'number'
   },

@@ -390,8 +390,17 @@ class OSCManager {
         }
       }
       
-      // Convert parameter name to UI element ID format
-      const elementId = parameterName.charAt(0).toLowerCase() + parameterName.slice(1);
+      // Convert parameter name to UI element ID format with special cases
+      let elementId;
+      
+      // Handle special cases for fractal parameters
+      if (parameterName === 'FractalValue') {
+        elementId = 'fractal'; // Maps to fractalRange, fractalValue, fractalNumber
+      } else if (parameterName === 'EuclidValue') {
+        elementId = 'euclid'; // Maps to euclidRange, euclidValue, euclidNumber
+      } else {
+        elementId = parameterName.charAt(0).toLowerCase() + parameterName.slice(1);
+      }
       
       // Update range slider
       const rangeElement = document.getElementById(`${elementId}Range`);
@@ -421,6 +430,10 @@ class OSCManager {
       // Handle special cases for checkbox naming
       if (parameterName === 'UseLerp') {
         checkboxElement = document.getElementById('useLerpCheckbox');
+      } else if (parameterName === 'UseFractal') {
+        checkboxElement = document.getElementById('useFractalCheckbox');
+      } else if (parameterName === 'UseEuclid') {
+        checkboxElement = document.getElementById('useEuclidCheckbox');
       } else {
         checkboxElement = document.getElementById(`use${parameterName}Checkbox`);
       }

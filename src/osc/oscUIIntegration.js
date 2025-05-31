@@ -380,7 +380,7 @@ class OSCUIIntegration {
           value = element.checked;
         }
       } else if (element.type === 'checkbox') {
-        value = element.checked;
+      value = element.checked;
       } else {
         // Radio button not checked - don't send anything
         return;
