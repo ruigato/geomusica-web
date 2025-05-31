@@ -82,6 +82,8 @@ class OSCUIIntegration {
       'modulus': 'ModulusValue',
       'timeSubdivision': 'TimeSubdivisionValue',
       'quantization': 'QuantizationValue',
+      'durationMode': 'DurationMode',
+      'velocityMode': 'VelocityMode',
       'durationModulo': 'DurationModulo',
       'velocityModulo': 'VelocityModulo',
       'starSkip': 'StarSkip'
@@ -334,8 +336,55 @@ class OSCUIIntegration {
     
     // Get current value
     let value;
+    let oscParameterName = parameterName; // Default to the mapped parameter name
+    
     if (element.type === 'checkbox' || element.type === 'radio') {
-      value = element.checked;
+      // Special handling for mode radio buttons that need numeric OSC output
+      if (element.type === 'radio' && element.checked) {
+        // Check if this is a mode radio button that needs special OSC handling
+        const radioName = element.name;
+        const radioValue = element.value;
+        
+        if (radioName === 'durationMode') {
+          // Map duration mode values to 0-3 and send as 'xdurmode'
+          const modeToNumber = {
+            'fixed': 0,
+            'interpolation': 1,
+            'modulo': 2,
+            'random': 3
+          };
+          value = modeToNumber[radioValue] !== undefined ? modeToNumber[radioValue] : 0;
+          oscParameterName = 'Xdurmode'; // Use legacy OSC parameter name
+        } else if (radioName === 'velocityMode') {
+          // Map velocity mode values to 0-3 and send as 'velmode'
+          const modeToNumber = {
+            'fixed': 0,
+            'interpolation': 1,
+            'modulo': 2,
+            'random': 3
+          };
+          value = modeToNumber[radioValue] !== undefined ? modeToNumber[radioValue] : 0;
+          oscParameterName = 'Velmode'; // Use legacy OSC parameter name
+        } else if (radioName === 'durationModulo') {
+          // Map duration modulo values to 1-12 and send as 'DurationModulo'
+          const moduloValue = parseInt(radioValue);
+          value = isNaN(moduloValue) ? 1 : Math.max(1, Math.min(12, moduloValue));
+          oscParameterName = 'DurationModulo'; // Use modern parameter name, OSC manager will translate to legacy
+        } else if (radioName === 'velocityModulo') {
+          // Map velocity modulo values to 1-12 and send as 'VelocityModulo'
+          const moduloValue = parseInt(radioValue);
+          value = isNaN(moduloValue) ? 1 : Math.max(1, Math.min(12, moduloValue));
+          oscParameterName = 'VelocityModulo'; // Use modern parameter name, OSC manager will translate to legacy
+        } else {
+          // Regular radio button - send boolean
+          value = element.checked;
+        }
+      } else if (element.type === 'checkbox') {
+        value = element.checked;
+      } else {
+        // Radio button not checked - don't send anything
+        return;
+      }
     } else {
       value = element.value;
       
@@ -345,11 +394,11 @@ class OSCUIIntegration {
       }
     }
     
-    // Send OSC OUT message
+    // Send OSC OUT message with the appropriate parameter name
     const layerId = isGlobal ? null : this.getCurrentLayerId();
-    sendOSCParameterChange(parameterName, value, isGlobal, layerId);
+    sendOSCParameterChange(oscParameterName, value, isGlobal, layerId);
     
-    console.log(`[OSC UI] Sent parameter change: ${parameterName} = ${value}${isCheckboxOrRadio ? ' (checkbox/radio)' : ''}`);
+    console.log(`[OSC UI] Sent parameter change: ${oscParameterName} = ${value}${isCheckboxOrRadio ? ' (checkbox/radio)' : ''}`);
   }
   
   /**

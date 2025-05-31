@@ -464,6 +464,37 @@ class OSCManager {
         }
       }
       
+      // Update radio buttons for string mode parameters
+      if (typeof value === 'string') {
+        let radioGroupName;
+        
+        if (parameterName === 'DurationMode') {
+          radioGroupName = 'durationMode';
+        } else if (parameterName === 'VelocityMode') {
+          radioGroupName = 'velocityMode';
+        } else if (parameterName === 'DeleteMode') {
+          radioGroupName = 'deleteMode';
+        } else if (parameterName === 'DeleteTarget') {
+          radioGroupName = 'deleteTarget';
+        }
+        
+        if (radioGroupName) {
+          const radioButtons = document.querySelectorAll(`input[name="${radioGroupName}"]`);
+          radioButtons.forEach(radio => {
+            if (radio.value === value) {
+              radio.checked = true;
+              
+              // Manually trigger the change event to ensure event handlers are called
+              const changeEvent = new Event('change', { bubbles: true });
+              radio.dispatchEvent(changeEvent);
+              console.log(`[OSC] Updated radio button ${radioGroupName} = ${value}`);
+            } else {
+              radio.checked = false;
+            }
+          });
+        }
+      }
+      
       console.log(`[OSC] Updated UI for ${isGlobal ? 'global' : `layer ${layerId}`} parameter: ${parameterName} = ${value}`);
       
     } catch (error) {

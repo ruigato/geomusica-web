@@ -16,7 +16,7 @@ const LEGACY_PARAMETER_MAPPING = {
   'Xdurmode': { 
     current: 'DurationMode', 
     range: { min: 0, max: 3 },
-    currentRange: ['modulo', 'random', 'interpolation'],
+    currentRange: ['fixed', 'interpolation', 'modulo', 'random'],
     type: 'mode'
   },
   'Xdurmin': { 
@@ -33,7 +33,7 @@ const LEGACY_PARAMETER_MAPPING = {
   },
   'Xdurcycles': { 
     current: 'DurationModulo', 
-    range: { min: 0, max: 12.0 },
+    range: { min: 1, max: 12 },
     currentRange: { min: 1, max: 12 },
     type: 'number'
   },
@@ -48,24 +48,24 @@ const LEGACY_PARAMETER_MAPPING = {
   'Velmode': { 
     current: 'VelocityMode', 
     range: { min: 0, max: 3 },
-    currentRange: ['modulo', 'random', 'interpolation'],
+    currentRange: ['fixed', 'interpolation', 'modulo', 'random'],
     type: 'mode'
   },
   'Velmin': { 
     current: 'MinVelocity', 
-    range: { min: 0, max: 1.0 },
-    currentRange: { min: 0.1, max: 0.9 },
+    range: { min: 0, max: 127 },
+    currentRange: { min: 0, max: 1 },
     type: 'number'
   },
   'Velmax': { 
     current: 'MaxVelocity', 
-    range: { min: 0, max: 1.0 },
-    currentRange: { min: 0.2, max: 1.0 },
+    range: { min: 0, max: 127 },
+    currentRange: { min: 0, max: 1 },
     type: 'number'
   },
   'Velcycles': { 
     current: 'VelocityModulo', 
-    range: { min: 0, max: 12.0 },
+    range: { min: 1, max: 12 },
     currentRange: { min: 1, max: 12 },
     type: 'number'
   },
@@ -166,12 +166,12 @@ const LEGACY_PARAMETER_MAPPING = {
     currentRange: { min: 0, max: 999 },
     type: 'number'
   },
-  'Modreordermode': { 
-    current: 'DurationMode', // Map to duration mode
-    range: { min: 0, max: 4 },
-    currentRange: ['modulo', 'random', 'interpolation'],
-    type: 'mode'
-  },
+  // 'Modreordermode': { 
+  //   current: 'DurationMode', // DISABLED - Modreordermode parameter not implemented yet
+  //   range: { min: 0, max: 4 },
+  //   currentRange: ['modulo', 'random', 'interpolation'],
+  //   type: 'mode'
+  // },
   'Altstep': { 
     current: 'AltScale', // Altstep in legacy = AltScale in modern (direct 1:1 mapping)
     range: { min: 0, max: 10.0 },

@@ -129,13 +129,13 @@ export function createAppState() {
     
     // NOTE PARAMETER related parameters
     // Duration parameters
-    durationMode: ParameterMode.MODULO, // Default to modulo mode
+    durationMode: ParameterMode.FIXED, // Default to fixed mode
     durationModulo: 3, // Default modulo value
     minDuration: 0.1, // Minimum duration in seconds
     maxDuration: 0.5, // Maximum duration in seconds
     
     // Velocity parameters
-    velocityMode: ParameterMode.MODULO, // Default to modulo mode
+    velocityMode: ParameterMode.FIXED, // Default to fixed mode
     velocityModulo: 4, // Default modulo value
     minVelocity: 0.3, // Minimum velocity (0-1)
     maxVelocity: 0.9, // Maximum velocity (0-1)
@@ -844,7 +844,7 @@ export function createAppState() {
     
     /**
      * Set duration mode
-     * @param {string} mode Parameter mode (modulo, random, interpolation)
+     * @param {string} mode Parameter mode (fixed, modulo, random, interpolation)
      */
     setDurationMode(mode) {
       if (Object.values(ParameterMode).includes(mode)) {
@@ -908,7 +908,7 @@ export function createAppState() {
     
     /**
      * Set velocity mode
-     * @param {string} mode Parameter mode (modulo, random, interpolation)
+     * @param {string} mode Parameter mode (fixed, modulo, random, interpolation)
      */
     setVelocityMode(mode) {
       if (Object.values(ParameterMode).includes(mode) && this.velocityMode !== mode) {

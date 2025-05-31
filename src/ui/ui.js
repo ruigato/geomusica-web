@@ -278,8 +278,22 @@ function setupModulusRadioButtons(container, state, type = null) {
       if (radioInput.checked) {
         if (type === 'duration') {
           handleRadioButtonChange('setDurationModulo', i);
+          
+          // Send OSC OUT message for legacy compatibility
+          if (window.triggerOSCParameterChange) {
+            // Get current layer ID
+            const layerId = window._layers?.activeLayerId || 0;
+            window.triggerOSCParameterChange('DurationModulo', i, false, layerId);
+          }
         } else if (type === 'velocity') {
           handleRadioButtonChange('setVelocityModulo', i);
+          
+          // Send OSC OUT message for legacy compatibility
+          if (window.triggerOSCParameterChange) {
+            // Get current layer ID
+            const layerId = window._layers?.activeLayerId || 0;
+            window.triggerOSCParameterChange('VelocityModulo', i, false, layerId);
+          }
         } else {
           // Auto-enable modulus if value is not 1 (default)
           const isDefault = i === 1;

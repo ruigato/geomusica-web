@@ -6,6 +6,7 @@ import { quantizeToEqualTemperament, getNoteName } from '../audio/frequencyUtils
  * Parameter generation modes
  */
 export const ParameterMode = {
+  FIXED: 'fixed',
   MODULO: 'modulo',
   RANDOM: 'random',
   INTERPOLATION: 'interpolation'
@@ -143,6 +144,9 @@ function calculateDuration(pointIndex, state) {
   }
   
   switch (mode) {
+    case ParameterMode.FIXED:
+      return max; // Use max value for all points
+      
     case ParameterMode.MODULO:
       return calculateModuloValue(phaseShiftedIndex, modulo, min, max);
     
@@ -183,6 +187,9 @@ function calculateVelocity(pointIndex, state) {
   }
   
   switch (mode) {
+    case ParameterMode.FIXED:
+      return max; // Use max value for all points
+      
     case ParameterMode.MODULO:
       return calculateModuloValue(phaseShiftedIndex, modulo, min, max);
     

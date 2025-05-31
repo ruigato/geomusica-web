@@ -495,7 +495,11 @@
           <label>Duration Mode:</label>
           <div class="radio-group">
             <div class="radio-item">
-              <input type="radio" id="durationMode-modulo" name="durationMode" value="modulo" checked>
+              <input type="radio" id="durationMode-fixed" name="durationMode" value="fixed" checked>
+              <label for="durationMode-fixed">Fixed</label>
+            </div>
+            <div class="radio-item">
+              <input type="radio" id="durationMode-modulo" name="durationMode" value="modulo">
               <label for="durationMode-modulo">Modulo</label>
             </div>
             <div class="radio-item">
@@ -507,7 +511,7 @@
               <label for="durationMode-interpolation">Interp</label>
             </div>
           </div>
-          <div class="help-text">Controls how durations are assigned to points</div>
+          <div class="help-text">Fixed: uses Max value for all points. Modulo/Random/Interp: varies between Min/Max</div>
         </div>
 
         <div class="control">
@@ -552,7 +556,11 @@
           <label>Velocity Mode:</label>
           <div class="radio-group">
             <div class="radio-item">
-              <input type="radio" id="velocityMode-modulo" name="velocityMode" value="modulo" checked>
+              <input type="radio" id="velocityMode-fixed" name="velocityMode" value="fixed" checked>
+              <label for="velocityMode-fixed">Fixed</label>
+            </div>
+            <div class="radio-item">
+              <input type="radio" id="velocityMode-modulo" name="velocityMode" value="modulo">
               <label for="velocityMode-modulo">Modulo</label>
             </div>
             <div class="radio-item">
@@ -564,7 +572,7 @@
               <label for="velocityMode-interpolation">Interp</label>
             </div>
           </div>
-          <div class="help-text">Controls how velocities are assigned to points</div>
+          <div class="help-text">Fixed: uses Max value for all points. Modulo/Random/Interp: varies between Min/Max</div>
         </div>
         
         <div class="control">
