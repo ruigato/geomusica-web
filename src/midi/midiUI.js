@@ -15,11 +15,61 @@ import {
 } from './midiOut.js';
 
 /**
+ * UI-specific settings storage key
+ */
+const MIDI_UI_SETTINGS_KEY = 'geomusica-midi-ui-settings';
+
+/**
+ * Load UI-specific MIDI settings from localStorage
+ */
+function loadUISettings() {
+  try {
+    const savedSettings = localStorage.getItem(MIDI_UI_SETTINGS_KEY);
+    if (savedSettings) {
+      const settings = JSON.parse(savedSettings);
+      return {
+        pluginAutoLoad: settings.pluginAutoLoad !== undefined ? settings.pluginAutoLoad : false,
+        pluginAutoEnable: settings.pluginAutoEnable !== undefined ? settings.pluginAutoEnable : false,
+        audioEnabled: settings.audioEnabled !== undefined ? settings.audioEnabled : true,
+        selectedDeviceId: settings.selectedDeviceId || null, // UI-level device selection
+        ...settings
+      };
+    }
+  } catch (error) {
+    console.warn('[MIDI UI] Error loading UI settings:', error);
+  }
+  
+  // Return defaults if no saved settings
+  return {
+    pluginAutoLoad: false,
+    pluginAutoEnable: false,
+    audioEnabled: true,
+    selectedDeviceId: null
+  };
+}
+
+/**
+ * Save UI-specific MIDI settings to localStorage
+ */
+function saveUISettings(settings) {
+  try {
+    const currentSettings = loadUISettings();
+    const updatedSettings = { ...currentSettings, ...settings };
+    localStorage.setItem(MIDI_UI_SETTINGS_KEY, JSON.stringify(updatedSettings));
+  } catch (error) {
+    console.warn('[MIDI UI] Error saving UI settings:', error);
+  }
+}
+
+/**
  * Setup MIDI UI controls and integrate with existing UI system
  * @param {HTMLElement} parentContainer - Container to add MIDI controls to
  * @returns {Object} References to UI elements
  */
 export function setupMidiUI(parentContainer) {
+  // Load saved UI settings
+  const savedUISettings = loadUISettings();
+  
   // Create MIDI tab container
   const midiTab = document.createElement('div');
   midiTab.id = 'midi-tab';
@@ -63,6 +113,11 @@ export function setupMidiUI(parentContainer) {
   
   // Setup periodic status updates
   setupStatusUpdates();
+  
+  // Restore UI settings after elements are created
+  setTimeout(() => {
+    restoreUISettings(savedUISettings);
+  }, 100);
   
   return {
     midiTab,
@@ -446,6 +501,67 @@ async function initializeMidiSystem() {
 }
 
 /**
+ * Restore UI settings from saved state
+ */
+function restoreUISettings(savedUISettings) {
+  try {
+    // Restore audio mode setting
+    const audioCheckbox = document.getElementById('audioCheckbox');
+    if (audioCheckbox) {
+      audioCheckbox.checked = savedUISettings.audioEnabled;
+      updateAudioModeStatus(savedUISettings.audioEnabled);
+      
+      // Apply the audio setting to the audio engine
+      if (typeof window.setAudioEnabled === 'function') {
+        window.setAudioEnabled(savedUISettings.audioEnabled);
+      } else {
+        // Try to import and set audio mode
+        import('../audio/audio.js').then(audioModule => {
+          if (audioModule.setAudioEnabled) {
+            audioModule.setAudioEnabled(savedUISettings.audioEnabled);
+          }
+        }).catch(error => {
+          console.warn('[MIDI UI] Could not restore audio setting:', error);
+        });
+      }
+    }
+    
+    // Auto-load plugin if enabled
+    if (savedUISettings.pluginAutoLoad) {
+      const loadButton = document.getElementById('loadMidiPlugin');
+      if (loadButton && loadButton.style.display !== 'none') {
+        console.log('[MIDI UI] Auto-loading MIDI plugin from saved settings');
+        setTimeout(() => {
+          handleLoadMidiPlugin().then(() => {
+            // Auto-enable if saved setting says so
+            if (savedUISettings.pluginAutoEnable) {
+              setTimeout(() => {
+                const enableCheckbox = document.getElementById('midiEnableCheckbox');
+                if (enableCheckbox && !enableCheckbox.disabled) {
+                  enableCheckbox.checked = true;
+                  const event = { target: { checked: true } };
+                  handleMidiEnableChange(event);
+                }
+              }, 500);
+            }
+          }).catch(error => {
+            console.warn('[MIDI UI] Auto-load failed:', error);
+          });
+        }, 200);
+      }
+    }
+    
+    // The MIDI hardware settings (microtonal mode, debug mode, etc.) 
+    // are already handled by the existing updateMidiStatus function
+    // which reads from the midiOut module's saved settings
+    
+    console.log('[MIDI UI] UI settings restored:', savedUISettings);
+  } catch (error) {
+    console.error('[MIDI UI] Error restoring UI settings:', error);
+  }
+}
+
+/**
  * Handle MIDI plugin loading
  */
 async function handleLoadMidiPlugin() {
@@ -482,6 +598,9 @@ async function handleLoadMidiPlugin() {
       // Store globally for access
       window.midiPlugin = midiPlugin;
       
+      // Save that plugin should auto-load
+      saveUISettings({ pluginAutoLoad: true });
+      
       // Update status
       updateMidiStatus();
       
@@ -496,6 +615,9 @@ async function handleLoadMidiPlugin() {
     pluginStatus.style.color = '#f44336';
     loadButton.disabled = false;
     loadButton.textContent = 'Load MIDI Plugin';
+    
+    // Clear auto-load setting on failure
+    saveUISettings({ pluginAutoLoad: false });
     
     console.error('[MIDI UI] Plugin load error:', error);
   }
@@ -528,6 +650,9 @@ async function handleUnloadMidiPlugin() {
     // Clear global reference
     delete window.midiPlugin;
     
+    // Save that plugin should not auto-load
+    saveUISettings({ pluginAutoLoad: false, pluginAutoEnable: false });
+    
     // Update status
     updateMidiStatus();
     
@@ -550,6 +675,10 @@ async function handleMidiEnableChange(event) {
     } else {
       await window.midiPlugin.disable();
     }
+    
+    // Save the plugin enabled state
+    saveUISettings({ pluginAutoEnable: enabled });
+    
     updateMidiStatus();
   } else {
     // Plugin not loaded, reset checkbox
@@ -589,6 +718,9 @@ function handleDeviceSelection(event) {
     selectMidiDevice(deviceId);
   }
   
+  // Save the selected device ID to UI settings
+  saveUISettings({ selectedDeviceId: deviceId });
+  
   updateMidiStatus();
 }
 
@@ -598,6 +730,7 @@ function handleDeviceSelection(event) {
 function handleMicrotonalModeChange(event) {
   const enabled = event.target.checked;
   setMidiMicrotonalMode(enabled);
+  // Note: This setting is automatically saved by the midiOut module
 }
 
 /**
@@ -606,6 +739,7 @@ function handleMicrotonalModeChange(event) {
 function handleEndlessNotesModeChange(event) {
   const enabled = event.target.checked;
   setMidiEndlessNotesMode(enabled);
+  // Note: This setting is automatically saved by the midiOut module
 }
 
 /**
@@ -614,6 +748,7 @@ function handleEndlessNotesModeChange(event) {
 function handleMTSModeChange(event) {
   const enabled = event.target.checked;
   setMidiMTSMode(enabled);
+  // Note: This setting is automatically saved by the midiOut module
 }
 
 /**
@@ -622,6 +757,7 @@ function handleMTSModeChange(event) {
 function handleDebugModeChange(event) {
   const enabled = event.target.checked;
   setMidiDebugMode(enabled);
+  // Note: This setting is automatically saved by the midiOut module
 }
 
 /**
@@ -639,6 +775,9 @@ async function handleAudioModeChange(event) {
     
     // Simply enable/disable audio using the new function
     audioModule.setAudioEnabled(enabled);
+    
+    // Save the audio mode setting
+    saveUISettings({ audioEnabled: enabled });
     
     updateAudioModeStatus(enabled);
     
@@ -672,6 +811,7 @@ function refreshMidiDevices() {
   
   // Get current status to check for saved device
   const status = getMidiStatus();
+  const savedUISettings = loadUISettings();
   
   // Clear existing options
   deviceSelect.innerHTML = '';
@@ -689,9 +829,17 @@ function refreshMidiDevices() {
     option.value = device.id;
     option.textContent = `${device.name} (${device.manufacturer || 'Unknown'})`;
     
-    // Select the currently connected device or saved device
+    // Select the currently connected device, saved device from midiOut, or saved device from UI
     if (status.isEnabled && status.deviceName === device.name) {
       option.selected = true;
+    } else if (savedUISettings.selectedDeviceId === device.id) {
+      option.selected = true;
+      // Also try to reconnect to the saved device if not already connected
+      if (!status.isEnabled || status.deviceName !== device.name) {
+        setTimeout(() => {
+          selectMidiDevice(device.id);
+        }, 100);
+      }
     }
     
     deviceSelect.appendChild(option);
@@ -792,6 +940,9 @@ function updateMidiStatus() {
   if (debugCheckbox) {
     debugCheckbox.checked = status.debug;
   }
+  
+  // Note: Device selection persistence is handled by refreshMidiDevices function
+  // which reads from both midiOut saved settings and UI saved settings
 }
 
 /**

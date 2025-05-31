@@ -924,15 +924,6 @@ async function initializeApplication() {
         // Initialize MIDI plugin if requested
         await initializeMidiIfRequested();
         
-        // Add MIDI toggle UI for easy plugin management
-        try {
-          const { initializeMidiToggleUI } = await import('./ui/midiToggle.js');
-          initializeMidiToggleUI();
-          console.log('[MAIN] MIDI toggle UI initialized');
-        } catch (error) {
-          console.warn('[MAIN] MIDI toggle UI not available:', error.message);
-        }
-        
         // Initialize OSC system after MIDI is set up
         try {
           const { initializeOSC } = await import('./osc/oscManager.js');
